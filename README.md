@@ -6,6 +6,14 @@
 
 - `frontend/`: React + TypeScript + Vite 개발 환경
 - `backend/`: 백엔드 구현 예정, 현재 README만 포함
+- `docs/`: 팀 컨벤션과 AI 에이전트 작업 방식
+
+## Collaboration
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [AI Agent Instructions](AGENTS.md)
+- [Frontend Conventions](docs/FRONTEND_CONVENTIONS.md)
+- [AI Agent Workflow](docs/AI_AGENT_WORKFLOW.md)
 
 ## Frontend
 

@@ -1,5 +1,27 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-leaf-50: #eef8f2;
+  --color-leaf-100: #d8efe2;
+  --color-leaf-300: #8bc9a8;
+  --color-leaf-500: #43a374;
+  --color-leaf-600: #2f7d67;
+  --color-leaf-700: #236452;
+  --color-sun-100: #ffe8ca;
+  --color-sun-400: #f6a85f;
+  --color-berry-100: #ffe1e6;
+  --color-berry-400: #ef6f88;
+  --color-ink-950: #17211d;
+  --color-ink-800: #25312d;
+  --color-ink-700: #37443f;
+  --color-ink-600: #58645f;
+  --color-ground-50: #f3f7f1;
+  --color-paper: #ffffff;
+
+  --radius-control: 0.5rem;
+  --shadow-panel: 0 18px 45px rgba(27, 46, 41, 0.08);
+}
+
 @layer base {
   :root {
     font-family:
@@ -10,8 +32,8 @@
       BlinkMacSystemFont,
       'Segoe UI',
       sans-serif;
-    color: #17211d;
-    background: #f3f7f1;
+    color: var(--color-ink-950);
+    background: var(--color-ground-50);
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;

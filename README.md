@@ -14,6 +14,7 @@
 - [AI Agent Instructions](AGENTS.md)
 - [Frontend Conventions](docs/FRONTEND_CONVENTIONS.md)
 - [AI Agent Workflow](docs/AI_AGENT_WORKFLOW.md)
+- [Design System](docs/DESIGN_SYSTEM.md)
 
 ## Frontend
 

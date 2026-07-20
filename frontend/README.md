@@ -31,6 +31,10 @@ npm run format:check
 - `public/`: static assets
 - `vite.config.ts`: Vite configuration
 
+## Design Tokens
+
+Shared Tailwind theme tokens live in `src/index.css`.
+
 ## Environment
 
 Copy `.env.example` to `.env.local` and change values for your local machine.

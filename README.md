@@ -15,6 +15,7 @@
 - [Frontend Conventions](docs/FRONTEND_CONVENTIONS.md)
 - [AI Agent Workflow](docs/AI_AGENT_WORKFLOW.md)
 - [Design System](docs/DESIGN_SYSTEM.md)
+- [UI/UX Requirements](docs/UI_UX_REQUIREMENTS.md)
 
 ## Frontend
 

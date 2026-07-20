@@ -52,6 +52,7 @@ report-summary.ts
 - 라우터 정의는 `src/routes/router.tsx`에 둡니다.
 - 페이지 컴포넌트는 `src/pages/`에서 export합니다.
 - 화면이 추가될 때는 URL, 페이지 컴포넌트, 접근 사용자 타입을 함께 고려합니다.
+- 주요 화면 흐름은 `docs/UI_UX_REQUIREMENTS.md`를 기준으로 맞춥니다.
 
 초기 주요 라우트:
 

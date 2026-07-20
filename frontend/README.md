@@ -26,6 +26,8 @@ npm run format:check
 ## Directory
 
 - `src/`: application source code
+- `src/components/`: reusable UI and layout components
+- `src/lib/`: shared utilities
 - `src/pages/`: route page components
 - `src/routes/`: React Router configuration
 - `public/`: static assets

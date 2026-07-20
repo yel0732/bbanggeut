@@ -1,20 +1,65 @@
 import { createBrowserRouter } from 'react-router-dom'
 
-import { HomePage } from '@/pages/HomePage'
+import { ChildHomePage } from '@/pages/ChildHomePage'
+import { GameEntryPage } from '@/pages/GameEntryPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
+import { ProfileSelectPage } from '@/pages/ProfileSelectPage'
+import { StartPage } from '@/pages/StartPage'
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <HomePage />,
+    element: <StartPage />,
+  },
+  {
+    path: '/profiles',
+    element: <ProfileSelectPage />,
+  },
+  {
+    path: '/profiles/new',
+    element: (
+      <PlaceholderPage
+        eyebrow="Profile"
+        title="아이 프로필 만들기"
+        description="부모 가입 후 아이 이름, 나이, 프로필 이미지를 입력하는 화면을 연결할 자리입니다."
+      />
+    ),
   },
   {
     path: '/child',
+    element: <ChildHomePage />,
+  },
+  {
+    path: '/games',
+    element: <GameEntryPage />,
+  },
+  {
+    path: '/games/play',
     element: (
       <PlaceholderPage
-        eyebrow="Child"
-        title="아이 홈"
-        description="운동 게임, 인지 게임, 캐릭터 대화 화면을 연결할 자리입니다."
+        eyebrow="Game"
+        title="게임 플레이"
+        description="카메라와 게임 엔진이 연결될 실제 플레이 화면입니다."
+      />
+    ),
+  },
+  {
+    path: '/conversation',
+    element: (
+      <PlaceholderPage
+        eyebrow="Conversation"
+        title="캐릭터와 대화하기"
+        description="음성 안내, 마이크 입력, 대화 진행 상태를 연결할 자리입니다."
+      />
+    ),
+  },
+  {
+    path: '/auth',
+    element: (
+      <PlaceholderPage
+        eyebrow="Auth"
+        title="부모 로그인"
+        description="소셜 로그인, 이메일 로그인, PIN 인증 흐름을 연결할 자리입니다."
       />
     ),
   },

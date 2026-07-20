@@ -16,6 +16,8 @@
 
 ```text
 frontend/src/
+  components/ 공통 UI와 레이아웃 컴포넌트
+  lib/        공통 유틸리티
   pages/      화면 단위 컴포넌트
   routes/     라우터 설정
   assets/     정적 에셋
@@ -24,10 +26,8 @@ frontend/src/
 추후 기능이 커지면 아래 디렉터리를 추가합니다.
 
 ```text
-components/  공통 UI 컴포넌트
 features/    기능 단위 모듈
 hooks/       공통 React hooks
-lib/         외부 연동, 유틸리티
 types/       공통 타입
 ```
 
@@ -56,8 +56,14 @@ report-summary.ts
 
 초기 주요 라우트:
 
-- `/`: 서비스 개요
+- `/`: 시작 메인
+- `/profiles`: 프로필 선택
+- `/profiles/new`: 아이 프로필 생성
 - `/child`: 아이 홈
+- `/games`: 게임 진입/선택
+- `/games/play`: 게임 플레이
+- `/conversation`: 캐릭터 대화
+- `/auth`: 부모 로그인/인증
 - `/parent`: 부모 홈
 - `/diaries`: 일기 모아보기
 - `/reports`: 성장 리포트
@@ -66,6 +72,8 @@ report-summary.ts
 
 - Tailwind CSS 유틸리티 클래스를 기본으로 사용합니다.
 - 별도 CSS 파일은 전역 스타일, Tailwind import, 진짜 공통 토큰이 필요할 때만 사용합니다.
+- 조건부 className과 외부 className 병합은 `src/lib/utils.ts`의 `cn()`을 사용합니다.
+- 반복되는 버튼, 카드, 페이지 레이아웃은 `src/components/`의 공통 컴포넌트를 우선 사용합니다.
 - 버튼, 카드, 입력 요소는 8px 이하 radius를 기본으로 합니다.
 - 유아용 화면은 조작 대상을 크게 만들고 문장을 짧게 유지합니다.
 - 부모용 화면은 정보 스캔이 쉽도록 차분하고 밀도 있게 구성합니다.

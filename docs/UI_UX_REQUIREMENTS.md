@@ -29,6 +29,9 @@
 
 ```mermaid
 flowchart TD
+  start["시작 메인"]
+  signup["부모 로그인·회원가입"]
+  createChild["아이 프로필 생성"]
   profile["프로필 선택"]
 
   childProfile["아이 프로필 선택"]
@@ -49,6 +52,11 @@ flowchart TD
   pastReport["지난 리포트"]
   profileManage["아이 프로필 관리"]
   notificationSetting["알림·발송 시간 설정"]
+
+  start --> signup
+  signup --> createChild
+  createChild --> profile
+  start --> profile
 
   profile --> childProfile
   profile --> parentEntry

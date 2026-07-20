@@ -8,7 +8,9 @@
 - TypeScript
 - Vite
 - Tailwind CSS
+- React Router
 - Oxlint
+- Prettier
 
 ## Scripts
 
@@ -17,10 +19,18 @@ npm install
 npm run dev
 npm run build
 npm run lint
+npm run format
+npm run format:check
 ```
 
 ## Directory
 
 - `src/`: application source code
+- `src/pages/`: route page components
+- `src/routes/`: React Router configuration
 - `public/`: static assets
 - `vite.config.ts`: Vite configuration
+
+## Environment
+
+Copy `.env.example` to `.env.local` and change values for your local machine.

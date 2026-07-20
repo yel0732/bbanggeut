@@ -7,6 +7,7 @@
 - React
 - TypeScript
 - Vite
+- Tailwind CSS
 - Oxlint
 
 ## Scripts

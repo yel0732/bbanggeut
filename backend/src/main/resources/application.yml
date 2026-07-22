@@ -4,6 +4,17 @@ spring:
   profiles:
     default: local
 
+app:
+  jwt:
+    access-token-expiry-minutes: 30
+    signup-token-expiry-minutes: 10
+    link-token-expiry-minutes: 10
+  refresh-token:
+    remember-me-expiry-days: 60
+    default-expiry-days: 1
+  cookie:
+    secure: true
+
 ---
 # 로컬 개발용: H2 인메모리 DB
 spring:
@@ -27,6 +38,12 @@ spring:
         format_sql: true
     open-in-view: false
 
+app:
+  jwt:
+    secret: ${JWT_SECRET:local-dev-only-CHANGE-ME-this-is-not-a-real-secret}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+
 logging:
   level:
     org.hibernate.SQL: debug
@@ -46,6 +63,12 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID}
 
 management:
   endpoints:

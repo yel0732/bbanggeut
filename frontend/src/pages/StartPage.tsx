@@ -1,31 +1,42 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
+import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import greenButtonUrl from '@/assets/images/start/light-green-button.webp'
 import yellowButtonUrl from '@/assets/images/start/light-yellow-button.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
+import musicOnUrl from '@/assets/images/start/music-btn.webp'
+import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import whiteButtonUrl from '@/assets/images/start/light-white-button.webp'
 import popupUrl from '@/assets/images/start/wood-popup.webp'
+import { cn } from '@/lib/utils'
 
-const menuButtonTextStyle = {
-  alignItems: 'center',
-  color: '#315f2b',
-  display: 'flex',
-  inset: '0',
-  justifyContent: 'center',
-  lineHeight: '1',
-  pointerEvents: 'none',
-  position: 'absolute',
-  WebkitTextStroke: '1px rgba(247, 255, 240, 0.82)',
-} as const
+const CANVAS_WIDTH = 1280
+const CANVAS_HEIGHT = 720
 
 export function StartPage() {
   const navigate = useNavigate()
   const audioRef = useRef<HTMLAudioElement>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
   const [isBgmPlaying, setIsBgmPlaying] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+
+  useEffect(() => {
+    const fit = () => {
+      const el = canvasRef.current
+      if (!el) return
+      const scale = Math.max(
+        window.innerWidth / CANVAS_WIDTH,
+        window.innerHeight / CANVAS_HEIGHT,
+      )
+      el.style.transform = `scale(${scale})`
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -90,89 +101,72 @@ export function StartPage() {
   }
 
   return (
-    <main
-      className="relative h-screen w-full overflow-hidden bg-[#07160f] text-white"
-      style={{ height: '100dvh' }}
-    >
-      <audio
-        aria-label="초록 모험 시작 배경 음악"
-        autoPlay
-        loop
-        preload="auto"
-        ref={audioRef}
-        src={bgmUrl}
-      />
-
-      <img
-        alt=""
-        className="absolute inset-0 h-full w-full object-cover"
-        decoding="async"
-        fetchPriority="high"
-        src={backgroundUrl}
-      />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,16,10,0.02)_0%,rgba(3,16,10,0.34)_100%)]" />
-
-      <img
-        alt="빵긋"
-        className="absolute z-10 h-auto drop-shadow-[0_14px_22px_rgba(45,29,11,0.22)]"
-        decoding="async"
-        src={logoUrl}
-        style={{
-          right: 'clamp(1.5rem, 5vw, 15rem)',
-          top: 'clamp(1.5rem, 8vh, 5rem)',
-          width: 'clamp(230px, 40vw, 520px)',
-        }}
-      />
-
-      <nav
-        className="absolute z-10 grid max-[560px]:right-3 max-[560px]:bottom-5 max-[560px]:w-[calc(100%-1.5rem)]"
-        style={{
-          bottom: 'clamp(2rem, 7vh, 5.5rem)',
-          right: 'clamp(1rem, 11vw, 13rem)',
-          width: 'clamp(320px, 28vw, 500px)',
-        }}
+    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
+      <div
+        ref={canvasRef}
+        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
       >
-        <StartMenuButton
-          imageUrl={greenButtonUrl}
-          label="입장하기"
-          onClick={() => {
-            void enterForest()
-          }}
+        <audio
+          aria-label="초록 모험 시작 배경 음악"
+          autoPlay
+          loop
+          preload="auto"
+          ref={audioRef}
+          src={bgmUrl}
         />
-      </nav>
 
-      <button
-        aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="fixed top-4 right-4 z-[999] grid size-12 place-items-center rounded-full border-2 border-white/70 bg-black/35 text-white shadow-[0_8px_22px_rgba(0,0,0,0.3)] backdrop-blur-sm transition hover:scale-105 hover:bg-black/45 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
-        onClick={toggleBgm}
-        type="button"
-      >
-        {isBgmPlaying ? (
-          <svg
-            aria-hidden="true"
-            className="size-6"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <rect height="14" rx="1.5" width="4.8" x="6" y="5" />
-            <rect height="14" rx="1.5" width="4.8" x="13.2" y="5" />
-          </svg>
-        ) : (
-          <svg
-            aria-hidden="true"
-            className="ml-0.5 size-6"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M8 5.8c0-1.2 1.3-1.9 2.3-1.2l8.7 6.2c.8.6.8 1.8 0 2.4l-8.7 6.2c-1 .7-2.3 0-2.3-1.2V5.8Z" />
-          </svg>
-        )}
-      </button>
+        <img
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          decoding="async"
+          fetchPriority="high"
+          src={backgroundUrl}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,16,10,0.02)_0%,rgba(3,16,10,0.34)_100%)]" />
 
-      {isLoginModalOpen ? (
-        <LoginModal onClose={() => setIsLoginModalOpen(false)} />
-      ) : null}
-    </main>
+        <div className="absolute top-[70px] right-[96px] flex w-[520px] flex-col items-center">
+          <img
+            alt="빵긋"
+            className="block w-[440px] drop-shadow-[0_10px_18px_rgba(0,0,0,0.28)]"
+            decoding="async"
+            src={logoUrl}
+          />
+        </div>
+
+        <div className="absolute right-0 bottom-[60px] left-0 flex flex-col items-center gap-1.5 pl-[520px]">
+          <StartMenuButton
+            className="w-[320px]"
+            color="#ffffff"
+            fontSize={34}
+            imageUrl={greenButtonUrl}
+            label="숲 속 들어가기"
+            onClick={() => {
+              void enterForest()
+            }}
+            strokeColor="#3f7d1e"
+            strokeWidth={5}
+          />
+        </div>
+
+        <button
+          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
+          className="absolute bottom-[12px] left-[78px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          onClick={toggleBgm}
+          type="button"
+        >
+          <img
+            alt=""
+            className="block h-full w-full object-contain"
+            decoding="async"
+            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          />
+        </button>
+
+        {isLoginModalOpen ? (
+          <LoginModal onClose={() => setIsLoginModalOpen(false)} />
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -180,10 +174,14 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       aria-modal="true"
-      className="fixed inset-0 z-50 grid place-items-center bg-[#07160f]/68 px-4 backdrop-blur-[2px]"
+      className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(18,30,18,0.55)]"
+      onClick={onClose}
       role="dialog"
     >
-      <div className="relative aspect-square w-[min(88vw,560px)]">
+      <div
+        className="relative h-[540px] w-[540px]"
+        onClick={(event) => event.stopPropagation()}
+      >
         <img
           alt=""
           className="absolute inset-0 h-full w-full object-contain"
@@ -191,38 +189,53 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           src={popupUrl}
         />
 
+        <h2
+          className="absolute top-[70px] right-0 left-0 text-center text-[30px] leading-none text-white [text-shadow:0_2px_4px_rgba(30,80,20,0.5)]"
+          style={{ fontFamily: "'Jua', sans-serif" }}
+        >
+          들어갈 문
+        </h2>
+
+        <div className="absolute top-[130px] left-1/2 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
+          <StartMenuButton
+            color="#6a4a12"
+            fontSize={26}
+            imageUrl={yellowButtonUrl}
+            label="구글로 들어가기"
+            to="/profiles"
+          />
+          <StartMenuButton
+            color="#5a4a2a"
+            fontSize={26}
+            imageUrl={whiteButtonUrl}
+            label="이메일로 들어가기"
+            to="/auth"
+          />
+          <StartMenuButton
+            className="mt-11"
+            color="#ffffff"
+            fontSize={26}
+            imageUrl={greenButtonUrl}
+            label="이메일로 등록하기"
+            strokeColor="#3f7d1e"
+            strokeWidth={4}
+            to="/profiles/new"
+          />
+        </div>
+
         <button
           aria-label="로그인 창 닫기"
-          className="absolute top-[8%] right-[7%] z-20 grid size-[clamp(3.25rem,8vw,4.4rem)] place-items-center rounded-full border-[clamp(0.22rem,0.55vw,0.34rem)] border-white bg-[#cf6f4e] text-white shadow-[0_8px_16px_rgba(75,38,18,0.26)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white"
+          className="absolute top-[48px] right-[78px] z-20 h-[60px] w-[60px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white"
           onClick={onClose}
           type="button"
         >
-          <span className="relative block size-[58%] before:absolute before:top-1/2 before:left-0 before:h-[0.2rem] before:w-full before:-translate-y-1/2 before:rotate-45 before:rounded-full before:bg-white after:absolute after:top-1/2 after:left-0 after:h-[0.2rem] after:w-full after:-translate-y-1/2 after:-rotate-45 after:rounded-full after:bg-white" />
+          <img
+            alt=""
+            className="block h-full w-full object-contain"
+            decoding="async"
+            src={closeButtonUrl}
+          />
         </button>
-
-        <div className="relative z-10 h-full px-[20%] text-center">
-          <h2 className="absolute top-[16%] left-1/2 -translate-x-1/2 text-center text-2xl leading-none font-black tracking-normal whitespace-nowrap text-white">
-            로그인
-          </h2>
-
-          <div className="absolute top-[35%] left-1/2 grid w-[60%] -translate-x-1/2 gap-[clamp(0.75rem,2vw,1.1rem)]">
-            <StartMenuButton
-              imageUrl={yellowButtonUrl}
-              label="구글 로그인"
-              to="/auth"
-            />
-            <StartMenuButton
-              imageUrl={whiteButtonUrl}
-              label="일반 로그인"
-              to="/auth"
-            />
-            <StartMenuButton
-              imageUrl={greenButtonUrl}
-              label="회원가입"
-              to="/profiles"
-            />
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -235,43 +248,66 @@ function isAuthenticated() {
 }
 
 type StartMenuButtonProps = {
+  className?: string
+  color: string
+  fontSize: number
   imageUrl: string
   label: string
   onClick?: () => void
+  strokeColor?: string
+  strokeWidth?: number
   to?: string
 }
 
 function StartMenuButton({
+  className,
+  color,
+  fontSize,
   imageUrl,
   label,
   onClick,
+  strokeColor,
+  strokeWidth,
   to,
 }: StartMenuButtonProps) {
+  const textStyle: CSSProperties = {
+    color,
+    fontFamily: "'Jua', sans-serif",
+    fontSize: `${fontSize}px`,
+    ...(strokeColor && strokeWidth
+      ? {
+          paintOrder: 'stroke fill',
+          WebkitTextStroke: `${strokeWidth}px ${strokeColor}`,
+        }
+      : {}),
+  }
+
   const content = (
     <>
       <img
         alt=""
-        className="block h-auto w-full select-none"
+        className="block w-full select-none"
         decoding="async"
         draggable={false}
         src={imageUrl}
       />
       <span
-        className="z-20 px-[14%] text-center text-[clamp(1.65rem,3vw,2.65rem)] font-black tracking-normal whitespace-nowrap"
-        style={menuButtonTextStyle}
+        className="absolute inset-0 top-[47%] flex -translate-y-1/2 items-center justify-center text-center whitespace-nowrap"
+        style={textStyle}
       >
         {label}
       </span>
     </>
   )
 
+  const commonClassName = cn(
+    'relative block w-full transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99]',
+    className,
+  )
+
   if (to) {
     return (
-      <Link
-        className="relative block w-full transition hover:scale-[1.025] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99]"
-        onClick={onClick}
-        to={to}
-      >
+      <Link className={commonClassName} onClick={onClick} to={to}>
         {content}
       </Link>
     )
@@ -279,7 +315,10 @@ function StartMenuButton({
 
   return (
     <button
-      className="relative block w-full appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.025] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99]"
+      className={cn(
+        commonClassName,
+        'appearance-none border-0 bg-transparent p-0',
+      )}
       onClick={onClick}
       type="button"
     >

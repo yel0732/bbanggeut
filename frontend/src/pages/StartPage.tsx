@@ -11,32 +11,15 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import whiteButtonUrl from '@/assets/images/start/light-white-button.webp'
 import popupUrl from '@/assets/images/start/wood-popup.webp'
+import { useFitScale } from '@/hooks/useFitScale'
 import { cn } from '@/lib/utils'
-
-const CANVAS_WIDTH = 1280
-const CANVAS_HEIGHT = 720
 
 export function StartPage() {
   const navigate = useNavigate()
   const audioRef = useRef<HTMLAudioElement>(null)
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useFitScale<HTMLDivElement>()
   const [isBgmPlaying, setIsBgmPlaying] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
-
-  useEffect(() => {
-    const fit = () => {
-      const el = canvasRef.current
-      if (!el) return
-      const scale = Math.max(
-        window.innerWidth / CANVAS_WIDTH,
-        window.innerHeight / CANVAS_HEIGHT,
-      )
-      el.style.transform = `scale(${scale})`
-    }
-    fit()
-    window.addEventListener('resize', fit)
-    return () => window.removeEventListener('resize', fit)
-  }, [])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -209,7 +192,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             fontSize={26}
             imageUrl={whiteButtonUrl}
             label="이메일로 들어가기"
-            to="/auth"
+            to="/auth/login"
           />
           <StartMenuButton
             className="mt-11"
@@ -219,7 +202,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             label="이메일로 등록하기"
             strokeColor="#3f7d1e"
             strokeWidth={4}
-            to="/profiles/new"
+            to="/auth/signup"
           />
         </div>
 

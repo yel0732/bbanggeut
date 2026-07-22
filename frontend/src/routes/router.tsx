@@ -1,6 +1,8 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { ChildHomePage } from '@/pages/ChildHomePage'
+import { EmailLoginPage } from '@/pages/EmailLoginPage'
+import { EmailSignupPage } from '@/pages/EmailSignupPage'
 import { GameEntryPage } from '@/pages/GameEntryPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { ProfileSelectPage } from '@/pages/ProfileSelectPage'
@@ -58,10 +60,18 @@ export const router = createBrowserRouter([
     element: (
       <PlaceholderPage
         eyebrow="Auth"
-        title="부모 로그인"
-        description="소셜 로그인, 이메일 로그인, PIN 인증 흐름을 연결할 자리입니다."
+        title="부모 모드 인증"
+        description="프로필 선택 후 부모 모드로 들어갈 때 거치는 PIN·비밀번호 인증 화면을 연결할 자리입니다."
       />
     ),
+  },
+  {
+    path: '/auth/login',
+    element: <EmailLoginPage />,
+  },
+  {
+    path: '/auth/signup',
+    element: <EmailSignupPage />,
   },
   {
     path: '/parent',

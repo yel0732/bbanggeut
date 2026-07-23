@@ -1,6 +1,8 @@
 package com.A501.backend.domain.game.service;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
@@ -16,8 +18,9 @@ import lombok.RequiredArgsConstructor;
 public class GameSessionService {
 
     private final GameSessionRepository gameSessionRepository;
+    private final GameSessionWriter gameSessionWriter;
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public GameSessionResponse saveCompletedResult(SaveGameResultRequest request) {
         validateTimeline(request);
 
@@ -38,7 +41,13 @@ public class GameSessionService {
                 request.playDurationSeconds(),
                 request.score());
 
-        return GameSessionResponse.from(gameSessionRepository.save(gameSession));
+        try {
+            return GameSessionResponse.from(gameSessionWriter.saveAndFlush(gameSession));
+        } catch (DataIntegrityViolationException e) {
+            return gameSessionRepository.findByClientPlayId(request.clientPlayId())
+                    .map(GameSessionResponse::from)
+                    .orElseThrow(() -> e);
+        }
     }
 
     private void validateTimeline(SaveGameResultRequest request) {

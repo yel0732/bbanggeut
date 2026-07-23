@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import com.A501.backend.domain.report.batch.processor.DailyReportProcessor;
 import com.A501.backend.domain.report.model.DailyReportCandidate;
 import com.A501.backend.domain.report.model.ReportPeriod;
+import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.port.ConversationReportQueryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 
@@ -59,8 +61,25 @@ class DailyReportProcessorTest {
     private DailyReportProcessor createProcessor(
             boolean hasGame,
             boolean hasConversation) {
-        GameReportQueryPort gamePort =
-                (childId, startedAt, endedAt) -> hasGame;
+        GameReportQueryPort gamePort = new GameReportQueryPort() {
+            @Override
+            public boolean existsCompletedGame(
+                    Long childId,
+                    LocalDateTime startedAt,
+                    LocalDateTime endedAt
+            ) {
+                return hasGame;
+            }
+
+            @Override
+            public List<ReportGameSource> findCompletedGames(
+                    Long childId,
+                    LocalDateTime startedAt,
+                    LocalDateTime endedAt
+            ) {
+                return List.of();
+            }
+        };
         ConversationReportQueryPort conversationPort =
                 (childId, startedAt, endedAt) -> hasConversation;
 

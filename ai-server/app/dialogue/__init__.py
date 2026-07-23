@@ -18,11 +18,18 @@ from app.dialogue.schemas import (
     GameContext,
 )
 from app.dialogue.slot_merger import merge_diary_slots
+from app.dialogue.target_selector import (
+    QUESTION_TARGET_PRIORITY,
+    QuestionTarget,
+    select_next_question_target,
+)
 
 __all__ = [
+    "QUESTION_TARGET_PRIORITY",
     "DiaryAnswerAnalysisRequest",
     "DiarySlots",
     "GameContext",
+    "QuestionTarget",
     "SlotExtractionPrompt",
     "SlotParseError",
     "SlotParseErrorCode",
@@ -32,5 +39,6 @@ __all__ = [
     "diary_slots_json_schema",
     "merge_diary_slots",
     "parse_diary_slots",
+    "select_next_question_target",
 ]
 

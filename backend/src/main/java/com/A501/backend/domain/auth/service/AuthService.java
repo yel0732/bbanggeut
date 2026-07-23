@@ -60,7 +60,7 @@ public class AuthService {
     @Transactional
     public TokenIssueResult login(LoginRequest request) {
         Parent parent = findAuthenticatedParent(request.email(), request.password());
-        return issueTokens(parent, false);
+        return issueTokens(parent, request.autoLogin());
     }
 
     @Transactional

@@ -111,8 +111,8 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_issuesTokensForValidCredentials() {
-        LoginRequest request = new LoginRequest("parent@example.com", "Abcdef1!");
+    void login_issuesShortLivedRefreshTokenWhenAutoLoginUnchecked() {
+        LoginRequest request = new LoginRequest("parent@example.com", "Abcdef1!", false);
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches(request.password(), parent.getPasswordHash())).thenReturn(true);
@@ -129,8 +129,22 @@ class AuthServiceTest {
     }
 
     @Test
+    void login_issuesLongLivedRefreshTokenWhenAutoLoginChecked() {
+        LoginRequest request = new LoginRequest("parent@example.com", "Abcdef1!", true);
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches(request.password(), parent.getPasswordHash())).thenReturn(true);
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        TokenIssueResult result = authService.login(request);
+
+        assertThat(result.refreshTokenMaxAgeSeconds()).isEqualTo(60 * 24 * 60 * 60L);
+    }
+
+    @Test
     void login_throwsWhenEmailNotFound() {
-        LoginRequest request = new LoginRequest("missing@example.com", "Abcdef1!");
+        LoginRequest request = new LoginRequest("missing@example.com", "Abcdef1!", false);
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(request))
@@ -141,7 +155,7 @@ class AuthServiceTest {
 
     @Test
     void login_throwsWhenPasswordDoesNotMatch() {
-        LoginRequest request = new LoginRequest("parent@example.com", "WrongPass1!");
+        LoginRequest request = new LoginRequest("parent@example.com", "WrongPass1!", false);
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches(request.password(), parent.getPasswordHash())).thenReturn(false);
@@ -154,7 +168,7 @@ class AuthServiceTest {
 
     @Test
     void login_throwsForGoogleOnlyAccountWithoutPassword() {
-        LoginRequest request = new LoginRequest("google@example.com", "Abcdef1!");
+        LoginRequest request = new LoginRequest("google@example.com", "Abcdef1!", false);
         Parent parent = Parent.createGoogle("google@example.com", "google-sub-id", LocalDate.of(1990, 1, 1));
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));
 
@@ -166,7 +180,7 @@ class AuthServiceTest {
 
     @Test
     void login_throwsForDeletedAccount() {
-        LoginRequest request = new LoginRequest("deleted@example.com", "Abcdef1!");
+        LoginRequest request = new LoginRequest("deleted@example.com", "Abcdef1!", false);
         Parent parent = Parent.createLocal("deleted@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
         ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));

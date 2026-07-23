@@ -2,6 +2,8 @@ package com.A501.backend.domain.report.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
@@ -9,6 +11,11 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -201,6 +208,55 @@ class DailyReportGenerationServiceTest {
         assertThat(completedReport.getCompletedAt()).isNotNull();
         assertThat(completedReport.getFailedAt()).isNull();
         assertThat(completedReport.getFailureReason()).isNull();
+    }
+
+    @Test
+    void allowsOnlyOneConcurrentGenerationForTheSameReport() throws Exception {
+        DailyReport report = createPendingReport();
+        CountDownLatch generationStarted = new CountDownLatch(1);
+        CountDownLatch allowGenerationToFinish = new CountDownLatch(1);
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+
+        when(gameReportQueryPort.findCompletedGames(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenAnswer(invocation -> {
+                    generationStarted.countDown();
+                    if (!allowGenerationToFinish.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Test generation timed out.");
+                    }
+                    return List.of(validGame(UUID.randomUUID()));
+                });
+        when(conversationSummaryPort.generateSummary(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenReturn(Optional.empty());
+
+        try {
+            Future<?> first = executorService.submit(() ->
+                    generationService.generate(report.getId()));
+            assertThat(generationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> duplicate = executorService.submit(() ->
+                    generationService.generate(report.getId()));
+
+            assertThatThrownBy(() -> duplicate.get(5, TimeUnit.SECONDS))
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasRootCauseMessage("The report is already being processed.");
+
+            allowGenerationToFinish.countDown();
+            first.get(5, TimeUnit.SECONDS);
+        } finally {
+            allowGenerationToFinish.countDown();
+            executorService.shutdownNow();
+        }
+
+        verify(gameReportQueryPort, times(1)).findCompletedGames(
+                CHILD_ID, STARTED_AT, ENDED_AT);
+        verify(conversationSummaryPort, times(1)).generateSummary(
+                CHILD_ID, STARTED_AT, ENDED_AT);
+        assertThat(reportOf(report).getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.COMPLETED);
+        assertThat(gameResultRepository.findAllByReportId(report.getId()))
+                .hasSize(1);
     }
 
     @Test

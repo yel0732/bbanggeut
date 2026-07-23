@@ -50,6 +50,30 @@ class DailyReportRepositoryTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void 다른_아이는_같은_날짜의_리포트를_저장할_수_있다() {
+        ReportPeriod period = createPeriod();
+
+        dailyReportRepository.saveAndFlush(DailyReport.pending(1L, period));
+        dailyReportRepository.saveAndFlush(DailyReport.pending(2L, period));
+
+        assertThat(dailyReportRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 같은_아이도_다른_날짜의_리포트를_저장할_수_있다() {
+        ReportPeriod firstPeriod = createPeriod();
+        ReportPeriod nextPeriod = new ReportPeriod(
+                firstPeriod.startedAt().plusDays(1),
+                firstPeriod.endedAt().plusDays(1),
+                firstPeriod.reportDate().plusDays(1));
+
+        dailyReportRepository.saveAndFlush(DailyReport.pending(1L, firstPeriod));
+        dailyReportRepository.saveAndFlush(DailyReport.pending(1L, nextPeriod));
+
+        assertThat(dailyReportRepository.count()).isEqualTo(2);
+    }
+
     private ReportPeriod createPeriod() {
         return new ReportPeriod(
                 LocalDateTime.of(2026, 7, 22, 19, 0),

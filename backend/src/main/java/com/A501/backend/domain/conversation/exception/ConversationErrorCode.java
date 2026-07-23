@@ -11,6 +11,8 @@ public enum ConversationErrorCode {
 
     CHILD_NOT_FOUND(HttpStatus.NOT_FOUND, "아이 프로필을 찾을 수 없습니다."),
     CHILD_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 아이 프로필에 접근할 수 없습니다."),
+    CONVERSATION_NOT_FOUND(HttpStatus.NOT_FOUND, "대화 세션을 찾을 수 없습니다."),
+    CONVERSATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 대화 세션에 접근할 수 없습니다."),
     ACTIVE_CONVERSATION_EXISTS(HttpStatus.CONFLICT, "이미 진행 중인 대화 세션이 있습니다."),
     INVALID_MAX_QUESTION_COUNT(HttpStatus.BAD_REQUEST, "최대 질문 수는 5개 이상 6개 이하여야 합니다."),
     GAME_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "게임 세션을 찾을 수 없습니다."),

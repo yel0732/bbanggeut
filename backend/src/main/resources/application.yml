@@ -3,6 +3,15 @@ spring:
     name: backend
   profiles:
     default: local
+  batch:
+    job:
+      enabled: false
+
+report:
+  schedule:
+    enabled: ${REPORT_SCHEDULE_ENABLED:false}
+    cron: ${REPORT_DAILY_CRON:0 0 19 * * *}
+    zone: Asia/Seoul
 
 app:
   jwt:
@@ -30,12 +39,17 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  batch:
+    jdbc:
+      initialize-schema: always
   jpa:
     hibernate:
       ddl-auto: create-drop
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
     open-in-view: false
 
 app:
@@ -66,6 +80,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
     open-in-view: false
 
 app:

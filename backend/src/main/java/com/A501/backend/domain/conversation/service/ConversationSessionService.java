@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
+import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
@@ -51,6 +52,28 @@ public class ConversationSessionService {
                 request.maxQuestionCount());
 
         return CreateConversationResponse.from(conversationSessionRepository.save(session));
+    }
+
+    public ConversationSessionResponse getConversation(String conversationId) {
+        ConversationSession session = conversationSessionRepository.findById(conversationId)
+                .orElseThrow(() -> new ConversationException(ConversationErrorCode.CONVERSATION_NOT_FOUND));
+
+        verifyConversationAccess(session);
+        return ConversationSessionResponse.from(session);
+    }
+
+    private void verifyConversationAccess(ConversationSession session) {
+        try {
+            childAccessVerifier.verifyAccess(currentMemberProvider.getCurrentMemberId(), session.getChildId());
+        } catch (ConversationException exception) {
+            if (exception.getErrorCode() == ConversationErrorCode.CHILD_ACCESS_DENIED) {
+                throw new ConversationException(ConversationErrorCode.CONVERSATION_ACCESS_DENIED);
+            }
+            if (exception.getErrorCode() == ConversationErrorCode.CHILD_NOT_FOUND) {
+                throw new ConversationException(ConversationErrorCode.CONVERSATION_NOT_FOUND);
+            }
+            throw exception;
+        }
     }
 
     private void validateMaxQuestionCount(Integer maxQuestionCount) {

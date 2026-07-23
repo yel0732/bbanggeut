@@ -4,6 +4,8 @@ import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.launch.JobExecutionAlreadyRunningException;
+import org.springframework.batch.core.launch.JobInstanceAlreadyCompleteException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,6 +14,9 @@ import org.springframework.stereotype.Component;
 import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.service.ReportPeriodCalculator;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 @ConditionalOnProperty(
         prefix = "report.schedule",
@@ -53,6 +58,13 @@ public class DailyReportJobScheduler {
                         false)
                 .toJobParameters();
 
-        jobLauncher.run(dailyReportJob, parameters);
+        try {
+            jobLauncher.run(dailyReportJob, parameters);
+        } catch (JobExecutionAlreadyRunningException
+                | JobInstanceAlreadyCompleteException exception) {
+            log.info(
+                    "Daily report job skipped because reportDate={} is already running or completed.",
+                    period.reportDate());
+        }
     }
 }

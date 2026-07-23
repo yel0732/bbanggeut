@@ -20,11 +20,13 @@ import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.port.ConversationReportQueryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
+import com.A501.backend.domain.report.service.DailyReportRegistrationPersistenceService;
 import com.A501.backend.domain.report.service.DailyReportRegistrationService;
 
 @DataJpaTest
 @Import({
         JpaAuditingConfig.class,
+        DailyReportRegistrationPersistenceService.class,
         DailyReportRegistrationService.class
 })
 class DailyReportFlowTest {

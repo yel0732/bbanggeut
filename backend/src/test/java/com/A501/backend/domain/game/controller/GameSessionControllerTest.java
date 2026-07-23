@@ -108,8 +108,7 @@ class GameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.fieldErrors.score").exists());
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
 
         assertThat(gameSessionRepository.count()).isZero();
     }

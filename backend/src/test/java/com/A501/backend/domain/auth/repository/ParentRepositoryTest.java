@@ -8,11 +8,14 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.auth.entity.Parent;
 
 @DataJpaTest
+@Import(JpaAuditingConfig.class)
 class ParentRepositoryTest {
 
     @Autowired
@@ -25,6 +28,15 @@ class ParentRepositoryTest {
         parentRepository.save(parent);
 
         assertThat(parentRepository.findByEmail("parent@example.com")).isPresent();
+    }
+
+    @Test
+    void persistsBirthDate() {
+        parentRepository.save(Parent.createLocal("birthdate@example.com", "hashed-password", LocalDate.of(1990, 5, 17)));
+        parentRepository.flush();
+        parentRepository.findByEmail("birthdate@example.com").ifPresentOrElse(
+                found -> assertThat(found.getBirthDate()).isEqualTo(LocalDate.of(1990, 5, 17)),
+                () -> { throw new AssertionError("parent not found"); });
     }
 
     @Test

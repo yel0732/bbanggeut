@@ -9,12 +9,15 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.entity.RefreshToken;
 
 @DataJpaTest
+@Import(JpaAuditingConfig.class)
 class RefreshTokenRepositoryTest {
 
     @Autowired

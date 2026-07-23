@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,23 +63,20 @@ class AuthServiceTest {
     }
 
     @Test
-    void signup_createsAccountAndIssuesTokens() {
+    void signup_createsAccountWithoutIssuingTokens() {
         SignupRequest request = new SignupRequest(
                 "new@example.com", "Abcdef1!", LocalDate.now().minusYears(20));
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(request.password())).thenReturn("hashed-password");
-        when(jwtProvider.generateAccessToken(any(Parent.class))).thenReturn("access-token");
-        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+        when(parentRepository.save(any(Parent.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        TokenIssueResult result = authService.signup(request);
+        Parent result = authService.signup(request);
 
         verify(parentRepository).save(any(Parent.class));
-        verify(refreshTokenRepository).save(any());
-        assertThat(result.accessToken()).isEqualTo("access-token");
-        assertThat(result.accessTokenExpiresInSeconds()).isEqualTo(1800L);
-        assertThat(result.rawRefreshToken()).isNotBlank();
-        assertThat(result.refreshTokenMaxAgeSeconds()).isEqualTo(24 * 60 * 60L); // 자동로그인 미체크와 동일한 1일
-        assertThat(result.parent().getEmail()).isEqualTo("new@example.com");
+        // 가입 후 로그인 화면으로 유도하는 흐름이라 회원가입 자체는 토큰을 발급하지 않는다.
+        verify(jwtProvider, never()).generateAccessToken(any());
+        verify(refreshTokenRepository, never()).save(any());
+        assertThat(result.getEmail()).isEqualTo("new@example.com");
     }
 
     @Test

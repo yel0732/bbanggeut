@@ -2,7 +2,6 @@ package com.A501.backend.domain.auth.controller;
 
 import java.time.Duration;
 
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
@@ -15,8 +14,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
-import com.A501.backend.domain.auth.dto.response.AuthTokenResponse;
 import com.A501.backend.domain.auth.dto.response.EmailCheckResponse;
+import com.A501.backend.domain.auth.dto.response.SignupResponse;
+import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.security.CookieProperties;
 import com.A501.backend.domain.auth.service.AuthService;
 import com.A501.backend.domain.auth.service.TokenIssueResult;
@@ -48,11 +48,9 @@ public class AuthController {
 
     @Operation(summary = "이메일 회원가입")
     @PostMapping("/signup")
-    public ResponseEntity<AuthTokenResponse> signup(@Valid @RequestBody SignupRequest request) {
-        TokenIssueResult result = authService.signup(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result).toString())
-                .body(AuthTokenResponse.of(result.parent(), result.accessToken(), result.accessTokenExpiresInSeconds()));
+    public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
+        Parent parent = authService.signup(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(SignupResponse.of(parent));
     }
 
     private ResponseCookie buildRefreshTokenCookie(TokenIssueResult result) {

@@ -26,8 +26,6 @@ import lombok.RequiredArgsConstructor;
 public class AuthService {
 
     private static final int MINIMUM_SIGNUP_AGE = 19;
-    // 회원가입 시점에는 로그인 화면의 "자동 로그인" 개념이 없어, 미체크와 동일한 짧은 만료로 발급한다.
-    private static final long SIGNUP_REFRESH_TOKEN_EXPIRY_DAYS = 1;
     private static final long REMEMBER_ME_REFRESH_TOKEN_EXPIRY_DAYS = 60;
 
     private final ParentRepository parentRepository;
@@ -40,7 +38,7 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenIssueResult signup(SignupRequest request) {
+    public Parent signup(SignupRequest request) {
         if (parentRepository.findByEmail(request.email()).isPresent()) {
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_EXISTS);
         }
@@ -52,9 +50,7 @@ public class AuthService {
                 request.email(),
                 passwordEncoder.encode(request.password()),
                 request.birthDate());
-        parentRepository.save(parent);
-
-        return issueTokens(parent, SIGNUP_REFRESH_TOKEN_EXPIRY_DAYS);
+        return parentRepository.save(parent);
     }
 
     private boolean isUnderAge(LocalDate birthDate) {

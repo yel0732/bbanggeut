@@ -131,6 +131,14 @@ public class DailyReport extends BaseTimeEntity {
         failureReason = null;
     }
 
+    public void recordRetry() {
+        if (generationStatus != ReportGenerationStatus.PROCESSING) {
+            throw new IllegalStateException(
+                    "Only a processing report can record a retry.");
+        }
+        retryCount++;
+    }
+
     public void fail(LocalDateTime failedAt, String failureReason) {
         if (failedAt == null) {
             throw new IllegalArgumentException("Failure time is required.");

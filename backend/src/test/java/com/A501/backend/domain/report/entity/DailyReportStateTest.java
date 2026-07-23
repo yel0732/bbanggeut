@@ -77,6 +77,19 @@ class DailyReportStateTest {
     }
 
     @Test
+    void PROCESSING_중_자동_재시도를_기록한다() {
+        DailyReport report = createPendingReport();
+        report.startProcessing(PROCESSING_AT);
+
+        report.recordRetry();
+        report.recordRetry();
+
+        assertThat(report.getRetryCount()).isEqualTo(2);
+        assertThat(report.getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.PROCESSING);
+    }
+
+    @Test
     void 허용되지_않은_상태_전환을_거부한다() {
         DailyReport pending = createPendingReport();
         assertThatThrownBy(() ->

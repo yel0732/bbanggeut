@@ -1,6 +1,7 @@
 package com.A501.backend.domain.auth.service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Period;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -8,10 +9,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
+import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
+import com.A501.backend.domain.auth.security.JwtProvider;
+import com.A501.backend.domain.auth.security.RefreshTokenProperties;
+import com.A501.backend.domain.auth.security.TokenHasher;
 
 import lombok.RequiredArgsConstructor;
 
@@ -23,7 +30,10 @@ public class AuthService {
     private static final int MINIMUM_SIGNUP_AGE = 19;
 
     private final ParentRepository parentRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtProvider jwtProvider;
+    private final RefreshTokenProperties refreshTokenProperties;
 
     public boolean isEmailAvailable(String email) {
         return parentRepository.findByEmail(email).isEmpty();
@@ -45,7 +55,35 @@ public class AuthService {
         return parentRepository.save(parent);
     }
 
+    @Transactional
+    public TokenIssueResult login(LoginRequest request) {
+        Parent parent = findAuthenticatedParent(request.email(), request.password());
+        return issueTokens(parent);
+    }
+
+    private Parent findAuthenticatedParent(String email, String rawPassword) {
+        return parentRepository.findByEmail(email)
+                .filter(parent -> !parent.isDeleted())
+                .filter(Parent::hasPassword)
+                .filter(parent -> passwordEncoder.matches(rawPassword, parent.getPasswordHash()))
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
     private boolean isUnderAge(LocalDate birthDate) {
         return Period.between(birthDate, LocalDate.now()).getYears() < MINIMUM_SIGNUP_AGE;
+    }
+
+    private TokenIssueResult issueTokens(Parent parent) {
+        String accessToken = jwtProvider.generateAccessToken(parent);
+        long refreshTokenExpiryDays = refreshTokenProperties.defaultExpiryDays();
+
+        String rawRefreshToken = TokenHasher.generateRawToken();
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(refreshTokenExpiryDays);
+        refreshTokenRepository.save(
+                RefreshToken.issue(parent, TokenHasher.hash(rawRefreshToken), expiresAt, false));
+
+        long maxAgeSeconds = refreshTokenExpiryDays * 24 * 60 * 60;
+        return new TokenIssueResult(
+                parent, accessToken, jwtProvider.getAccessTokenExpirySeconds(), rawRefreshToken, maxAgeSeconds);
     }
 }

@@ -8,6 +8,7 @@ import com.A501.backend.domain.game.entity.GameSession;
 public record GameSessionResponse(
         UUID gameSessionId,
         UUID clientPlayId,
+        int score,
         LocalDateTime createdAt
 ) {
 
@@ -15,6 +16,7 @@ public record GameSessionResponse(
         return new GameSessionResponse(
                 gameSession.getGameSessionId(),
                 gameSession.getClientPlayId(),
+                gameSession.getScore(),
                 gameSession.getCreatedAt());
     }
 }

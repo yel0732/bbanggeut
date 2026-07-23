@@ -38,7 +38,6 @@ CREATE INDEX idx_conversation_session_status_updated ON conversation_session (st
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
 
 
-<<<<<<< backend/SCHEMA
 -- GAME-01: game_session -----------------------------------------------------
 
 CREATE TABLE game_session (
@@ -61,7 +60,8 @@ CREATE TABLE game_session (
 -- difficulty_code는 난이도 정책 확정 전까지 NULL을 허용한다.
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
-=======
+
+
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (
@@ -92,4 +92,34 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
->>>>>>> backend/SCHEMA
+
+
+-- REPORT-01: daily_report ---------------------------------------------------
+
+CREATE TABLE daily_report (
+    report_id             BIGINT       NOT NULL AUTO_INCREMENT,
+    child_id              BIGINT       NOT NULL,
+    report_date           DATE         NOT NULL,
+    period_started_at     DATETIME(6)  NOT NULL,
+    period_ended_at       DATETIME(6)  NOT NULL,
+    generation_status     VARCHAR(20)  NOT NULL,
+    retry_count           INT          NOT NULL DEFAULT 0,
+    created_at            DATETIME(6)  NOT NULL,
+    updated_at            DATETIME(6)  NOT NULL,
+    PRIMARY KEY (report_id),
+    CONSTRAINT uk_daily_report_child_date UNIQUE (child_id, report_date)
+);
+
+-- generation_status: PENDING | PROCESSING | COMPLETED | FAILED
+-- 집계 시간대: KST(Asia/Seoul)
+-- 집계 범위: 전날 19:00:00 이상, 당일 19:00:00 미만
+-- 게임 또는 리포트 가능한 대화가 하나 이상 존재할 때만 PENDING 행을 생성한다.
+-- child 테이블이 아직 병합되지 않았으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/DailyReport.java
+
+
+-- Spring Batch metadata -----------------------------------------------------
+
+-- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
+-- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql을 배포 전에 수동 적용해야 한다.
+-- Resource: org/springframework/batch/core/schema-mysql.sql

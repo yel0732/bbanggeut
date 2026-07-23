@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -12,10 +13,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.A501.backend.config.SecurityConfig;
+import com.A501.backend.domain.auth.security.CookieProperties;
 import com.A501.backend.domain.auth.service.AuthService;
 
 @WebMvcTest(AuthController.class)
 @Import(SecurityConfig.class)
+@EnableConfigurationProperties(CookieProperties.class)
 class AuthControllerValidationTest {
 
     @Autowired

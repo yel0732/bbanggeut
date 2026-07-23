@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import com.A501.backend.config.JpaAuditingConfig;
@@ -142,5 +144,45 @@ class ConversationTurnRepositoryTest {
                         "turn_052", "conv_test_005", 1, "질문", "resp_052",
                         LocalDateTime.now(), null, "REASON", "int_052"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 대화별_턴을_turnSeq_오름차순으로_페이지_조회한다() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 1, 0);
+        ConversationTurn second = ConversationTurn.createChildCompleted(
+                "turn_page_002", "conv_page", 2, "두 번째",
+                new BigDecimal("0.9000"), startedAt.plusSeconds(10), startedAt.plusSeconds(12));
+        ConversationTurn first = ConversationTurn.createAiGenerating(
+                "turn_page_001", "conv_page", 1, "첫 번째", "resp_page_001", startedAt);
+        first.complete(startedAt.plusSeconds(2));
+        conversationTurnRepository.saveAllAndFlush(java.util.List.of(second, first));
+
+        Page<ConversationTurn> result =
+                conversationTurnRepository.findByConversationIdOrderByTurnSeqAsc(
+                        "conv_page", PageRequest.of(0, 1));
+
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent()).extracting(ConversationTurn::getTurnSeq)
+                .containsExactly(1);
+    }
+
+    @Test
+    void 화자별_턴만_turnSeq_오름차순으로_조회한다() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 1, 0);
+        ConversationTurn aiTurn = ConversationTurn.createAiGenerating(
+                "turn_speaker_001", "conv_speaker", 1, "질문", "resp_speaker_001", startedAt);
+        aiTurn.complete(startedAt.plusSeconds(2));
+        ConversationTurn childTurn = ConversationTurn.createChildCompleted(
+                "turn_speaker_002", "conv_speaker", 2, "답변",
+                new BigDecimal("0.9100"), startedAt.plusSeconds(3), startedAt.plusSeconds(5));
+        conversationTurnRepository.saveAllAndFlush(java.util.List.of(aiTurn, childTurn));
+
+        Page<ConversationTurn> result =
+                conversationTurnRepository.findByConversationIdAndSpeakerOrderByTurnSeqAsc(
+                        "conv_speaker", Speaker.CHILD, PageRequest.of(0, 10));
+
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent()).extracting(ConversationTurn::getTurnId)
+                .containsExactly("turn_speaker_002");
     }
 }

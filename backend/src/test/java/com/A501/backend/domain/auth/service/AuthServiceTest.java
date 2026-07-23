@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,11 +23,13 @@ import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.security.RefreshTokenProperties;
+import com.A501.backend.domain.auth.security.TokenHasher;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -172,5 +175,67 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void refresh_rotatesTokenAndPreservesRememberMe() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        RefreshToken oldToken = RefreshToken.issue(
+                parent, TokenHasher.hash("raw-token"), LocalDateTime.now().plusDays(10), true);
+        when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-token")))
+                .thenReturn(Optional.of(oldToken));
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("new-access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        TokenIssueResult result = authService.refresh("raw-token");
+
+        assertThat(oldToken.isRevoked()).isTrue();
+        assertThat(result.accessToken()).isEqualTo("new-access-token");
+        assertThat(result.refreshTokenMaxAgeSeconds()).isEqualTo(60 * 24 * 60 * 60L);
+        verify(refreshTokenRepository).save(any());
+    }
+
+    @Test
+    void refresh_throwsWhenTokenNotFound() {
+        when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.refresh("unknown-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+    }
+
+    @Test
+    void refresh_throwsWhenTokenExpired() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        RefreshToken expiredToken = RefreshToken.issue(
+                parent, TokenHasher.hash("raw-token"), LocalDateTime.now().minusDays(1), false);
+        when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-token")))
+                .thenReturn(Optional.of(expiredToken));
+
+        assertThatThrownBy(() -> authService.refresh("raw-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+    }
+
+    @Test
+    void refresh_revokesAllTokensAndThrowsWhenReuseDetected() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        RefreshToken reusedToken = RefreshToken.issue(
+                parent, TokenHasher.hash("raw-token"), LocalDateTime.now().plusDays(1), false);
+        reusedToken.revoke();
+        RefreshToken otherActiveToken = RefreshToken.issue(
+                parent, TokenHasher.hash("other-token"), LocalDateTime.now().plusDays(1), false);
+        when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-token")))
+                .thenReturn(Optional.of(reusedToken));
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent))
+                .thenReturn(List.of(otherActiveToken));
+
+        assertThatThrownBy(() -> authService.refresh("raw-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.REFRESH_TOKEN_REUSED));
+        assertThat(otherActiveToken.isRevoked()).isTrue();
     }
 }

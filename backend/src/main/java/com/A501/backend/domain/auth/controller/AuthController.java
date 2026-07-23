@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,6 +21,7 @@ import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.dto.response.AuthTokenResponse;
 import com.A501.backend.domain.auth.dto.response.EmailCheckResponse;
 import com.A501.backend.domain.auth.dto.response.SignupResponse;
+import com.A501.backend.domain.auth.dto.response.TokenRefreshResponse;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.security.CookieProperties;
 import com.A501.backend.domain.auth.service.AuthService;
@@ -66,6 +68,16 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result).toString())
                 .body(AuthTokenResponse.of(result.parent(), result.accessToken(), result.accessTokenExpiresInSeconds()));
+    }
+
+    @Operation(summary = "토큰 재발급")
+    @PostMapping("/token/refresh")
+    public ResponseEntity<TokenRefreshResponse> refresh(
+            @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME) String refreshToken) {
+        TokenIssueResult result = authService.refresh(refreshToken);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result).toString())
+                .body(TokenRefreshResponse.of(result.accessToken(), result.accessTokenExpiresInSeconds()));
     }
 
     private ResponseCookie buildRefreshTokenCookie(TokenIssueResult result) {

@@ -162,6 +162,44 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
                 .build();
     }
 
+    public void complete() {
+        transitionTo(TurnStatus.COMPLETED);
+    }
+
+    public void interrupt(
+            LocalDateTime interruptedAt,
+            String interruptionReason,
+            String interruptionId) {
+        if (status == TurnStatus.INTERRUPTED) {
+            return;
+        }
+        if (speaker != Speaker.AI || responseId == null) {
+            throw new IllegalStateException("responseId를 가진 AI 턴만 중단할 수 있습니다.");
+        }
+        if (interruptedAt == null) {
+            throw new IllegalArgumentException("중단된 턴은 interruptedAt이 필요합니다.");
+        }
+
+        transitionTo(TurnStatus.INTERRUPTED);
+        this.interruptedAt = interruptedAt;
+        this.interruptionReason = interruptionReason;
+        this.interruptionId = interruptionId;
+    }
+
+    public void fail() {
+        transitionTo(TurnStatus.FAILED);
+    }
+
+    private void transitionTo(TurnStatus nextStatus) {
+        if (status == nextStatus) {
+            return;
+        }
+        if (!status.canTransitionTo(nextStatus)) {
+            throw new IllegalStateException("대화 턴 상태를 " + status + "에서 " + nextStatus + "로 변경할 수 없습니다.");
+        }
+        status = nextStatus;
+    }
+
     @Override
     public String getId() {
         return turnId;

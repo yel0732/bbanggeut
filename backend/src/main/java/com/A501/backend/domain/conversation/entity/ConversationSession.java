@@ -106,6 +106,36 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
                 .build();
     }
 
+    public void start() {
+        transitionTo(ConversationStatus.IN_PROGRESS);
+    }
+
+    public void complete() {
+        transitionTo(ConversationStatus.COMPLETED);
+    }
+
+    public void abort() {
+        transitionTo(ConversationStatus.ABORTED);
+    }
+
+    public void expire() {
+        transitionTo(ConversationStatus.EXPIRED);
+    }
+
+    public void fail() {
+        transitionTo(ConversationStatus.FAILED);
+    }
+
+    private void transitionTo(ConversationStatus nextStatus) {
+        if (status == nextStatus) {
+            return;
+        }
+        if (!status.canTransitionTo(nextStatus)) {
+            throw new IllegalStateException("대화 세션 상태를 " + status + "에서 " + nextStatus + "로 변경할 수 없습니다.");
+        }
+        status = nextStatus;
+    }
+
     @Override
     public String getId() {
         return conversationId;

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.A501.backend.domain.auth.dto.request.EmailPatterns;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.dto.response.EmailCheckResponse;
 import com.A501.backend.domain.auth.dto.response.SignupResponse;
@@ -21,6 +22,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "auth")
@@ -34,7 +36,8 @@ public class AuthController {
 
     @Operation(summary = "이메일 중복 확인")
     @GetMapping("/email/check")
-    public ResponseEntity<EmailCheckResponse> checkEmail(@RequestParam @Email @NotBlank String email) {
+    public ResponseEntity<EmailCheckResponse> checkEmail(
+            @RequestParam @Email @NotBlank @Pattern(regexp = EmailPatterns.WITH_TLD) String email) {
         return ResponseEntity.ok(EmailCheckResponse.of(authService.isEmailAvailable(email)));
     }
 

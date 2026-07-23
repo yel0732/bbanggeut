@@ -26,13 +26,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
 import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
+import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
@@ -53,6 +56,9 @@ class ConversationSessionServiceTest {
     @Mock
     private CurrentMemberProvider currentMemberProvider;
 
+    @Mock
+    private ConversationTerminationCoordinator conversationTerminationCoordinator;
+
     private ConversationSessionService service;
 
     @BeforeEach
@@ -61,7 +67,8 @@ class ConversationSessionServiceTest {
                 conversationSessionRepository,
                 gameSessionService,
                 childAccessVerifier,
-                currentMemberProvider);
+                currentMemberProvider,
+                conversationTerminationCoordinator);
         lenient().when(currentMemberProvider.getCurrentMemberId()).thenReturn(7L);
     }
 
@@ -157,12 +164,10 @@ class ConversationSessionServiceTest {
         ConversationSession session = ConversationSession.create(
                 "conv_query_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
         session.start();
-        session.complete();
+        session.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
         ReflectionTestUtils.setField(session, "questionCount", 3);
         ReflectionTestUtils.setField(session, "currentSessionEpoch", 1);
         ReflectionTestUtils.setField(session, "startedAt", LocalDateTime.of(2026, 7, 22, 1, 0, 10));
-        ReflectionTestUtils.setField(session, "completedAt", LocalDateTime.of(2026, 7, 22, 1, 8));
-        ReflectionTestUtils.setField(session, "terminationReason", "USER_FINISHED");
         when(conversationSessionRepository.findById("conv_query_001")).thenReturn(Optional.of(session));
 
         ConversationSessionResponse response = service.getConversation("conv_query_001");
@@ -177,7 +182,7 @@ class ConversationSessionServiceTest {
                 2026, 7, 22, 10, 0, 10, 0, ZoneOffset.ofHours(9)));
         assertThat(response.completedAt()).isEqualTo(OffsetDateTime.of(
                 2026, 7, 22, 10, 8, 0, 0, ZoneOffset.ofHours(9)));
-        assertThat(response.terminationReason()).isEqualTo("USER_FINISHED");
+        assertThat(response.terminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
     }
 
     @Test
@@ -225,6 +230,48 @@ class ConversationSessionServiceTest {
         assertGetError("conv_orphan", ConversationErrorCode.CONVERSATION_NOT_FOUND);
     }
 
+    @Test
+    void 진행_중_세션을_정상_종료한다() {
+        ConversationSession active = startedSession("conv_complete_001");
+        ConversationSession completed = startedSession("conv_complete_001");
+        completed.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
+        when(conversationSessionRepository.findById("conv_complete_001")).thenReturn(Optional.of(active));
+        when(conversationTerminationCoordinator.terminate(
+                "conv_complete_001", TerminationReason.USER_FINISHED)).thenReturn(completed);
+
+        CompleteConversationResponse response = service.completeConversation(
+                "conv_complete_001", new CompleteConversationRequest("USER_FINISHED"));
+
+        verify(childAccessVerifier).verifyAccess(7L, 15L);
+        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
+        assertThat(response.terminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
+        assertThat(response.completedAt()).isEqualTo(OffsetDateTime.of(
+                2026, 7, 22, 10, 8, 0, 0, ZoneOffset.ofHours(9)));
+    }
+
+    @Test
+    void 이미_종료된_세션은_Executor를_호출하지_않고_최초_결과를_반환한다() {
+        ConversationSession completed = startedSession("conv_complete_002");
+        completed.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
+        when(conversationSessionRepository.findById("conv_complete_002")).thenReturn(Optional.of(completed));
+
+        CompleteConversationResponse response = service.completeConversation(
+                "conv_complete_002", new CompleteConversationRequest("SYSTEM_ERROR"));
+
+        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
+        assertThat(response.terminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
+        verify(conversationTerminationCoordinator, never()).terminate(any(), any());
+    }
+
+    @Test
+    void 종료_사유가_없거나_허용되지_않으면_INVALID_TERMINATION_REASON을_반환한다() {
+        assertCompleteError("conv_invalid_reason", null, ConversationErrorCode.INVALID_TERMINATION_REASON);
+        assertCompleteError("conv_invalid_reason", " ", ConversationErrorCode.INVALID_TERMINATION_REASON);
+        assertCompleteError("conv_invalid_reason", "UNKNOWN", ConversationErrorCode.INVALID_TERMINATION_REASON);
+
+        verify(conversationSessionRepository, never()).findById(any());
+    }
+
     private CreateConversationRequest dailyRequest(Integer maxQuestionCount) {
         return new CreateConversationRequest(
                 ContextType.DAILY, null, ConversationGoal.DIARY, maxQuestionCount);
@@ -240,5 +287,22 @@ class ConversationSessionServiceTest {
         assertThatThrownBy(() -> service.getConversation(conversationId))
                 .isInstanceOfSatisfying(ConversationException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
+    }
+
+    private void assertCompleteError(
+            String conversationId,
+            String reason,
+            ConversationErrorCode expected) {
+        assertThatThrownBy(() -> service.completeConversation(
+                conversationId, new CompleteConversationRequest(reason)))
+                .isInstanceOfSatisfying(ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
+    }
+
+    private ConversationSession startedSession(String conversationId) {
+        ConversationSession session = ConversationSession.create(
+                conversationId, 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        session.start();
+        return session;
     }
 }

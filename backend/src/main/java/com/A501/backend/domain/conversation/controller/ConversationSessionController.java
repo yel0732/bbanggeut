@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
+import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
+import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.service.ConversationSessionService;
@@ -48,5 +50,13 @@ public class ConversationSessionController {
     public ResponseEntity<ConversationSessionResponse> getConversation(
             @PathVariable String conversationId) {
         return ResponseEntity.ok(conversationSessionService.getConversation(conversationId));
+    }
+
+    @Operation(summary = "대화 세션 종료")
+    @PostMapping("/conversations/{conversationId}/complete")
+    public ResponseEntity<CompleteConversationResponse> completeConversation(
+            @PathVariable String conversationId,
+            @Valid @RequestBody CompleteConversationRequest request) {
+        return ResponseEntity.ok(conversationSessionService.completeConversation(conversationId, request));
     }
 }

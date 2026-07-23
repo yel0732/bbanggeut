@@ -4,15 +4,19 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
-import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 
+import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
 import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
+import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
@@ -30,11 +34,11 @@ public class ConversationSessionService {
 
     private static final Set<ConversationStatus> ACTIVE_STATUSES =
             EnumSet.of(ConversationStatus.READY, ConversationStatus.IN_PROGRESS);
-
     private final ConversationSessionRepository conversationSessionRepository;
     private final GameSessionService gameSessionService;
     private final ChildAccessVerifier childAccessVerifier;
     private final CurrentMemberProvider currentMemberProvider;
+    private final ConversationTerminationCoordinator conversationTerminationCoordinator;
 
     @Transactional
     public CreateConversationResponse create(Long childId, CreateConversationRequest request) {
@@ -60,6 +64,35 @@ public class ConversationSessionService {
 
         verifyConversationAccess(session);
         return ConversationSessionResponse.from(session);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CompleteConversationResponse completeConversation(
+            String conversationId,
+            CompleteConversationRequest request) {
+        TerminationReason reason = parseTerminationReason(request == null ? null : request.reason());
+        ConversationSession session = findConversation(conversationId);
+        verifyConversationAccess(session);
+
+        if (session.getStatus().isTerminal()) {
+            return CompleteConversationResponse.from(session);
+        }
+
+        return CompleteConversationResponse.from(
+                conversationTerminationCoordinator.terminate(conversationId, reason));
+    }
+
+    private ConversationSession findConversation(String conversationId) {
+        return conversationSessionRepository.findById(conversationId)
+                .orElseThrow(() -> new ConversationException(ConversationErrorCode.CONVERSATION_NOT_FOUND));
+    }
+
+    private TerminationReason parseTerminationReason(String reason) {
+        try {
+            return TerminationReason.from(reason);
+        } catch (IllegalArgumentException exception) {
+            throw new ConversationException(ConversationErrorCode.INVALID_TERMINATION_REASON);
+        }
     }
 
     private void verifyConversationAccess(ConversationSession session) {

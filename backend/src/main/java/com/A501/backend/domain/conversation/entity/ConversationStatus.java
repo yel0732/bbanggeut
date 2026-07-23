@@ -8,6 +8,13 @@ public enum ConversationStatus {
     EXPIRED,
     FAILED;
 
+    public boolean isTerminal() {
+        return switch (this) {
+            case COMPLETED, ABORTED, EXPIRED, FAILED -> true;
+            case READY, IN_PROGRESS -> false;
+        };
+    }
+
     public boolean canTransitionTo(ConversationStatus nextStatus) {
         if (nextStatus == null) {
             return false;

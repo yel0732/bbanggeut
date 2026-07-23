@@ -27,12 +27,15 @@ class ConversationTurnRepositoryTest {
 
     @Test
     void 한_대화의_턴을_순서대로_저장하고_조회할_수_있다() {
-        ConversationTurn aiTurn = ConversationTurn.create(
-                "turn_001", "conv_test_001", 1, Speaker.AI,
-                "오늘 게임에서 뭐가 제일 재미있었어?", TurnStatus.COMPLETED, "resp_001", null);
-        ConversationTurn childTurn = ConversationTurn.create(
-                "turn_002", "conv_test_001", 2, Speaker.CHILD,
-                "과일이 많이 나왔을 때 재미있었어.", TurnStatus.COMPLETED, null, new BigDecimal("0.9100"));
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 10, 0);
+        ConversationTurn aiTurn = ConversationTurn.createAiGenerating(
+                "turn_001", "conv_test_001", 1,
+                "오늘 게임에서 뭐가 제일 재미있었어?", "resp_001", startedAt);
+        aiTurn.complete(startedAt.plusSeconds(2));
+        ConversationTurn childTurn = ConversationTurn.createChildCompleted(
+                "turn_002", "conv_test_001", 2,
+                "과일이 많이 나왔을 때 재미있었어.", new BigDecimal("0.9100"),
+                startedAt.plusSeconds(10), startedAt.plusSeconds(20));
 
         conversationTurnRepository.saveAndFlush(aiTurn);
         conversationTurnRepository.saveAndFlush(childTurn);
@@ -44,6 +47,7 @@ class ConversationTurnRepositoryTest {
         assertThat(foundAi.get().getSpeaker()).isEqualTo(Speaker.AI);
         assertThat(foundAi.get().getResponseId()).isEqualTo("resp_001");
         assertThat(foundAi.get().getSttConfidence()).isNull();
+        assertThat(foundAi.get().getCompletedAt()).isEqualTo(startedAt.plusSeconds(2));
         assertThat(foundAi.get().getCreatedAt()).isNotNull();
 
         assertThat(foundChild).isPresent();
@@ -51,16 +55,20 @@ class ConversationTurnRepositoryTest {
         assertThat(foundChild.get().getResponseId()).isNull();
         assertThat(foundChild.get().getSttConfidence()).isEqualByComparingTo("0.9100");
         assertThat(foundChild.get().getTurnSeq()).isEqualTo(2);
+        assertThat(foundChild.get().getCompletedAt()).isEqualTo(startedAt.plusSeconds(20));
     }
 
     @Test
     void 같은_대화에서_turn_seq가_중복되면_저장에_실패한다() {
-        ConversationTurn first = ConversationTurn.create(
-                "turn_010", "conv_test_002", 1, Speaker.AI, "질문", TurnStatus.COMPLETED, "resp_010", null);
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 10, 0);
+        ConversationTurn first = ConversationTurn.createAiGenerating(
+                "turn_010", "conv_test_002", 1, "질문", "resp_010", startedAt);
+        first.complete(startedAt.plusSeconds(2));
         conversationTurnRepository.saveAndFlush(first);
 
-        ConversationTurn duplicateSeq = ConversationTurn.create(
-                "turn_011", "conv_test_002", 1, Speaker.CHILD, "답변", TurnStatus.COMPLETED, null, new BigDecimal("0.8000"));
+        ConversationTurn duplicateSeq = ConversationTurn.createChildCompleted(
+                "turn_011", "conv_test_002", 1, "답변", new BigDecimal("0.8000"),
+                startedAt.plusSeconds(3), startedAt.plusSeconds(5));
 
         assertThatThrownBy(() -> conversationTurnRepository.saveAndFlush(duplicateSeq))
                 .isInstanceOf(DataIntegrityViolationException.class);
@@ -69,9 +77,10 @@ class ConversationTurnRepositoryTest {
     @Test
     void 중단된_턴은_interruption_정보와_함께_저장된다() {
         LocalDateTime interruptedAt = LocalDateTime.of(2026, 7, 22, 10, 2, 10, 350_000_000);
-        ConversationTurn interrupted = ConversationTurn.createInterrupted(
-                "turn_020", "conv_test_003", 1, Speaker.AI, "그때 어떤 기분이...",
-                "resp_020", interruptedAt, "CHILD_BARGE_IN", "int_001");
+        ConversationTurn interrupted = ConversationTurn.createAiInterrupted(
+                "turn_020", "conv_test_003", 1, "그때 어떤 기분이...",
+                "resp_020", interruptedAt.minusSeconds(2), interruptedAt,
+                "CHILD_BARGE_IN", "int_001");
 
         conversationTurnRepository.saveAndFlush(interrupted);
         Optional<ConversationTurn> found = conversationTurnRepository.findById("turn_020");
@@ -85,52 +94,53 @@ class ConversationTurnRepositoryTest {
 
     @Test
     void conversation_id가_없으면_저장에_실패한다() {
-        ConversationTurn missingConversationId = ConversationTurn.create(
-                "turn_030", null, 1, Speaker.AI, "질문", TurnStatus.COMPLETED, "resp_030", null);
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 10, 0);
+        ConversationTurn missingConversationId = ConversationTurn.createChildCompleted(
+                "turn_030", null, 1, "답변", null, startedAt, startedAt.plusSeconds(2));
 
         assertThatThrownBy(() -> conversationTurnRepository.saveAndFlush(missingConversationId))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
-    void create로_INTERRUPTED_상태를_만들_수_없다() {
-        assertThatThrownBy(() -> ConversationTurn.create(
-                        "turn_040", "conv_test_004", 1, Speaker.AI, "질문", TurnStatus.INTERRUPTED, "resp_040", null))
+    void AI_생성_턴은_startedAt이_없으면_생성에_실패한다() {
+        assertThatThrownBy(() -> ConversationTurn.createAiGenerating(
+                        "turn_040", "conv_test_004", 1, "질문", "resp_040", null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void AI_턴은_responseId가_없으면_생성에_실패한다() {
-        assertThatThrownBy(() -> ConversationTurn.create(
-                        "turn_041", "conv_test_004", 1, Speaker.AI, "질문", TurnStatus.COMPLETED, null, null))
+        assertThatThrownBy(() -> ConversationTurn.createAiGenerating(
+                        "turn_041", "conv_test_004", 1, "질문", null, LocalDateTime.now()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void CHILD가_아닌_턴은_stt_confidence를_가질_수_없다() {
-        assertThatThrownBy(() -> ConversationTurn.create(
-                        "turn_042", "conv_test_004", 1, Speaker.AI, "질문", TurnStatus.COMPLETED,
-                        "resp_042", new BigDecimal("0.9000")))
+    void 완료_CHILD_턴은_완료_시각이_없으면_생성에_실패한다() {
+        LocalDateTime startedAt = LocalDateTime.now();
+
+        assertThatThrownBy(() -> ConversationTurn.createChildCompleted(
+                        "turn_042", "conv_test_004", 1, "답변",
+                        new BigDecimal("0.9000"), startedAt, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void createInterrupted는_AI가_아니거나_responseId가_없으면_실패한다() {
+    void createAiInterrupted는_responseId가_없으면_실패한다() {
         LocalDateTime now = LocalDateTime.now();
 
-        assertThatThrownBy(() -> ConversationTurn.createInterrupted(
-                        "turn_050", "conv_test_005", 1, Speaker.CHILD, "질문", "resp_050", now, "REASON", "int_050"))
-                .isInstanceOf(IllegalArgumentException.class);
-
-        assertThatThrownBy(() -> ConversationTurn.createInterrupted(
-                        "turn_051", "conv_test_005", 1, Speaker.AI, "질문", null, now, "REASON", "int_051"))
+        assertThatThrownBy(() -> ConversationTurn.createAiInterrupted(
+                        "turn_051", "conv_test_005", 1, "질문", null,
+                        now.minusSeconds(1), now, "REASON", "int_051"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void createInterrupted는_interruptedAt이_없으면_실패한다() {
-        assertThatThrownBy(() -> ConversationTurn.createInterrupted(
-                        "turn_052", "conv_test_005", 1, Speaker.AI, "질문", "resp_052", null, "REASON", "int_052"))
+    void createAiInterrupted는_interruptedAt이_없으면_실패한다() {
+        assertThatThrownBy(() -> ConversationTurn.createAiInterrupted(
+                        "turn_052", "conv_test_005", 1, "질문", "resp_052",
+                        LocalDateTime.now(), null, "REASON", "int_052"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

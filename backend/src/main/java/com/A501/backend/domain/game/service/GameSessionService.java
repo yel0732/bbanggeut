@@ -1,5 +1,7 @@
 package com.A501.backend.domain.game.service;
 
+import java.util.UUID;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -19,6 +21,12 @@ public class GameSessionService {
 
     private final GameSessionRepository gameSessionRepository;
     private final GameSessionWriter gameSessionWriter;
+
+    public boolean existsForChild(UUID gameSessionId, Long childId) {
+        return gameSessionRepository.findById(gameSessionId)
+                .filter(gameSession -> gameSession.getChildId().equals(childId))
+                .isPresent();
+    }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public GameSessionResponse saveCompletedResult(SaveGameResultRequest request) {

@@ -176,6 +176,31 @@ CREATE TABLE report_game_result (
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportGameResult.java
 
 
+-- REPORT-04: report_conversation_summary -----------------------------------
+
+CREATE TABLE report_conversation_summary (
+    report_conversation_summary_id  BIGINT        NOT NULL AUTO_INCREMENT,
+    report_id                       BIGINT        NOT NULL,
+    source_conversation_ids         TEXT          NOT NULL,
+    diary_title                     VARCHAR(200)  NOT NULL,
+    diary_content                   TEXT          NOT NULL,
+    main_events                     TEXT          NOT NULL,
+    emotions                        TEXT          NOT NULL,
+    interests                       TEXT          NOT NULL,
+    model_version                   VARCHAR(100)  NULL,
+    prompt_version                  VARCHAR(100)  NULL,
+    created_at                      DATETIME(6)   NOT NULL,
+    updated_at                      DATETIME(6)   NOT NULL,
+    PRIMARY KEY (report_conversation_summary_id),
+    CONSTRAINT uk_report_conversation_summary_report UNIQUE (report_id)
+);
+
+-- AI returns a validated summary through ConversationSummaryPort.
+-- The report domain stores the final immutable summary snapshot atomically
+-- with game result snapshots and the daily_report COMPLETED status.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportConversationSummary.java
+
+
 -- Spring Batch metadata -----------------------------------------------------
 
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.

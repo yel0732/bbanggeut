@@ -82,4 +82,35 @@ public class DailyReport extends BaseTimeEntity {
                 .retryCount(0)
                 .build();
     }
+
+    public void startProcessing() {
+        if (generationStatus == ReportGenerationStatus.COMPLETED) {
+            throw new IllegalStateException("A completed report cannot be processed again.");
+        }
+        if (generationStatus == ReportGenerationStatus.PROCESSING) {
+            throw new IllegalStateException("The report is already being processed.");
+        }
+        if (generationStatus == ReportGenerationStatus.FAILED) {
+            retryCount++;
+        }
+
+        generationStatus = ReportGenerationStatus.PROCESSING;
+    }
+
+    public void complete() {
+        if (generationStatus != ReportGenerationStatus.PROCESSING) {
+            throw new IllegalStateException(
+                    "Only a processing report can be completed.");
+        }
+
+        generationStatus = ReportGenerationStatus.COMPLETED;
+    }
+
+    public void fail() {
+        if (generationStatus == ReportGenerationStatus.COMPLETED) {
+            throw new IllegalStateException("A completed report cannot be failed.");
+        }
+
+        generationStatus = ReportGenerationStatus.FAILED;
+    }
 }

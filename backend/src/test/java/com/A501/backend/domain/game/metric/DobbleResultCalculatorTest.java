@@ -47,7 +47,7 @@ class DobbleResultCalculatorTest {
     }
 
     @Test
-    void 카드별_결과에서_합계와_평균_반응시간과_점수를_계산한다() {
+    void 카드별_결과에서_합계와_점수를_계산하고_문제별_해결_시간을_유지한다() {
         List<CardResultMetrics> cardResults = List.of(
                 completedCard("card-1", 1, 0, CognitiveGrade.PERFECT, 1000L),
                 completedCard("card-2", 2, 1, CognitiveGrade.EXCELLENT, 2000L),
@@ -61,30 +61,19 @@ class DobbleResultCalculatorTest {
         assertThat(result.perfectCount()).isEqualTo(1);
         assertThat(result.excellentCount()).isEqualTo(1);
         assertThat(result.goodCount()).isEqualTo(1);
-        assertThat(result.averageResponseTimeMs()).isEqualTo(2000L);
         assertThat(result.calculatedScore()).isEqualTo(2550);
+        assertThat(result.cardResults())
+                .extracting(CardResultMetrics::solveTimeMs)
+                .containsExactly(1000L, 2000L, 3000L, null);
     }
 
     @Test
-    void 평균_반응시간은_완료된_카드만_대상으로_반올림한다() {
-        List<CardResultMetrics> cardResults = List.of(
-                completedCard("card-1", 1, 0, CognitiveGrade.PERFECT, 1000L),
-                completedCard("card-2", 2, 1, CognitiveGrade.EXCELLENT, 1001L),
-                incompleteCard("card-3", 1, 1));
-
-        DobbleResultMetrics result = DobbleResultCalculator.calculate(cardResults);
-
-        assertThat(result.averageResponseTimeMs()).isEqualTo(1001L);
-    }
-
-    @Test
-    void 해결한_카드가_없으면_평균_반응시간과_점수는_0이다() {
+    void 해결한_카드가_없으면_점수는_0이다() {
         DobbleResultMetrics result = DobbleResultCalculator.calculate(List.of(
                 incompleteCard("card-1", 0, 0)));
 
         assertThat(result.solvedCardCount()).isZero();
         assertThat(result.incompleteCardCount()).isEqualTo(1);
-        assertThat(result.averageResponseTimeMs()).isZero();
         assertThat(result.calculatedScore()).isZero();
     }
 

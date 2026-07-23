@@ -25,7 +25,6 @@ public final class DobbleResultCalculator {
         int perfectCount = countByGrade(copiedResults, CognitiveGrade.PERFECT);
         int excellentCount = countByGrade(copiedResults, CognitiveGrade.EXCELLENT);
         int goodCount = countByGrade(copiedResults, CognitiveGrade.GOOD);
-        long averageResponseTimeMs = calculateAverageResponseTime(copiedResults);
 
         return new DobbleResultMetrics(
                 solvedCardCount,
@@ -33,7 +32,6 @@ public final class DobbleResultCalculator {
                 excellentCount,
                 goodCount,
                 incompleteCardCount,
-                averageResponseTimeMs,
                 copiedResults);
     }
 
@@ -75,13 +73,5 @@ public final class DobbleResultCalculator {
         return (int) cardResults.stream()
                 .filter(result -> result.finalGrade() == grade)
                 .count();
-    }
-
-    private static long calculateAverageResponseTime(List<CardResultMetrics> cardResults) {
-        return Math.round(cardResults.stream()
-                .filter(result -> result.status() == CardResultStatus.COMPLETED)
-                .mapToLong(CardResultMetrics::solveTimeMs)
-                .average()
-                .orElse(0));
     }
 }

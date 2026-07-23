@@ -8,12 +8,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -22,6 +29,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
+import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
@@ -29,6 +37,7 @@ import com.A501.backend.domain.conversation.service.ChildAccessVerifier;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(ConversationSessionControllerTest.FixedClockConfig.class)
 class ConversationSessionControllerTest {
 
     @Autowired
@@ -179,10 +188,8 @@ class ConversationSessionControllerTest {
         ConversationSession session = ConversationSession.create(
                 "conv_completed_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
         session.start();
-        session.complete();
+        session.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
         ReflectionTestUtils.setField(session, "startedAt", LocalDateTime.of(2026, 7, 22, 1, 0, 10));
-        ReflectionTestUtils.setField(session, "completedAt", LocalDateTime.of(2026, 7, 22, 1, 8));
-        ReflectionTestUtils.setField(session, "terminationReason", "USER_FINISHED");
         conversationSessionRepository.save(session);
 
         mockMvc.perform(get("/api/v1/conversations/{conversationId}", session.getConversationId()))
@@ -191,6 +198,125 @@ class ConversationSessionControllerTest {
                 .andExpect(jsonPath("$.startedAt").value("2026-07-22T10:00:10+09:00"))
                 .andExpect(jsonPath("$.completedAt").value("2026-07-22T10:08:00+09:00"))
                 .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"));
+    }
+
+    @Test
+    void 진행_중_세션을_종료하고_KST_완료_시각을_반환한다() throws Exception {
+        ConversationSession session = ConversationSession.create(
+                "conv_complete_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        session.start();
+        conversationSessionRepository.saveAndFlush(session);
+
+        mockMvc.perform(post("/api/v1/conversations/{conversationId}/complete", session.getConversationId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"USER_FINISHED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value("conv_complete_api"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.questionCount").value(0))
+                .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"))
+                .andExpect(jsonPath("$.completedAt").value("2026-07-22T10:08:00+09:00"));
+
+        mockMvc.perform(get("/api/v1/conversations/{conversationId}", session.getConversationId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"))
+                .andExpect(jsonPath("$.completedAt").value("2026-07-22T10:08:00+09:00"));
+    }
+
+    @Test
+    void 다른_사유로_종료를_반복해도_최초_결과를_유지한다() throws Exception {
+        ConversationSession session = ConversationSession.create(
+                "conv_idempotent_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        session.start();
+        conversationSessionRepository.saveAndFlush(session);
+
+        mockMvc.perform(post("/api/v1/conversations/{conversationId}/complete", session.getConversationId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"USER_FINISHED\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/conversations/{conversationId}/complete", session.getConversationId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"SYSTEM_ERROR\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"))
+                .andExpect(jsonPath("$.completedAt").value("2026-07-22T10:08:00+09:00"));
+    }
+
+    @Test
+    void 잘못된_종료_사유는_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/conversations/conv_invalid_reason/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"UNKNOWN\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_TERMINATION_REASON"));
+
+        mockMvc.perform(post("/api/v1/conversations/conv_invalid_reason/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_TERMINATION_REASON"));
+
+        mockMvc.perform(post("/api/v1/conversations/conv_invalid_reason/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void READY_세션을_정상_완료하려고_하면_409를_반환한다() throws Exception {
+        conversationSessionRepository.saveAndFlush(ConversationSession.create(
+                "conv_invalid_state", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+
+        mockMvc.perform(post("/api/v1/conversations/conv_invalid_state/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"USER_FINISHED\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("INVALID_SESSION_STATE"));
+    }
+
+    @Test
+    void 없는_세션을_종료하면_404를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/conversations/conv_complete_missing/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"USER_FINISHED\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("CONVERSATION_NOT_FOUND"));
+    }
+
+    @Test
+    void 접근할_수_없는_세션을_종료하면_403을_반환한다() throws Exception {
+        ConversationSession session = ConversationSession.create(
+                "conv_complete_denied", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        session.start();
+        conversationSessionRepository.saveAndFlush(session);
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
+                .when(childAccessVerifier).verifyAccess(1L, 15L);
+
+        mockMvc.perform(post("/api/v1/conversations/conv_complete_denied/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"USER_FINISHED\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("CONVERSATION_ACCESS_DENIED"));
+    }
+
+    @Test
+    void OpenAPI에_허용된_종료_사유를_모두_노출한다() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.components.schemas.CompleteConversationRequest.properties.reason.enum")
+                        .value(org.hamcrest.Matchers.containsInAnyOrder(
+                                "USER_FINISHED",
+                                "MAX_QUESTION_REACHED",
+                                "CHILD_REQUESTED_STOP",
+                                "INACTIVITY_TIMEOUT",
+                                "CONNECTION_LOST",
+                                "PAGE_CLOSED",
+                                "SYSTEM_ERROR")));
     }
 
     @Test
@@ -217,5 +343,15 @@ class ConversationSessionControllerTest {
                 {"contextType":"DAILY","gameSessionId":null,
                  "conversationGoal":"DIARY","maxQuestionCount":%d}
                 """.formatted(maxQuestionCount);
+    }
+
+    @TestConfiguration
+    static class FixedClockConfig {
+
+        @Bean
+        @Primary
+        Clock fixedUtcClock() {
+            return Clock.fixed(Instant.parse("2026-07-22T01:08:00Z"), ZoneOffset.UTC);
+        }
     }
 }

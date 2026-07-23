@@ -86,6 +86,8 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
             TurnStatus status,
             String responseId,
             BigDecimal sttConfidence,
+            LocalDateTime startedAt,
+            LocalDateTime completedAt,
             LocalDateTime interruptedAt,
             String interruptionReason,
             String interruptionId) {
@@ -97,73 +99,96 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
         this.status = status;
         this.responseId = responseId;
         this.sttConfidence = sttConfidence;
+        this.startedAt = startedAt;
+        this.completedAt = completedAt;
         this.interruptedAt = interruptedAt;
         this.interruptionReason = interruptionReason;
         this.interruptionId = interruptionId;
     }
 
-    public static ConversationTurn create(
+    public static ConversationTurn createAiGenerating(
             String turnId,
             String conversationId,
             int turnSeq,
-            Speaker speaker,
             String content,
-            TurnStatus status,
             String responseId,
-            BigDecimal sttConfidence) {
-        if (status == TurnStatus.INTERRUPTED) {
-            throw new IllegalArgumentException("INTERRUPTED 상태는 createInterrupted()를 사용하세요.");
-        }
-        if (speaker == Speaker.AI && responseId == null) {
+            LocalDateTime startedAt) {
+        if (responseId == null) {
             throw new IllegalArgumentException("AI 턴은 responseId가 필요합니다.");
         }
-        if (speaker != Speaker.CHILD && sttConfidence != null) {
-            throw new IllegalArgumentException("sttConfidence는 CHILD 턴에만 있을 수 있습니다.");
+        if (startedAt == null) {
+            throw new IllegalArgumentException("AI 턴은 startedAt이 필요합니다.");
         }
         return ConversationTurn.builder()
                 .turnId(turnId)
                 .conversationId(conversationId)
                 .turnSeq(turnSeq)
-                .speaker(speaker)
+                .speaker(Speaker.AI)
                 .content(content)
-                .status(status)
+                .status(TurnStatus.GENERATING)
                 .responseId(responseId)
-                .sttConfidence(sttConfidence)
+                .startedAt(startedAt)
                 .build();
     }
 
-    public static ConversationTurn createInterrupted(
+    public static ConversationTurn createChildCompleted(
             String turnId,
             String conversationId,
             int turnSeq,
-            Speaker speaker,
             String content,
-            String responseId,
-            LocalDateTime interruptedAt,
-            String interruptionReason,
-            String interruptionId) {
-        if (speaker != Speaker.AI || responseId == null) {
-            throw new IllegalArgumentException("중단된 턴은 responseId를 가진 AI 턴만 가능합니다.");
-        }
-        if (interruptedAt == null) {
-            throw new IllegalArgumentException("중단된 턴은 interruptedAt이 필요합니다.");
-        }
+            BigDecimal sttConfidence,
+            LocalDateTime startedAt,
+            LocalDateTime completedAt) {
+        validateTerminalTime(startedAt, completedAt, "완료");
         return ConversationTurn.builder()
                 .turnId(turnId)
                 .conversationId(conversationId)
                 .turnSeq(turnSeq)
-                .speaker(speaker)
+                .speaker(Speaker.CHILD)
+                .content(content)
+                .status(TurnStatus.COMPLETED)
+                .sttConfidence(sttConfidence)
+                .startedAt(startedAt)
+                .completedAt(completedAt)
+                .build();
+    }
+
+    public static ConversationTurn createAiInterrupted(
+            String turnId,
+            String conversationId,
+            int turnSeq,
+            String content,
+            String responseId,
+            LocalDateTime startedAt,
+            LocalDateTime interruptedAt,
+            String interruptionReason,
+            String interruptionId) {
+        if (responseId == null) {
+            throw new IllegalArgumentException("중단된 턴은 responseId를 가진 AI 턴만 가능합니다.");
+        }
+        validateTerminalTime(startedAt, interruptedAt, "중단");
+        return ConversationTurn.builder()
+                .turnId(turnId)
+                .conversationId(conversationId)
+                .turnSeq(turnSeq)
+                .speaker(Speaker.AI)
                 .content(content)
                 .status(TurnStatus.INTERRUPTED)
                 .responseId(responseId)
+                .startedAt(startedAt)
                 .interruptedAt(interruptedAt)
                 .interruptionReason(interruptionReason)
                 .interruptionId(interruptionId)
                 .build();
     }
 
-    public void complete() {
+    public void complete(LocalDateTime completedAt) {
+        validateTerminalTime(startedAt, completedAt, "완료");
+        if (status == TurnStatus.COMPLETED) {
+            return;
+        }
         transitionTo(TurnStatus.COMPLETED);
+        this.completedAt = completedAt;
     }
 
     public void interrupt(
@@ -176,9 +201,7 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
         if (speaker != Speaker.AI || responseId == null) {
             throw new IllegalStateException("responseId를 가진 AI 턴만 중단할 수 있습니다.");
         }
-        if (interruptedAt == null) {
-            throw new IllegalArgumentException("중단된 턴은 interruptedAt이 필요합니다.");
-        }
+        validateTerminalTime(startedAt, interruptedAt, "중단");
 
         transitionTo(TurnStatus.INTERRUPTED);
         this.interruptedAt = interruptedAt;
@@ -186,8 +209,28 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
         this.interruptionId = interruptionId;
     }
 
-    public void fail() {
+    public void fail(LocalDateTime completedAt) {
+        validateTerminalTime(startedAt, completedAt, "실패");
+        if (status == TurnStatus.FAILED) {
+            return;
+        }
         transitionTo(TurnStatus.FAILED);
+        this.completedAt = completedAt;
+    }
+
+    private static void validateTerminalTime(
+            LocalDateTime startedAt,
+            LocalDateTime terminalAt,
+            String terminalType) {
+        if (startedAt == null) {
+            throw new IllegalArgumentException("턴 시작 시각이 필요합니다.");
+        }
+        if (terminalAt == null) {
+            throw new IllegalArgumentException("턴 " + terminalType + " 시각이 필요합니다.");
+        }
+        if (terminalAt.isBefore(startedAt)) {
+            throw new IllegalArgumentException("턴 " + terminalType + " 시각은 시작 시각보다 빠를 수 없습니다.");
+        }
     }
 
     private void transitionTo(TurnStatus nextStatus) {

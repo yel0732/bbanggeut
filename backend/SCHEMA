@@ -37,6 +37,8 @@ CREATE INDEX idx_conversation_session_status_updated ON conversation_session (st
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationSession.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
 
+
+<<<<<<< backend/SCHEMA
 -- GAME-01: game_session -----------------------------------------------------
 
 CREATE TABLE game_session (
@@ -59,3 +61,35 @@ CREATE TABLE game_session (
 -- difficulty_code는 난이도 정책 확정 전까지 NULL을 허용한다.
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
+=======
+-- DIARY-1-T02: conversation_turn -----------------------------------------
+
+CREATE TABLE conversation_turn (
+    turn_id                VARCHAR(40)   NOT NULL,
+    conversation_id        VARCHAR(40)   NOT NULL,
+    turn_seq               INT           NOT NULL,
+    speaker                VARCHAR(10)   NOT NULL,
+    content                TEXT          NOT NULL,
+    status                 VARCHAR(20)   NOT NULL,
+    response_id            VARCHAR(40)   NULL,
+    stt_confidence         DECIMAL(5,4)  NULL,
+    started_at             DATETIME(6)   NULL,
+    completed_at           DATETIME(6)   NULL,
+    interrupted_at         DATETIME(6)   NULL,
+    interruption_reason    VARCHAR(40)   NULL,
+    interruption_id        VARCHAR(40)   NULL,
+    created_at             DATETIME(6)   NOT NULL,
+    updated_at             DATETIME(6)   NOT NULL,
+    PRIMARY KEY (turn_id),
+    UNIQUE (conversation_id, turn_seq)
+);
+
+CREATE INDEX idx_conversation_turn_response_id ON conversation_turn (response_id);
+CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interruption_id);
+
+-- speaker: AI | CHILD
+-- status: GENERATING | COMPLETED | INTERRUPTED | FAILED
+-- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
+-- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
+-- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+>>>>>>> backend/SCHEMA

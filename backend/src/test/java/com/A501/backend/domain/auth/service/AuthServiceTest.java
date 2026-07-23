@@ -3,7 +3,6 @@ package com.A501.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,8 +21,6 @@ import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
-import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
-import com.A501.backend.domain.auth.security.JwtProvider;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -32,19 +29,13 @@ class AuthServiceTest {
     private ParentRepository parentRepository;
 
     @Mock
-    private RefreshTokenRepository refreshTokenRepository;
-
-    @Mock
     private PasswordEncoder passwordEncoder;
-
-    @Mock
-    private JwtProvider jwtProvider;
 
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider);
+        authService = new AuthService(parentRepository, passwordEncoder);
     }
 
     @Test
@@ -63,7 +54,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void signup_createsAccountWithoutIssuingTokens() {
+    void signup_createsAccount() {
         SignupRequest request = new SignupRequest(
                 "new@example.com", "Abcdef1!", LocalDate.now().minusYears(20));
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.empty());
@@ -73,9 +64,6 @@ class AuthServiceTest {
         Parent result = authService.signup(request);
 
         verify(parentRepository).save(any(Parent.class));
-        // 가입 후 로그인 화면으로 유도하는 흐름이라 회원가입 자체는 토큰을 발급하지 않는다.
-        verify(jwtProvider, never()).generateAccessToken(any());
-        verify(refreshTokenRepository, never()).save(any());
         assertThat(result.getEmail()).isEqualTo("new@example.com");
     }
 

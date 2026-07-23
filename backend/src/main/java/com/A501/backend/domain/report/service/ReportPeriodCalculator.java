@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import com.A501.backend.domain.report.model.ReportPeriod;
@@ -18,7 +19,9 @@ public class ReportPeriodCalculator {
 
     private final Clock clock;
 
-    public ReportPeriodCalculator(Clock clock) {
+    public ReportPeriodCalculator(
+            @Qualifier("reportClock") Clock clock
+    ) {
         this.clock = clock;
     }
 

@@ -7,6 +7,7 @@ import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.TerminationReason;
 
 public record ConversationSessionResponse(
         String conversationId,
@@ -19,7 +20,7 @@ public record ConversationSessionResponse(
         int currentSessionEpoch,
         OffsetDateTime startedAt,
         OffsetDateTime completedAt,
-        String terminationReason) {
+        TerminationReason terminationReason) {
 
     public static ConversationSessionResponse from(ConversationSession session) {
         return new ConversationSessionResponse(

@@ -14,6 +14,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -68,8 +69,13 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "termination_reason", length = 40)
-    private String terminationReason;
+    private TerminationReason terminationReason;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @Builder(access = AccessLevel.PRIVATE)
     private ConversationSession(
@@ -111,20 +117,20 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
         transitionTo(ConversationStatus.IN_PROGRESS);
     }
 
-    public void complete() {
-        transitionTo(ConversationStatus.COMPLETED);
-    }
+    public void terminate(LocalDateTime completedAt, TerminationReason terminationReason) {
+        if (completedAt == null) {
+            throw new IllegalArgumentException("종료 시각이 필요합니다.");
+        }
+        if (terminationReason == null) {
+            throw new IllegalArgumentException("종료 사유가 필요합니다.");
+        }
+        if (status.isTerminal()) {
+            return;
+        }
 
-    public void abort() {
-        transitionTo(ConversationStatus.ABORTED);
-    }
-
-    public void expire() {
-        transitionTo(ConversationStatus.EXPIRED);
-    }
-
-    public void fail() {
-        transitionTo(ConversationStatus.FAILED);
+        transitionTo(terminationReason.getTargetStatus());
+        this.completedAt = completedAt;
+        this.terminationReason = terminationReason;
     }
 
     private void transitionTo(ConversationStatus nextStatus) {

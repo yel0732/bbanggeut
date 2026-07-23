@@ -1,6 +1,8 @@
 package com.A501.backend.domain.auth.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
@@ -41,7 +43,8 @@ class AuthControllerLogoutSecurityTest {
     @Test
     void logout_returnsUnauthorizedWithoutBearerToken() throws Exception {
         mockMvc.perform(post("/api/auth/logout"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().string(containsString("인증이 필요합니다.")));
     }
 
     @Test

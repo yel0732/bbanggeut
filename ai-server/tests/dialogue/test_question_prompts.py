@@ -214,6 +214,33 @@ def test_prompt_building_is_deterministic_and_does_not_mutate_request() -> None:
     assert request.model_dump(mode="json", by_alias=True) == before
 
 
+def test_request_copies_slot_and_game_context_snapshots() -> None:
+    current_slots = DiarySlots(
+        event="처음 사건",
+        people=["친구"],
+    )
+    game_context = GameContext(
+        game_type="BLOCK_GAME",
+        notable_events=["블록 완성"],
+    )
+    request = DiaryQuestionGenerationRequest(
+        target=QuestionTarget.EMOTION,
+        current_slots=current_slots,
+        game_context=game_context,
+    )
+
+    current_slots.event = "변경된 사건"
+    current_slots.people.append("다른 친구")
+    game_context.game_type = "CHANGED_GAME"
+    game_context.notable_events.append("변경된 기록")
+    payload = json.loads(build_question_generation_prompt(request).user)
+
+    assert payload["currentSlots"]["event"] == "처음 사건"
+    assert payload["currentSlots"]["people"] == ["친구"]
+    assert payload["gameContext"]["gameType"] == "BLOCK_GAME"
+    assert payload["gameContext"]["notableEvents"] == ["블록 완성"]
+
+
 def test_prompt_repr_does_not_expose_context() -> None:
     private_event = "비공개 일기 내용"
     request = DiaryQuestionGenerationRequest(

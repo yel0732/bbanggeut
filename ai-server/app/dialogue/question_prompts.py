@@ -58,6 +58,30 @@ class DiaryQuestionGenerationRequest(BaseModel):
         repr=False,
     )
 
+    @field_validator("current_slots", mode="before")
+    @classmethod
+    def copy_current_slots_snapshot(
+        cls,
+        value: object,
+    ) -> object:
+        """Detach the request from mutable session slot state."""
+
+        if isinstance(value, DiarySlots):
+            return value.model_copy(deep=True)
+        return value
+
+    @field_validator("game_context", mode="before")
+    @classmethod
+    def copy_game_context_snapshot(
+        cls,
+        value: object,
+    ) -> object:
+        """Detach the request from mutable game context state."""
+
+        if isinstance(value, GameContext):
+            return value.model_copy(deep=True)
+        return value
+
     @field_validator("recent_questions")
     @classmethod
     def normalize_recent_questions(

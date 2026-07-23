@@ -12,7 +12,7 @@ DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는�
 CREATE TABLE conversation_session (
     conversation_id        VARCHAR(40)  NOT NULL,
     child_id               BIGINT       NOT NULL,
-    game_session_id        BINARY(16)       NULL,
+    game_session_id        BINARY(16)   NULL,
     status                 VARCHAR(20)  NOT NULL,
     context_type           VARCHAR(20)  NOT NULL,
     conversation_goal      VARCHAR(20)  NOT NULL,
@@ -38,7 +38,6 @@ CREATE INDEX idx_conversation_session_status_updated ON conversation_session (st
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
 
 
-<<<<<<< backend/SCHEMA
 -- GAME-01: game_session -----------------------------------------------------
 
 CREATE TABLE game_session (
@@ -61,7 +60,7 @@ CREATE TABLE game_session (
 -- difficulty_code는 난이도 정책 확정 전까지 NULL을 허용한다.
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
-=======
+
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (
@@ -92,4 +91,3 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
->>>>>>> backend/SCHEMA

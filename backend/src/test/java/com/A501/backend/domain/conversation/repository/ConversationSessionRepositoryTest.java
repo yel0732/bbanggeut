@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,8 +28,9 @@ class ConversationSessionRepositoryTest {
 
     @Test
     void 세션을_저장하고_조회하면_모든_필드가_그대로_유지된다() {
+        UUID gameSessionId = UUID.randomUUID();
         ConversationSession session = ConversationSession.create(
-                "conv_test_001", 15L, 152L, ContextType.GAME, ConversationGoal.DIARY, 6);
+                "conv_test_001", 15L, gameSessionId, ContextType.GAME, ConversationGoal.DIARY, 6);
 
         conversationSessionRepository.saveAndFlush(session);
 
@@ -35,7 +38,7 @@ class ConversationSessionRepositoryTest {
 
         assertThat(found).isPresent();
         assertThat(found.get().getChildId()).isEqualTo(15L);
-        assertThat(found.get().getGameSessionId()).isEqualTo(152L);
+        assertThat(found.get().getGameSessionId()).isEqualTo(gameSessionId);
         assertThat(found.get().getStatus()).isEqualTo(ConversationStatus.READY);
         assertThat(found.get().getContextType()).isEqualTo(ContextType.GAME);
         assertThat(found.get().getConversationGoal()).isEqualTo(ConversationGoal.DIARY);
@@ -69,5 +72,34 @@ class ConversationSessionRepositoryTest {
 
         assertThatThrownBy(() -> conversationSessionRepository.saveAndFlush(session))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void READY와_IN_PROGRESS_세션은_활성_세션으로_조회한다() {
+        ConversationSession ready = ConversationSession.create(
+                "conv_active_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        ConversationSession inProgress = ConversationSession.create(
+                "conv_active_002", 16L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        inProgress.start();
+        conversationSessionRepository.saveAllAndFlush(java.util.List.of(ready, inProgress));
+
+        Set<ConversationStatus> activeStatuses = Set.of(
+                ConversationStatus.READY, ConversationStatus.IN_PROGRESS);
+
+        assertThat(conversationSessionRepository.existsByChildIdAndStatusIn(15L, activeStatuses)).isTrue();
+        assertThat(conversationSessionRepository.existsByChildIdAndStatusIn(16L, activeStatuses)).isTrue();
+        assertThat(conversationSessionRepository.existsByChildIdAndStatusIn(17L, activeStatuses)).isFalse();
+    }
+
+    @Test
+    void 종료_세션만_있으면_활성_세션으로_조회하지_않는다() {
+        ConversationSession completed = ConversationSession.create(
+                "conv_terminal_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        completed.start();
+        completed.complete();
+        conversationSessionRepository.saveAndFlush(completed);
+
+        assertThat(conversationSessionRepository.existsByChildIdAndStatusIn(
+                15L, Set.of(ConversationStatus.READY, ConversationStatus.IN_PROGRESS))).isFalse();
     }
 }

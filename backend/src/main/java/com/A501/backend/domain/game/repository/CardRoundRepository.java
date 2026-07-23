@@ -10,4 +10,7 @@ import com.A501.backend.domain.game.entity.CardRound;
 public interface CardRoundRepository extends JpaRepository<CardRound, UUID> {
 
     List<CardRound> findAllByGameSessionIdOrderByRoundNo(UUID gameSessionId);
+
+    List<CardRound> findAllByGameSessionIdInOrderByGameSessionIdAscRoundNoAsc(
+            List<UUID> gameSessionIds);
 }

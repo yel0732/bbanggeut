@@ -209,6 +209,58 @@ CREATE INDEX idx_report_manual_regeneration_report
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportManualRegeneration.java
 
 
+-- REPORT-09: report_notification -------------------------------------------
+
+CREATE TABLE report_notification (
+    notification_id      BIGINT       NOT NULL AUTO_INCREMENT,
+    parent_id            BIGINT       NOT NULL,
+    report_id            BIGINT       NOT NULL,
+    child_id             BIGINT       NOT NULL,
+    report_date          DATE         NOT NULL,
+    notification_type    VARCHAR(30)  NOT NULL,
+    notification_status  VARCHAR(20)  NOT NULL,
+    message              VARCHAR(200) NOT NULL,
+    created_at           DATETIME(6)  NOT NULL,
+    updated_at           DATETIME(6)  NOT NULL,
+    PRIMARY KEY (notification_id)
+);
+
+CREATE INDEX idx_report_notification_parent_created
+    ON report_notification (parent_id, created_at);
+
+CREATE INDEX idx_report_notification_report
+    ON report_notification (report_id);
+
+-- notification_type: REPORT_COMPLETED | REPORT_FAILED
+-- notification_status: UNREAD | READ
+-- The message contains no game result, conversation content, or internal
+-- generation failure reason.
+-- Duplicate prevention by report_id and notification_type is added in
+-- REPORT-10.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportNotification.java
+
+
+-- REPORT-09: report_notification_failure -----------------------------------
+
+CREATE TABLE report_notification_failure (
+    notification_failure_id BIGINT        NOT NULL AUTO_INCREMENT,
+    report_id               BIGINT        NOT NULL,
+    notification_type       VARCHAR(30)   NOT NULL,
+    failed_at               DATETIME(6)   NOT NULL,
+    failure_reason          VARCHAR(1000) NOT NULL,
+    created_at              DATETIME(6)   NOT NULL,
+    updated_at              DATETIME(6)   NOT NULL,
+    PRIMARY KEY (notification_failure_id)
+);
+
+CREATE INDEX idx_report_notification_failure_report
+    ON report_notification_failure (report_id, failed_at);
+
+-- Notification creation failures are recorded independently and never change
+-- daily_report.generation_status.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportNotificationFailure.java
+
+
 -- REPORT-02: report_game_result --------------------------------------------
 
 CREATE TABLE report_game_result (

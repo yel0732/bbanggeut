@@ -76,7 +76,12 @@ class DailyReportGenerationServiceTest {
 
         assertThat(result.gameResultCount()).isEqualTo(1);
         assertThat(result.conversationSummaryIncluded()).isTrue();
-        assertThat(statusOf(report)).isEqualTo(ReportGenerationStatus.COMPLETED);
+        assertThat(reportOf(report).getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.COMPLETED);
+        assertThat(reportOf(report).getProcessingStartedAt()).isNotNull();
+        assertThat(reportOf(report).getCompletedAt()).isNotNull();
+        assertThat(reportOf(report).getFailedAt()).isNull();
+        assertThat(reportOf(report).getFailureReason()).isNull();
         assertThat(gameResultRepository.findAllByReportId(report.getId()))
                 .singleElement()
                 .satisfies(snapshot ->
@@ -142,9 +147,60 @@ class DailyReportGenerationServiceTest {
                 generationService.generate(report.getId()))
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThat(statusOf(report)).isEqualTo(ReportGenerationStatus.FAILED);
+        DailyReport failedReport = reportOf(report);
+        assertThat(failedReport.getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.FAILED);
+        assertThat(failedReport.getProcessingStartedAt()).isNotNull();
+        assertThat(failedReport.getFailedAt()).isNotNull();
+        assertThat(failedReport.getFailureReason())
+                .isEqualTo("A daily report requires game or conversation data.");
+        assertThat(failedReport.getCompletedAt()).isNull();
         assertThat(gameResultRepository.findAll()).isEmpty();
         assertThat(conversationSummaryRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void sanitizesAndLimitsFailureReason() {
+        DailyReport report = createPendingReport();
+        String longMessage = "AI failure\n\t" + "x".repeat(1200);
+        when(gameReportQueryPort.findCompletedGames(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenThrow(new IllegalStateException(longMessage));
+
+        assertThatThrownBy(() -> generationService.generate(report.getId()))
+                .isInstanceOf(IllegalStateException.class);
+
+        DailyReport failedReport = reportOf(report);
+        assertThat(failedReport.getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.FAILED);
+        assertThat(failedReport.getFailureReason())
+                .hasSize(1000)
+                .doesNotContain("\n", "\r", "\t");
+    }
+
+    @Test
+    void retriesFailedReportAndClearsFailureInformationOnSuccess() {
+        DailyReport report = createPendingReport();
+        when(gameReportQueryPort.findCompletedGames(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenThrow(new IllegalStateException("temporary game failure"))
+                .thenReturn(List.of(validGame(UUID.randomUUID())));
+        when(conversationSummaryPort.generateSummary(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> generationService.generate(report.getId()))
+                .isInstanceOf(IllegalStateException.class);
+
+        generationService.generate(report.getId());
+
+        DailyReport completedReport = reportOf(report);
+        assertThat(completedReport.getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.COMPLETED);
+        assertThat(completedReport.getRetryCount()).isEqualTo(1);
+        assertThat(completedReport.getCompletedAt()).isNotNull();
+        assertThat(completedReport.getFailedAt()).isNull();
+        assertThat(completedReport.getFailureReason()).isNull();
     }
 
     @Test
@@ -195,9 +251,11 @@ class DailyReportGenerationServiceTest {
     }
 
     private ReportGenerationStatus statusOf(DailyReport report) {
-        return dailyReportRepository.findById(report.getId())
-                .orElseThrow()
-                .getGenerationStatus();
+        return reportOf(report).getGenerationStatus();
+    }
+
+    private DailyReport reportOf(DailyReport report) {
+        return dailyReportRepository.findById(report.getId()).orElseThrow();
     }
 
     private ReportGameSource validGame(UUID gameSessionId) {

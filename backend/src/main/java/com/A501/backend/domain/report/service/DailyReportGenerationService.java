@@ -25,18 +25,18 @@ public class DailyReportGenerationService {
     private final ObjectProvider<ConversationSummaryPort> conversationSummaryPortProvider;
 
     public DailyReportGenerationResult generate(Long reportId) {
-        GameReportQueryPort gameReportQueryPort =
-                requiredPort(
-                        gameReportQueryPortProvider,
-                        "GameReportQueryPort is not connected.");
-        ConversationSummaryPort conversationSummaryPort =
-                requiredPort(
-                        conversationSummaryPortProvider,
-                        "ConversationSummaryPort is not connected.");
         DailyReportGenerationTarget target =
                 statusService.startProcessing(reportId);
 
         try {
+            GameReportQueryPort gameReportQueryPort =
+                    requiredPort(
+                            gameReportQueryPortProvider,
+                            "GameReportQueryPort is not connected.");
+            ConversationSummaryPort conversationSummaryPort =
+                    requiredPort(
+                            conversationSummaryPortProvider,
+                            "ConversationSummaryPort is not connected.");
             List<ReportGameSource> gameSources =
                     gameReportQueryPort.findCompletedGames(
                             target.childId(),
@@ -79,7 +79,7 @@ public class DailyReportGenerationService {
             RuntimeException originalException
     ) {
         try {
-            statusService.markFailed(reportId);
+            statusService.markFailed(reportId, originalException);
         } catch (RuntimeException failureStatusException) {
             originalException.addSuppressed(failureStatusException);
         }

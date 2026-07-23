@@ -7,7 +7,7 @@ DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는�
 컬럼을 바꾸면 이 파일도 함께 갱신한다. 운영 DB에 DDL을 실제로 적용하는 절차(언제, 누가, 어떤 방식으로)는 아직
 정해지지 않았으며, 배포 작업 자체가 이 Epic의 범위 밖이라 별도 `[INFRA]` Epic에서 다룬다.
 
--- DIARY-1-T01: conversation_session ----------------------------------------- 
+-- DIARY-1-T01: conversation_session -----------------------------------------  
 
 CREATE TABLE conversation_session (
     conversation_id        VARCHAR(40)  NOT NULL,
@@ -66,6 +66,32 @@ CREATE TABLE game_session (
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
 <<<<<<< backend/SCHEMA
+-- CARDTASK-13: card_round ---------------------------------------------------
+
+CREATE TABLE card_round (
+    card_round_id          BINARY(16)   NOT NULL,
+    game_session_id        BINARY(16)   NOT NULL,
+    round_no               INT          NOT NULL,
+    status                 VARCHAR(20)  NOT NULL,
+    comparison_count       INT          NOT NULL,
+    wrong_count            INT          NOT NULL,
+    final_grade            VARCHAR(20)  NULL,
+    solve_time_ms          BIGINT       NULL,
+    created_at             DATETIME(6)  NOT NULL,
+    PRIMARY KEY (card_round_id),
+    CONSTRAINT uk_card_round_session_round UNIQUE (game_session_id, round_no),
+    CONSTRAINT fk_card_round_game_session
+        FOREIGN KEY (game_session_id) REFERENCES game_session (game_session_id)
+);
+
+CREATE INDEX idx_card_round_game_session ON card_round (game_session_id);
+
+-- round_no is the presentation order of a card pair within a game session, starting at 1.
+-- status: COMPLETED | INCOMPLETE
+-- final_grade: PERFECT | EXCELLENT | GOOD
+-- Completed rounds require final_grade and solve_time_ms; incomplete rounds store neither.
+-- Difficulty and hint usage will be added when the Should scope is implemented.
+-- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/CardRound.java
 
 =======
 >>>>>>> backend/SCHEMA
@@ -99,9 +125,6 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
-<<<<<<< backend/SCHEMA
-
-
 -- REPORT-01: daily_report ---------------------------------------------------
 
 CREATE TABLE daily_report (
@@ -126,10 +149,35 @@ CREATE TABLE daily_report (
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/DailyReport.java
 
 
+-- REPORT-02: report_game_result --------------------------------------------
+
+CREATE TABLE report_game_result (
+    report_game_result_id  BIGINT        NOT NULL AUTO_INCREMENT,
+    report_id              BIGINT        NOT NULL,
+    game_session_id        BINARY(16)    NOT NULL,
+    game_id                BIGINT        NOT NULL,
+    game_code              VARCHAR(40)   NOT NULL,
+    game_name              VARCHAR(100)  NOT NULL,
+    completed_at           DATETIME(6)   NOT NULL,
+    play_duration_seconds  INT           NOT NULL,
+    completed              BOOLEAN       NOT NULL,
+    score                  INT           NOT NULL,
+    result_metrics         TEXT          NULL,
+    created_at             DATETIME(6)   NOT NULL,
+    updated_at             DATETIME(6)   NOT NULL,
+    PRIMARY KEY (report_game_result_id),
+    CONSTRAINT uk_report_game_result_report_session
+        UNIQUE (report_id, game_session_id)
+);
+
+-- 완료된 GameSession의 게임 코드, 게임명, 완료 시각, 플레이 시간, 점수, 결과 지표를 생성 시점 값으로 복사한다.
+-- game_session_id는 원본 추적용이며 GameSession.gameSessionId(UUID)를 BINARY(16)으로 저장한다.
+-- result_metrics는 DobbleResultMetrics 또는 FruitNinjaResultMetrics를 JSON 문자열로 보관한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportGameResult.java
+
+
 -- Spring Batch metadata -----------------------------------------------------
 
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
 -- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql을 배포 전에 수동 적용해야 한다.
 -- Resource: org/springframework/batch/core/schema-mysql.sql
-=======
->>>>>>> backend/SCHEMA

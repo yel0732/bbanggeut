@@ -7,7 +7,7 @@ DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는�
 컬럼을 바꾸면 이 파일도 함께 갱신한다. 운영 DB에 DDL을 실제로 적용하는 절차(언제, 누가, 어떤 방식으로)는 아직
 정해지지 않았으며, 배포 작업 자체가 이 Epic의 범위 밖이라 별도 `[INFRA]` Epic에서 다룬다.
 
--- DIARY-1-T01: conversation_session -----------------------------------------
+-- DIARY-1-T01: conversation_session ----------------------------------------- 
 
 CREATE TABLE conversation_session (
     conversation_id        VARCHAR(40)  NOT NULL,
@@ -61,6 +61,10 @@ CREATE TABLE game_session (
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
+<<<<<<< backend/SCHEMA
+
+=======
+>>>>>>> backend/SCHEMA
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (
@@ -91,3 +95,37 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+<<<<<<< backend/SCHEMA
+
+
+-- REPORT-01: daily_report ---------------------------------------------------
+
+CREATE TABLE daily_report (
+    report_id             BIGINT       NOT NULL AUTO_INCREMENT,
+    child_id              BIGINT       NOT NULL,
+    report_date           DATE         NOT NULL,
+    period_started_at     DATETIME(6)  NOT NULL,
+    period_ended_at       DATETIME(6)  NOT NULL,
+    generation_status     VARCHAR(20)  NOT NULL,
+    retry_count           INT          NOT NULL DEFAULT 0,
+    created_at            DATETIME(6)  NOT NULL,
+    updated_at            DATETIME(6)  NOT NULL,
+    PRIMARY KEY (report_id),
+    CONSTRAINT uk_daily_report_child_date UNIQUE (child_id, report_date)
+);
+
+-- generation_status: PENDING | PROCESSING | COMPLETED | FAILED
+-- 집계 시간대: KST(Asia/Seoul)
+-- 집계 범위: 전날 19:00:00 이상, 당일 19:00:00 미만
+-- 게임 또는 리포트 가능한 대화가 하나 이상 존재할 때만 PENDING 행을 생성한다.
+-- child 테이블이 아직 병합되지 않았으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/DailyReport.java
+
+
+-- Spring Batch metadata -----------------------------------------------------
+
+-- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
+-- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql을 배포 전에 수동 적용해야 한다.
+-- Resource: org/springframework/batch/core/schema-mysql.sql
+=======
+>>>>>>> backend/SCHEMA

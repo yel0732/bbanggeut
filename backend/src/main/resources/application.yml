@@ -3,6 +3,15 @@ spring:
     name: backend
   profiles:
     default: local
+  batch:
+    job:
+      enabled: false
+
+report:
+  schedule:
+    enabled: ${REPORT_SCHEDULE_ENABLED:false}
+    cron: ${REPORT_DAILY_CRON:0 0 19 * * *}
+    zone: Asia/Seoul
 
 ---
 # 로컬 개발용: H2 인메모리 DB
@@ -19,6 +28,9 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  batch:
+    jdbc:
+      initialize-schema: always
   jpa:
     hibernate:
       ddl-auto: create-drop

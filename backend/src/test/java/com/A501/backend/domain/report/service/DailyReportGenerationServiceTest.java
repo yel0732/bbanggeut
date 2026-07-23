@@ -32,9 +32,14 @@ import com.A501.backend.domain.report.port.ConversationSummaryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportConversationSummaryRepository;
+import com.A501.backend.domain.report.repository.ReportGenerationAttemptRepository;
 import com.A501.backend.domain.report.repository.ReportGameResultRepository;
 
-@SpringBootTest(properties = "report.schedule.enabled=false")
+@SpringBootTest(properties = {
+        "report.schedule.enabled=false",
+        "report.retry.max-attempts=1",
+        "report.retry.interval=PT0S"
+})
 class DailyReportGenerationServiceTest {
 
     private static final Long CHILD_ID = 15L;
@@ -55,6 +60,9 @@ class DailyReportGenerationServiceTest {
     @Autowired
     private ReportConversationSummaryRepository conversationSummaryRepository;
 
+    @Autowired
+    private ReportGenerationAttemptRepository attemptRepository;
+
     @MockitoBean
     private GameReportQueryPort gameReportQueryPort;
 
@@ -65,6 +73,7 @@ class DailyReportGenerationServiceTest {
     void setUp() {
         conversationSummaryRepository.deleteAll();
         gameResultRepository.deleteAll();
+        attemptRepository.deleteAll();
         dailyReportRepository.deleteAll();
     }
 

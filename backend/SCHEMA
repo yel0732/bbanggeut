@@ -65,7 +65,6 @@ CREATE TABLE game_session (
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
-<<<<<<< backend/SCHEMA
 -- CARDTASK-13: card_round ---------------------------------------------------
 
 CREATE TABLE card_round (
@@ -93,8 +92,6 @@ CREATE INDEX idx_card_round_game_session ON card_round (game_session_id);
 -- Difficulty and hint usage will be added when the Should scope is implemented.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/CardRound.java
 
-=======
->>>>>>> backend/SCHEMA
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (
@@ -151,6 +148,33 @@ CREATE TABLE daily_report (
 -- 게임 또는 리포트 가능한 대화가 하나 이상 존재할 때만 PENDING 행을 생성한다.
 -- child 테이블이 아직 병합되지 않았으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/DailyReport.java
+
+
+-- REPORT-07: report_generation_attempt -------------------------------------
+
+CREATE TABLE report_generation_attempt (
+    attempt_id       BIGINT        NOT NULL AUTO_INCREMENT,
+    report_id        BIGINT        NOT NULL,
+    attempt_number   INT           NOT NULL,
+    attempt_status   VARCHAR(20)   NOT NULL,
+    started_at       DATETIME(6)   NOT NULL,
+    ended_at         DATETIME(6)   NULL,
+    failure_stage    VARCHAR(40)   NULL,
+    error_code       VARCHAR(60)   NULL,
+    failure_reason   VARCHAR(1000) NULL,
+    created_at       DATETIME(6)   NOT NULL,
+    updated_at       DATETIME(6)   NOT NULL,
+    PRIMARY KEY (attempt_id),
+    CONSTRAINT uk_report_generation_attempt_number
+        UNIQUE (report_id, attempt_number)
+);
+
+CREATE INDEX idx_report_generation_attempt_report
+    ON report_generation_attempt (report_id, attempt_number);
+
+-- attempt_status: PROCESSING | COMPLETED | FAILED
+-- 실패한 스냅샷 저장은 롤백하되 생성 시도 이력은 별도 트랜잭션으로 보존한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportGenerationAttempt.java
 
 
 -- REPORT-02: report_game_result --------------------------------------------

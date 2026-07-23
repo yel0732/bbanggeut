@@ -47,6 +47,12 @@ public class DailyReportStatusService {
         report.fail(now(), failureReasonOf(exception));
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordRetry(Long reportId) {
+        DailyReport report = findForUpdate(reportId);
+        report.recordRetry();
+    }
+
     private DailyReport findForUpdate(Long reportId) {
         return dailyReportRepository.findByIdForUpdate(reportId)
                 .orElseThrow(() ->

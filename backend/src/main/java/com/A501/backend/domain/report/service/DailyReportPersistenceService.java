@@ -15,12 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.entity.ReportConversationSummary;
+import com.A501.backend.domain.report.entity.ReportGenerationAttempt;
 import com.A501.backend.domain.report.entity.ReportGameResult;
 import com.A501.backend.domain.report.model.DailyReportGenerationResult;
 import com.A501.backend.domain.report.model.ReportConversationSummarySource;
 import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportConversationSummaryRepository;
+import com.A501.backend.domain.report.repository.ReportGenerationAttemptRepository;
 import com.A501.backend.domain.report.repository.ReportGameResultRepository;
 
 @Service
@@ -29,6 +31,7 @@ public class DailyReportPersistenceService {
     private final DailyReportRepository dailyReportRepository;
     private final ReportGameResultRepository reportGameResultRepository;
     private final ReportConversationSummaryRepository conversationSummaryRepository;
+    private final ReportGenerationAttemptRepository attemptRepository;
     private final ReportGameResultMapper gameResultMapper;
     private final ReportConversationSummaryMapper conversationSummaryMapper;
     private final Clock clock;
@@ -37,6 +40,7 @@ public class DailyReportPersistenceService {
             DailyReportRepository dailyReportRepository,
             ReportGameResultRepository reportGameResultRepository,
             ReportConversationSummaryRepository conversationSummaryRepository,
+            ReportGenerationAttemptRepository attemptRepository,
             ReportGameResultMapper gameResultMapper,
             ReportConversationSummaryMapper conversationSummaryMapper,
             @Qualifier("utcClock") Clock clock
@@ -44,6 +48,7 @@ public class DailyReportPersistenceService {
         this.dailyReportRepository = dailyReportRepository;
         this.reportGameResultRepository = reportGameResultRepository;
         this.conversationSummaryRepository = conversationSummaryRepository;
+        this.attemptRepository = attemptRepository;
         this.gameResultMapper = gameResultMapper;
         this.conversationSummaryMapper = conversationSummaryMapper;
         this.clock = clock;
@@ -52,6 +57,7 @@ public class DailyReportPersistenceService {
     @Transactional
     public DailyReportGenerationResult persist(
             Long reportId,
+            Long attemptId,
             List<ReportGameSource> gameSources,
             Optional<ReportConversationSummarySource> conversationSummary
     ) {
@@ -66,7 +72,14 @@ public class DailyReportPersistenceService {
         boolean summaryCreated = createConversationSummary(
                 reportId, conversationSummary);
 
-        report.complete(LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS));
+        LocalDateTime completedAt =
+                LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
+        ReportGenerationAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Report generation attempt not found."));
+        attempt.complete(completedAt);
+        report.complete(completedAt);
 
         return new DailyReportGenerationResult(
                 reportId,

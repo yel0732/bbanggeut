@@ -14,11 +14,15 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.A501.backend.config.SecurityConfig;
 import com.A501.backend.domain.auth.security.CookieProperties;
+import com.A501.backend.domain.auth.security.JwtAuthenticationEntryPoint;
+import com.A501.backend.domain.auth.security.JwtAuthenticationFilter;
+import com.A501.backend.domain.auth.security.JwtProperties;
+import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.service.AuthService;
 
 @WebMvcTest(AuthController.class)
-@Import(SecurityConfig.class)
-@EnableConfigurationProperties(CookieProperties.class)
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtAuthenticationEntryPoint.class, JwtProvider.class})
+@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class})
 class AuthControllerValidationTest {
 
     @Autowired

@@ -1,10 +1,13 @@
 package com.A501.backend.domain.conversation.controller;
 
 import static org.mockito.Mockito.doThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +17,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
@@ -57,7 +61,8 @@ class ConversationSessionControllerTest {
                 .andExpect(jsonPath("$.conversationGoal").value("DIARY"))
                 .andExpect(jsonPath("$.questionCount").value(0))
                 .andExpect(jsonPath("$.maxQuestionCount").value(6))
-                .andExpect(jsonPath("$.createdAt").isNotEmpty());
+                .andExpect(jsonPath("$.createdAt").value(org.hamcrest.Matchers.matchesPattern(
+                        "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\+09:00")));
     }
 
     @Test
@@ -147,6 +152,64 @@ class ConversationSessionControllerTest {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("GAME_SESSION_NOT_FOUND"));
+    }
+
+    @Test
+    void 생성한_READY_세션을_Location_경로로_조회한다() throws Exception {
+        ConversationSession session = conversationSessionRepository.save(ConversationSession.create(
+                "conv_query_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+
+        mockMvc.perform(get("/api/v1/conversations/{conversationId}", session.getConversationId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value("conv_query_api"))
+                .andExpect(jsonPath("$.childId").value(15))
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.contextType").value("DAILY"))
+                .andExpect(jsonPath("$.conversationGoal").value("DIARY"))
+                .andExpect(jsonPath("$.questionCount").value(0))
+                .andExpect(jsonPath("$.maxQuestionCount").value(6))
+                .andExpect(jsonPath("$.currentSessionEpoch").value(0))
+                .andExpect(jsonPath("$.startedAt").isEmpty())
+                .andExpect(jsonPath("$.completedAt").isEmpty())
+                .andExpect(jsonPath("$.terminationReason").isEmpty());
+    }
+
+    @Test
+    void 완료된_세션의_UTC_시각을_KST_오프셋으로_조회한다() throws Exception {
+        ConversationSession session = ConversationSession.create(
+                "conv_completed_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        session.start();
+        session.complete();
+        ReflectionTestUtils.setField(session, "startedAt", LocalDateTime.of(2026, 7, 22, 1, 0, 10));
+        ReflectionTestUtils.setField(session, "completedAt", LocalDateTime.of(2026, 7, 22, 1, 8));
+        ReflectionTestUtils.setField(session, "terminationReason", "USER_FINISHED");
+        conversationSessionRepository.save(session);
+
+        mockMvc.perform(get("/api/v1/conversations/{conversationId}", session.getConversationId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.startedAt").value("2026-07-22T10:00:10+09:00"))
+                .andExpect(jsonPath("$.completedAt").value("2026-07-22T10:08:00+09:00"))
+                .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"));
+    }
+
+    @Test
+    void 존재하지_않는_세션을_조회하면_404를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/conversations/conv_missing"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("CONVERSATION_NOT_FOUND"));
+    }
+
+    @Test
+    void 접근할_수_없는_세션을_조회하면_403을_반환한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_denied_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
+                .when(childAccessVerifier).verifyAccess(1L, 15L);
+
+        mockMvc.perform(get("/api/v1/conversations/conv_denied_api"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("CONVERSATION_ACCESS_DENIED"));
     }
 
     private String dailyRequest(int maxQuestionCount) {

@@ -4,6 +4,7 @@ import java.util.List;
 
 public record FruitNinjaCalculationResult(
         String rulesVersion,
+        int plannedDurationSeconds,
         int totalFruitCount,
         int slicedFruitCount,
         int calculatedScore,

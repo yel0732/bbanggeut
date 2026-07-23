@@ -45,6 +45,7 @@ public class FruitNinjaResultCalculator {
         int calculatedScore = calculateScore(fruitResults, scoresByFruitCode);
         return new FruitNinjaCalculationResult(
                 ruleVersion.getVersionCode(),
+                ruleVersion.getPlannedDurationSeconds(),
                 totalFruitCount,
                 slicedFruitCount,
                 calculatedScore,

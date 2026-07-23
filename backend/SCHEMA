@@ -22,6 +22,7 @@ CREATE TABLE conversation_session (
     started_at             DATETIME(6)  NULL,
     completed_at           DATETIME(6)  NULL,
     termination_reason     VARCHAR(40)  NULL,
+    version                BIGINT       NOT NULL DEFAULT 0,
     created_at             DATETIME(6)  NOT NULL,
     updated_at             DATETIME(6)  NOT NULL,
     PRIMARY KEY (conversation_id)
@@ -34,6 +35,9 @@ CREATE INDEX idx_conversation_session_status_updated ON conversation_session (st
 -- status: READY | IN_PROGRESS | COMPLETED | ABORTED | EXPIRED | FAILED
 -- context_type: GAME | DAILY
 -- conversation_goal: DIARY
+-- termination_reason:
+-- USER_FINISHED | MAX_QUESTION_REACHED | CHILD_REQUESTED_STOP
+-- INACTIVITY_TIMEOUT | CONNECTION_LOST | PAGE_CLOSED | SYSTEM_ERROR
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationSession.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
 

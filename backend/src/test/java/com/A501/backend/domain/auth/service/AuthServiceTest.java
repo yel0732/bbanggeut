@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
@@ -151,6 +153,19 @@ class AuthServiceTest {
     void login_throwsForGoogleOnlyAccountWithoutPassword() {
         LoginRequest request = new LoginRequest("google@example.com", "Abcdef1!");
         Parent parent = Parent.createGoogle("google@example.com", "google-sub-id", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void login_throwsForDeletedAccount() {
+        LoginRequest request = new LoginRequest("deleted@example.com", "Abcdef1!");
+        Parent parent = Parent.createLocal("deleted@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
         when(parentRepository.findByEmail(request.email())).thenReturn(Optional.of(parent));
 
         assertThatThrownBy(() -> authService.login(request))

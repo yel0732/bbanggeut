@@ -16,6 +16,7 @@ import com.A501.backend.domain.report.batch.processor.DailyReportProcessor;
 import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.model.DailyReportCandidate;
 import com.A501.backend.domain.report.model.ReportPeriod;
+import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.port.ConversationReportQueryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
@@ -41,8 +42,25 @@ class DailyReportFlowTest {
                 LocalDateTime.of(2026, 7, 23, 19, 0),
                 LocalDate.of(2026, 7, 23));
 
-        GameReportQueryPort gamePort =
-                (childId, startedAt, endedAt) -> childId == 2L || childId == 4L;
+        GameReportQueryPort gamePort = new GameReportQueryPort() {
+            @Override
+            public boolean existsCompletedGame(
+                    Long childId,
+                    LocalDateTime startedAt,
+                    LocalDateTime endedAt
+            ) {
+                return childId == 2L || childId == 4L;
+            }
+
+            @Override
+            public List<ReportGameSource> findCompletedGames(
+                    Long childId,
+                    LocalDateTime startedAt,
+                    LocalDateTime endedAt
+            ) {
+                return List.of();
+            }
+        };
         ConversationReportQueryPort conversationPort =
                 (childId, startedAt, endedAt) -> childId == 3L || childId == 4L;
         DailyReportProcessor processor = new DailyReportProcessor(

@@ -61,10 +61,6 @@ CREATE TABLE game_session (
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
-<<<<<<< backend/SCHEMA
-
-=======
->>>>>>> backend/SCHEMA
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (
@@ -95,9 +91,6 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
-<<<<<<< backend/SCHEMA
-
-
 -- REPORT-01: daily_report ---------------------------------------------------
 
 CREATE TABLE daily_report (
@@ -122,10 +115,35 @@ CREATE TABLE daily_report (
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/DailyReport.java
 
 
+-- REPORT-02: report_game_result --------------------------------------------
+
+CREATE TABLE report_game_result (
+    report_game_result_id  BIGINT        NOT NULL AUTO_INCREMENT,
+    report_id              BIGINT        NOT NULL,
+    game_session_id        BINARY(16)    NOT NULL,
+    game_id                BIGINT        NOT NULL,
+    game_code              VARCHAR(40)   NOT NULL,
+    game_name              VARCHAR(100)  NOT NULL,
+    completed_at           DATETIME(6)   NOT NULL,
+    play_duration_seconds  INT           NOT NULL,
+    completed              BOOLEAN       NOT NULL,
+    score                  INT           NOT NULL,
+    result_metrics         TEXT          NULL,
+    created_at             DATETIME(6)   NOT NULL,
+    updated_at             DATETIME(6)   NOT NULL,
+    PRIMARY KEY (report_game_result_id),
+    CONSTRAINT uk_report_game_result_report_session
+        UNIQUE (report_id, game_session_id)
+);
+
+-- 완료된 GameSession의 게임 코드, 게임명, 완료 시각, 플레이 시간, 점수, 결과 지표를 생성 시점 값으로 복사한다.
+-- game_session_id는 원본 추적용이며 GameSession.gameSessionId(UUID)를 BINARY(16)으로 저장한다.
+-- result_metrics는 DobbleResultMetrics 또는 FruitNinjaResultMetrics를 JSON 문자열로 보관한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportGameResult.java
+
+
 -- Spring Batch metadata -----------------------------------------------------
 
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
 -- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql을 배포 전에 수동 적용해야 한다.
 -- Resource: org/springframework/batch/core/schema-mysql.sql
-=======
->>>>>>> backend/SCHEMA

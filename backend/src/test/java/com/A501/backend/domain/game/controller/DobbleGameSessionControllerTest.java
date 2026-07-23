@@ -1,7 +1,10 @@
 package com.A501.backend.domain.game.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,6 +18,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.A501.backend.domain.game.metric.CardResultStatus;
+import com.A501.backend.domain.game.metric.CognitiveGrade;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
@@ -45,17 +50,41 @@ class DobbleGameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest(clientPlayId)))
                 .andExpect(status().isCreated())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(header().string("Location", startsWith("/api/game-sessions/")))
                 .andExpect(jsonPath("$.gameSessionId").isNotEmpty())
                 .andExpect(jsonPath("$.clientPlayId").value(clientPlayId.toString()))
-                .andExpect(jsonPath("$.score").value(2550));
+                .andExpect(jsonPath("$.score").value(2550))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.difficultyCode").doesNotExist())
+                .andExpect(jsonPath("$.cardResults").doesNotExist());
 
         var savedSession = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
         assertThat(savedSession.getScore()).isEqualTo(2550);
         assertThat(savedSession.getDifficultyCode()).isNull();
-        assertThat(cardRoundRepository.findAllByGameSessionIdOrderByRoundNo(
-                savedSession.getGameSessionId()))
+        var savedRounds = cardRoundRepository.findAllByGameSessionIdOrderByRoundNo(
+                savedSession.getGameSessionId());
+
+        assertThat(savedRounds)
                 .extracting("roundNo")
                 .containsExactly(1, 2, 3, 4);
+        assertThat(savedRounds)
+                .extracting("finalGrade")
+                .containsExactly(
+                        CognitiveGrade.PERFECT,
+                        CognitiveGrade.EXCELLENT,
+                        CognitiveGrade.GOOD,
+                        null);
+        assertThat(savedRounds)
+                .extracting("solveTimeMs")
+                .containsExactly(1000L, 2000L, 3000L, null);
+        assertThat(savedRounds)
+                .extracting("status")
+                .containsExactly(
+                        CardResultStatus.COMPLETED,
+                        CardResultStatus.COMPLETED,
+                        CardResultStatus.COMPLETED,
+                        CardResultStatus.INCOMPLETE);
     }
 
     @Test
@@ -102,6 +131,84 @@ class DobbleGameSessionControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
 
+        assertThat(gameSessionRepository.count()).isZero();
+        assertThat(cardRoundRepository.count()).isZero();
+    }
+
+    @Test
+    void 도블_결과가_비어_있으면_요청을_거부한다() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replaceFirst("(?s)\"cardResults\": \\[.*\\]", "\"cardResults\": []");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+
+        assertNothingSaved();
+    }
+
+    @Test
+    void 오답_횟수가_판정_횟수보다_크면_요청을_거부한다() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replaceFirst("\"wrongCount\": 0", "\"wrongCount\": 2");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+
+        assertNothingSaved();
+    }
+
+    @Test
+    void 완료_카드의_판정_횟수가_0이면_요청을_거부한다() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replaceFirst("\"comparisonCount\": 1", "\"comparisonCount\": 0");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+
+        assertNothingSaved();
+    }
+
+    @Test
+    void 미완료_카드에_맞춘_시간이_있으면_요청을_거부한다() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replaceFirst(
+                        "\"status\": \"INCOMPLETE\",\\s+\"solveTimeMs\": null",
+                        "\"status\": \"INCOMPLETE\",\\n      \"solveTimeMs\": 4000");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+
+        assertNothingSaved();
+    }
+
+    @Test
+    void 카드_제시_순서가_0이면_요청을_거부한다() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replaceFirst("\"roundNo\": 1", "\"roundNo\": 0");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors['cardResults[0].roundNo']").exists());
+
+        assertNothingSaved();
+    }
+
+    private void assertNothingSaved() {
         assertThat(gameSessionRepository.count()).isZero();
         assertThat(cardRoundRepository.count()).isZero();
     }

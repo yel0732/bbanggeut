@@ -43,6 +43,10 @@ app:
     secret: ${JWT_SECRET:local-dev-only-CHANGE-ME-this-is-not-a-real-secret}
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
+  local:
+    mock-principal-id: 1
+    mock-child-id: 15
+    mock-child-owner-id: 1
 
 logging:
   level:

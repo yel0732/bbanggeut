@@ -1,0 +1,158 @@
+package com.A501.backend.domain.conversation.controller;
+
+import static org.mockito.Mockito.doThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.A501.backend.domain.conversation.entity.ContextType;
+import com.A501.backend.domain.conversation.entity.ConversationGoal;
+import com.A501.backend.domain.conversation.entity.ConversationSession;
+import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
+import com.A501.backend.domain.conversation.exception.ConversationException;
+import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.service.ChildAccessVerifier;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class ConversationSessionControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ConversationSessionRepository conversationSessionRepository;
+
+    @MockitoBean
+    private ChildAccessVerifier childAccessVerifier;
+
+    @BeforeEach
+    void setUp() {
+        conversationSessionRepository.deleteAll();
+    }
+
+    @Test
+    void 정상_DAILY_요청은_세션을_생성하고_201을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dailyRequest(6)))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.matchesPattern(
+                        "/api/v1/conversations/conv_[0-9a-f]{32}")))
+                .andExpect(jsonPath("$.conversationId").value(org.hamcrest.Matchers.matchesPattern(
+                        "conv_[0-9a-f]{32}")))
+                .andExpect(jsonPath("$.childId").value(15))
+                .andExpect(jsonPath("$.status").value("READY"))
+                .andExpect(jsonPath("$.contextType").value("DAILY"))
+                .andExpect(jsonPath("$.conversationGoal").value("DIARY"))
+                .andExpect(jsonPath("$.questionCount").value(0))
+                .andExpect(jsonPath("$.maxQuestionCount").value(6))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty());
+    }
+
+    @Test
+    void 활성_세션이_있으면_409를_반환한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_existing", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dailyRequest(6)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("ACTIVE_CONVERSATION_EXISTS"));
+    }
+
+    @Test
+    void 접근_권한이_없으면_403을_반환한다() throws Exception {
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
+                .when(childAccessVerifier).verifyAccess(1L, 15L);
+
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dailyRequest(6)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("CHILD_ACCESS_DENIED"));
+    }
+
+    @Test
+    void 아이가_없으면_404를_반환한다() throws Exception {
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_NOT_FOUND))
+                .when(childAccessVerifier).verifyAccess(1L, 15L);
+
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dailyRequest(6)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("CHILD_NOT_FOUND"));
+    }
+
+    @Test
+    void 최대_질문_수를_벗어나면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(dailyRequest(7)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_MAX_QUESTION_COUNT"));
+    }
+
+    @Test
+    void 필수값이_없거나_Enum이_잘못되면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"contextType":"DAILY","gameSessionId":null,"maxQuestionCount":6}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"contextType":"UNKNOWN","conversationGoal":"DIARY","maxQuestionCount":6}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void GAME과_DAILY의_게임_세션_ID_조합이_잘못되면_400을_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"contextType":"GAME","gameSessionId":null,
+                                 "conversationGoal":"DIARY","maxQuestionCount":6}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_CONVERSATION_CONTEXT"));
+    }
+
+    @Test
+    void 존재하지_않는_게임_세션이면_404를_반환한다() throws Exception {
+        mockMvc.perform(post("/api/v1/children/15/conversations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"contextType":"GAME",
+                                 "gameSessionId":"550e8400-e29b-41d4-a716-446655440000",
+                                 "conversationGoal":"DIARY","maxQuestionCount":6}
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("GAME_SESSION_NOT_FOUND"));
+    }
+
+    private String dailyRequest(int maxQuestionCount) {
+        return """
+                {"contextType":"DAILY","gameSessionId":null,
+                 "conversationGoal":"DIARY","maxQuestionCount":%d}
+                """.formatted(maxQuestionCount);
+    }
+}

@@ -5,21 +5,34 @@ import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-import jakarta.validation.ConstraintViolation;
+import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
+import com.A501.backend.domain.conversation.exception.ConversationException;
+
 import jakarta.validation.ConstraintViolationException;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ConversationException.class)
+    public ResponseEntity<ErrorResponse> handleConversationException(ConversationException e) {
+        ConversationErrorCode errorCode = e.getErrorCode();
+        return ResponseEntity.status(errorCode.getHttpStatus())
+                .body(ErrorResponse.of(
+                        errorCode.getHttpStatus().value(),
+                        errorCode.name(),
+                        errorCode.getMessage()));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
@@ -30,24 +43,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "VALIDATION_FAILED",
                         "입력값 검증에 실패했습니다.", fieldErrors));
-    }
-
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ErrorResponse> handleConstraintViolationException(ConstraintViolationException e) {
-        Map<String, String> fieldErrors = new LinkedHashMap<>();
-        for (ConstraintViolation<?> violation : e.getConstraintViolations()) {
-            fieldErrors.put(violation.getPropertyPath().toString(), violation.getMessage());
-        }
-        return ResponseEntity.badRequest()
-                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "VALIDATION_FAILED",
-                        "입력값 검증에 실패했습니다.", fieldErrors));
-    }
-
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
-        return ResponseEntity.badRequest()
-                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "VALIDATION_FAILED",
-                        "요청 본문을 읽을 수 없습니다. 형식을 확인해주세요."));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -62,6 +57,20 @@ public class GlobalExceptionHandler {
         log.warn("Business exception: {} - {}", errorCode.getCode(), errorCode.getMessage());
         return ResponseEntity.status(errorCode.getStatus())
                 .body(ErrorResponse.of(errorCode.getStatus().value(), errorCode.getCode(), errorCode.getMessage()));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolationException(ConstraintViolationException e) {
+        return ResponseEntity.badRequest()
+                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "VALIDATION_FAILED",
+                        "입력값 검증에 실패했습니다."));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest()
+                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "BAD_REQUEST",
+                        "요청 본문을 읽을 수 없습니다."));
     }
 
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})

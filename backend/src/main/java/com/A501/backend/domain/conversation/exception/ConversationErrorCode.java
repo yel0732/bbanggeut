@@ -18,6 +18,7 @@ public enum ConversationErrorCode {
     GAME_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "게임 세션을 찾을 수 없습니다."),
     INVALID_CONVERSATION_CONTEXT(HttpStatus.BAD_REQUEST, "대화 맥락과 게임 세션 정보가 올바르지 않습니다."),
     INVALID_TERMINATION_REASON(HttpStatus.BAD_REQUEST, "종료 사유가 올바르지 않습니다."),
+    INVALID_SPEAKER(HttpStatus.BAD_REQUEST, "화자 필터가 올바르지 않습니다."),
     INVALID_SESSION_STATE(HttpStatus.CONFLICT, "현재 대화 세션 상태에서는 요청을 처리할 수 없습니다.");
 
     private final HttpStatus httpStatus;

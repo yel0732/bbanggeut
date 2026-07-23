@@ -4,6 +4,8 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
@@ -13,13 +15,17 @@ import com.A501.backend.domain.conversation.dto.request.CreateConversationReques
 import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
+import com.A501.backend.domain.conversation.dto.response.ConversationTurnListResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTurn;
+import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import com.A501.backend.domain.game.service.GameSessionService;
 
 import lombok.RequiredArgsConstructor;
@@ -35,6 +41,7 @@ public class ConversationSessionService {
     private static final Set<ConversationStatus> ACTIVE_STATUSES =
             EnumSet.of(ConversationStatus.READY, ConversationStatus.IN_PROGRESS);
     private final ConversationSessionRepository conversationSessionRepository;
+    private final ConversationTurnRepository conversationTurnRepository;
     private final GameSessionService gameSessionService;
     private final ChildAccessVerifier childAccessVerifier;
     private final CurrentMemberProvider currentMemberProvider;
@@ -66,6 +73,25 @@ public class ConversationSessionService {
         return ConversationSessionResponse.from(session);
     }
 
+    public ConversationTurnListResponse getConversationTurns(
+            String conversationId,
+            int page,
+            int size,
+            String speaker) {
+        ConversationSession session = findConversation(conversationId);
+        verifyConversationAccess(session);
+
+        Speaker speakerFilter = parseSpeaker(speaker);
+        PageRequest pageable = PageRequest.of(page, size);
+        Page<ConversationTurn> turnPage = speakerFilter == null
+                ? conversationTurnRepository.findByConversationIdOrderByTurnSeqAsc(
+                        conversationId, pageable)
+                : conversationTurnRepository.findByConversationIdAndSpeakerOrderByTurnSeqAsc(
+                        conversationId, speakerFilter, pageable);
+
+        return ConversationTurnListResponse.from(conversationId, turnPage);
+    }
+
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CompleteConversationResponse completeConversation(
             String conversationId,
@@ -92,6 +118,17 @@ public class ConversationSessionService {
             return TerminationReason.from(reason);
         } catch (IllegalArgumentException exception) {
             throw new ConversationException(ConversationErrorCode.INVALID_TERMINATION_REASON);
+        }
+    }
+
+    private Speaker parseSpeaker(String speaker) {
+        if (speaker == null) {
+            return null;
+        }
+        try {
+            return Speaker.valueOf(speaker);
+        } catch (IllegalArgumentException exception) {
+            throw new ConversationException(ConversationErrorCode.INVALID_SPEAKER);
         }
     }
 

@@ -25,6 +25,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
     open-in-view: false
 
 logging:
@@ -51,6 +53,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
     open-in-view: false
 
 management:

@@ -1,8 +1,9 @@
 package com.A501.backend.domain.conversation.dto.response;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import com.A501.backend.common.util.ApiDateTimeMapper;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
@@ -17,7 +18,7 @@ public record CreateConversationResponse(
         ConversationGoal conversationGoal,
         int questionCount,
         int maxQuestionCount,
-        LocalDateTime createdAt) {
+        OffsetDateTime createdAt) {
 
     public static CreateConversationResponse from(ConversationSession session) {
         return new CreateConversationResponse(
@@ -29,6 +30,6 @@ public record CreateConversationResponse(
                 session.getConversationGoal(),
                 session.getQuestionCount(),
                 session.getMaxQuestionCount(),
-                session.getCreatedAt());
+                ApiDateTimeMapper.utcToKst(session.getCreatedAt()));
     }
 }

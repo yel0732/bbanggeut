@@ -19,4 +19,15 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select report from DailyReport report where report.id = :reportId")
     Optional<DailyReport> findByIdForUpdate(@Param("reportId") Long reportId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select report
+            from DailyReport report
+            where report.childId = :childId
+              and report.reportDate = :reportDate
+            """)
+    Optional<DailyReport> findByChildIdAndReportDateForUpdate(
+            @Param("childId") Long childId,
+            @Param("reportDate") LocalDate reportDate);
 }

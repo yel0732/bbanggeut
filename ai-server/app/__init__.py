@@ -1,0 +1,2 @@
+"""AI realtime application package."""
+

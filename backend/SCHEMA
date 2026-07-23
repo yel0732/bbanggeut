@@ -61,10 +61,33 @@ CREATE TABLE game_session (
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
-<<<<<<< backend/SCHEMA
+-- CARDTASK-13: card_round ---------------------------------------------------
 
-=======
->>>>>>> backend/SCHEMA
+CREATE TABLE card_round (
+    card_round_id          BINARY(16)   NOT NULL,
+    game_session_id        BINARY(16)   NOT NULL,
+    round_no               INT          NOT NULL,
+    status                 VARCHAR(20)  NOT NULL,
+    comparison_count       INT          NOT NULL,
+    wrong_count            INT          NOT NULL,
+    final_grade            VARCHAR(20)  NULL,
+    solve_time_ms          BIGINT       NULL,
+    created_at             DATETIME(6)  NOT NULL,
+    PRIMARY KEY (card_round_id),
+    CONSTRAINT uk_card_round_session_round UNIQUE (game_session_id, round_no),
+    CONSTRAINT fk_card_round_game_session
+        FOREIGN KEY (game_session_id) REFERENCES game_session (game_session_id)
+);
+
+CREATE INDEX idx_card_round_game_session ON card_round (game_session_id);
+
+-- round_no is the presentation order of a card pair within a game session, starting at 1.
+-- status: COMPLETED | INCOMPLETE
+-- final_grade: PERFECT | EXCELLENT | GOOD
+-- Completed rounds require final_grade and solve_time_ms; incomplete rounds store neither.
+-- Difficulty and hint usage will be added when the Should scope is implemented.
+-- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/CardRound.java
+
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (

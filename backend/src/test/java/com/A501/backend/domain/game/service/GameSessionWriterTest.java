@@ -15,27 +15,29 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.game.entity.CardRound;
+import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
+import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.metric.CardResultStatus;
 import com.A501.backend.domain.game.metric.CognitiveGrade;
+import com.A501.backend.domain.game.metric.FruitResultCount;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
+import com.A501.backend.domain.game.repository.FruitNinjaFruitResultRepository;
+import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, GameSessionWriter.class})
 class GameSessionWriterTest {
 
-    @Autowired
-    private GameSessionWriter gameSessionWriter;
-
-    @Autowired
-    private GameSessionRepository gameSessionRepository;
-
-    @Autowired
-    private CardRoundRepository cardRoundRepository;
+    @Autowired GameSessionWriter gameSessionWriter;
+    @Autowired GameSessionRepository gameSessionRepository;
+    @Autowired CardRoundRepository cardRoundRepository;
+    @Autowired FruitNinjaResultRepository fruitNinjaResultRepository;
+    @Autowired FruitNinjaFruitResultRepository fruitNinjaFruitResultRepository;
 
     @Test
-    void 카드_결과_저장에_실패하면_게임_세션도_저장하지_않는다() {
+    void rollsBackSessionWhenCardRoundSaveFails() {
         GameSession gameSession = createGameSession();
         CardRound first = completedRound(gameSession.getGameSessionId(), 1);
         CardRound duplicate = completedRound(gameSession.getGameSessionId(), 1);
@@ -47,6 +49,29 @@ class GameSessionWriterTest {
 
         assertThat(gameSessionRepository.findById(gameSession.getGameSessionId())).isEmpty();
         assertThat(cardRoundRepository.count()).isZero();
+    }
+
+    @Test
+    void rollsBackAllFruitDataWhenFruitDetailSaveFails() {
+        GameSession gameSession = createGameSession();
+        FruitNinjaResult summary = FruitNinjaResult.create(
+                gameSession.getGameSessionId(), "fruit-v1", 4, 2);
+        FruitNinjaFruitResult first = FruitNinjaFruitResult.create(
+                gameSession.getGameSessionId(),
+                new FruitResultCount("APPLE", 2, 1));
+        FruitNinjaFruitResult duplicate = FruitNinjaFruitResult.create(
+                gameSession.getGameSessionId(),
+                new FruitResultCount("APPLE", 2, 1));
+
+        assertThatThrownBy(() -> gameSessionWriter.saveFruitNinjaResult(
+                gameSession,
+                summary,
+                List.of(first, duplicate)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(gameSessionRepository.findById(gameSession.getGameSessionId())).isEmpty();
+        assertThat(fruitNinjaResultRepository.findById(gameSession.getGameSessionId())).isEmpty();
+        assertThat(fruitNinjaFruitResultRepository.count()).isZero();
     }
 
     private GameSession createGameSession() {

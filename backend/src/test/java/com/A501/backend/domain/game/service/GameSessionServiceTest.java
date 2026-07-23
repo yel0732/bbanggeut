@@ -18,6 +18,7 @@ import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
 import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.service.FruitNinjaResultCalculator;
 
 @ExtendWith(MockitoExtension.class)
 class GameSessionServiceTest {
@@ -28,11 +29,15 @@ class GameSessionServiceTest {
     @Mock
     private GameSessionWriter gameSessionWriter;
 
+    @Mock
+    private FruitNinjaResultCalculator fruitNinjaResultCalculator;
+
     @Test
     void 게임_세션이_요청한_아이의_것인지_확인한다() {
         GameSession session = createSession(UUID.randomUUID());
         when(gameSessionRepository.findById(session.getGameSessionId())).thenReturn(Optional.of(session));
-        GameSessionService service = new GameSessionService(gameSessionRepository, gameSessionWriter);
+        GameSessionService service = new GameSessionService(
+                gameSessionRepository, gameSessionWriter, fruitNinjaResultCalculator);
 
         assertThat(service.existsForChild(session.getGameSessionId(), 15L)).isTrue();
         assertThat(service.existsForChild(session.getGameSessionId(), 99L)).isFalse();
@@ -48,7 +53,8 @@ class GameSessionServiceTest {
                 .thenReturn(Optional.of(existingSession));
         when(gameSessionWriter.saveAndFlush(any(GameSession.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate client_play_id"));
-        GameSessionService service = new GameSessionService(gameSessionRepository, gameSessionWriter);
+        GameSessionService service = new GameSessionService(
+                gameSessionRepository, gameSessionWriter, fruitNinjaResultCalculator);
 
         GameSessionResponse response = service.saveCompletedResult(request);
 

@@ -12,13 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.domain.game.dto.request.SaveDobbleCardResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
+import com.A501.backend.domain.game.dto.request.SaveFruitNinjaResultRequest;
 import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.GameSession;
+import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
+import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
 import com.A501.backend.domain.game.metric.DobbleResultCalculator;
 import com.A501.backend.domain.game.metric.DobbleResultMetrics;
 import com.A501.backend.domain.game.metric.GameMetricType;
+import com.A501.backend.domain.game.metric.FruitNinjaCalculationResult;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -30,6 +34,7 @@ public class GameSessionService {
 
     private final GameSessionRepository gameSessionRepository;
     private final GameSessionWriter gameSessionWriter;
+    private final FruitNinjaResultCalculator fruitNinjaResultCalculator;
 
     public boolean existsForChild(UUID gameSessionId, Long childId) {
         return gameSessionRepository.findById(gameSessionId)
@@ -50,6 +55,9 @@ public class GameSessionService {
         if (request.gameType() == GameMetricType.DOBBLE) {
             return saveNewDobbleSession(request);
         }
+        if (request.gameType() == GameMetricType.FRUIT_NINJA) {
+            return saveNewFruitNinjaSession(request);
+        }
         if (request.score() == null) {
             throw new IllegalArgumentException("도블 이외의 게임 결과에는 점수가 필요합니다.");
         }
@@ -67,6 +75,51 @@ public class GameSessionService {
 
         try {
             return GameSessionResponse.from(gameSessionWriter.saveAndFlush(gameSession));
+        } catch (DataIntegrityViolationException e) {
+            return gameSessionRepository.findByClientPlayId(request.clientPlayId())
+                    .map(GameSessionResponse::from)
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    private GameSessionResponse saveNewFruitNinjaSession(SaveGameResultRequest request) {
+        SaveFruitNinjaResultRequest requestedResult = request.fruitNinjaResult();
+        if (requestedResult == null) {
+            throw new IllegalArgumentException("후르츠 게임 상세 결과는 필수입니다.");
+        }
+
+        FruitNinjaCalculationResult calculated = fruitNinjaResultCalculator.calculate(
+                requestedResult.rulesVersion(),
+                requestedResult.totalFruitCount(),
+                requestedResult.slicedFruitCount(),
+                requestedResult.toMetrics());
+        if (request.playDurationSeconds() != calculated.plannedDurationSeconds()) {
+            throw new IllegalArgumentException("정상 완료된 후르츠 게임만 저장할 수 있습니다.");
+        }
+
+        GameSession gameSession = GameSession.create(
+                request.childId(),
+                request.gameId(),
+                request.clientPlayId(),
+                null,
+                request.selectedAt(),
+                request.playStartedAt(),
+                request.completedAt(),
+                request.playDurationSeconds(),
+                calculated.calculatedScore());
+        FruitNinjaResult fruitNinjaResult = FruitNinjaResult.create(
+                gameSession.getGameSessionId(),
+                calculated.rulesVersion(),
+                calculated.totalFruitCount(),
+                calculated.slicedFruitCount());
+        List<FruitNinjaFruitResult> fruitResults = calculated.fruitResults().stream()
+                .map(result -> FruitNinjaFruitResult.create(
+                        gameSession.getGameSessionId(), result))
+                .toList();
+
+        try {
+            return GameSessionResponse.from(gameSessionWriter.saveFruitNinjaResult(
+                    gameSession, fruitNinjaResult, fruitResults));
         } catch (DataIntegrityViolationException e) {
             return gameSessionRepository.findByClientPlayId(request.clientPlayId())
                     .map(GameSessionResponse::from)

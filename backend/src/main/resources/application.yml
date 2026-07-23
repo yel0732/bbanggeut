@@ -13,6 +13,17 @@ report:
     cron: ${REPORT_DAILY_CRON:0 0 19 * * *}
     zone: Asia/Seoul
 
+app:
+  jwt:
+    access-token-expiry-minutes: 30
+    signup-token-expiry-minutes: 10
+    link-token-expiry-minutes: 10
+  refresh-token:
+    remember-me-expiry-days: 60
+    default-expiry-days: 1
+  cookie:
+    secure: true
+
 ---
 # 로컬 개발용: H2 인메모리 DB
 spring:
@@ -41,15 +52,19 @@ spring:
           time_zone: UTC
     open-in-view: false
 
-logging:
-  level:
-    org.hibernate.SQL: debug
-
 app:
+  jwt:
+    secret: ${JWT_SECRET:local-dev-only-CHANGE-ME-this-is-not-a-real-secret}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
   local:
     mock-principal-id: 1
     mock-child-id: 15
     mock-child-owner-id: 1
+
+logging:
+  level:
+    org.hibernate.SQL: debug
 
 ---
 # 운영용: MySQL (환경변수로 주입)
@@ -70,6 +85,12 @@ spring:
         jdbc:
           time_zone: UTC
     open-in-view: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID}
 
 management:
   endpoints:

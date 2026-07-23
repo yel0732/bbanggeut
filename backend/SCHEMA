@@ -37,6 +37,31 @@ CREATE INDEX idx_conversation_session_status_updated ON conversation_session (st
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationSession.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
 
+
+<<<<<<< backend/SCHEMA
+-- GAME-01: game_session -----------------------------------------------------
+
+CREATE TABLE game_session (
+    game_session_id       BINARY(16)   NOT NULL,
+    child_id              BIGINT       NOT NULL,
+    game_id               BIGINT       NOT NULL,
+    client_play_id        BINARY(16)   NOT NULL,
+    difficulty_code       VARCHAR(30)  NULL,
+    selected_at           DATETIME(6)  NOT NULL,
+    play_started_at       DATETIME(6)  NOT NULL,
+    completed_at          DATETIME(6)  NOT NULL,
+    play_duration_seconds INT          NOT NULL,
+    score                 INT          NOT NULL,
+    created_at            DATETIME(6)  NOT NULL,
+    PRIMARY KEY (game_session_id),
+    CONSTRAINT uk_game_session_client_play_id UNIQUE (client_play_id)
+);
+
+-- game_session_id, client_play_id는 UUID를 MySQL BINARY(16)으로 저장한다.
+-- difficulty_code는 난이도 정책 확정 전까지 NULL을 허용한다.
+-- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
+=======
 -- DIARY-1-T02: conversation_turn -----------------------------------------
 
 CREATE TABLE conversation_turn (
@@ -67,3 +92,4 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+>>>>>>> backend/SCHEMA

@@ -29,6 +29,16 @@ class GameSessionServiceTest {
     private GameSessionWriter gameSessionWriter;
 
     @Test
+    void 게임_세션이_요청한_아이의_것인지_확인한다() {
+        GameSession session = createSession(UUID.randomUUID());
+        when(gameSessionRepository.findById(session.getGameSessionId())).thenReturn(Optional.of(session));
+        GameSessionService service = new GameSessionService(gameSessionRepository, gameSessionWriter);
+
+        assertThat(service.existsForChild(session.getGameSessionId(), 15L)).isTrue();
+        assertThat(service.existsForChild(session.getGameSessionId(), 99L)).isFalse();
+    }
+
+    @Test
     void 동시_요청으로_UNIQUE_충돌이_발생하면_기존_세션을_반환한다() {
         UUID clientPlayId = UUID.randomUUID();
         SaveGameResultRequest request = createRequest(clientPlayId);

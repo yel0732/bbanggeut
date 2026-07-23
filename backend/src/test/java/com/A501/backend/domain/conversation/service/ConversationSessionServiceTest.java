@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +26,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
@@ -31,14 +35,18 @@ import com.A501.backend.domain.conversation.dto.request.CreateConversationReques
 import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
+import com.A501.backend.domain.conversation.dto.response.ConversationTurnListResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTurn;
+import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import com.A501.backend.domain.game.service.GameSessionService;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +54,9 @@ class ConversationSessionServiceTest {
 
     @Mock
     private ConversationSessionRepository conversationSessionRepository;
+
+    @Mock
+    private ConversationTurnRepository conversationTurnRepository;
 
     @Mock
     private GameSessionService gameSessionService;
@@ -65,6 +76,7 @@ class ConversationSessionServiceTest {
     void setUp() {
         service = new ConversationSessionService(
                 conversationSessionRepository,
+                conversationTurnRepository,
                 gameSessionService,
                 childAccessVerifier,
                 currentMemberProvider,
@@ -270,6 +282,73 @@ class ConversationSessionServiceTest {
         assertCompleteError("conv_invalid_reason", "UNKNOWN", ConversationErrorCode.INVALID_TERMINATION_REASON);
 
         verify(conversationSessionRepository, never()).findById(any());
+    }
+
+    @Test
+    void 대화_턴을_turnSeq_순서와_KST_시각으로_조회한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_turns_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        ConversationTurn childTurn = ConversationTurn.createChildCompleted(
+                "turn_002", "conv_turns_001", 2, "재미있었어요",
+                new BigDecimal("0.9300"),
+                LocalDateTime.of(2026, 7, 22, 1, 1),
+                LocalDateTime.of(2026, 7, 22, 1, 1, 3));
+        PageRequest pageable = PageRequest.of(0, 50);
+        when(conversationSessionRepository.findById("conv_turns_001"))
+                .thenReturn(Optional.of(session));
+        when(conversationTurnRepository.findByConversationIdOrderByTurnSeqAsc(
+                "conv_turns_001", pageable))
+                .thenReturn(new PageImpl<>(List.of(childTurn), pageable, 1));
+
+        ConversationTurnListResponse response =
+                service.getConversationTurns("conv_turns_001", 0, 50, null);
+
+        verify(childAccessVerifier).verifyAccess(7L, 15L);
+        assertThat(response.conversationId()).isEqualTo("conv_turns_001");
+        assertThat(response.totalElements()).isEqualTo(1);
+        assertThat(response.turns()).singleElement().satisfies(turn -> {
+            assertThat(turn.turnSeq()).isEqualTo(2);
+            assertThat(turn.speaker()).isEqualTo(Speaker.CHILD);
+            assertThat(turn.sttConfidence()).isEqualByComparingTo("0.9300");
+            assertThat(turn.startedAt()).isEqualTo(OffsetDateTime.of(
+                    2026, 7, 22, 10, 1, 0, 0, ZoneOffset.ofHours(9)));
+        });
+    }
+
+    @Test
+    void 화자_필터가_있으면_화자별_조회_메서드를_사용한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_turns_002", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        PageRequest pageable = PageRequest.of(1, 10);
+        when(conversationSessionRepository.findById("conv_turns_002"))
+                .thenReturn(Optional.of(session));
+        when(conversationTurnRepository.findByConversationIdAndSpeakerOrderByTurnSeqAsc(
+                "conv_turns_002", Speaker.AI, pageable))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        ConversationTurnListResponse response =
+                service.getConversationTurns("conv_turns_002", 1, 10, "AI");
+
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(10);
+        assertThat(response.turns()).isEmpty();
+    }
+
+    @Test
+    void 허용되지_않은_화자_필터는_INVALID_SPEAKER를_반환한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_turns_invalid", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        when(conversationSessionRepository.findById("conv_turns_invalid"))
+                .thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() ->
+                service.getConversationTurns("conv_turns_invalid", 0, 50, "PARENT"))
+                .isInstanceOfSatisfying(ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ConversationErrorCode.INVALID_SPEAKER));
+
+        verify(conversationTurnRepository, never())
+                .findByConversationIdOrderByTurnSeqAsc(any(), any());
     }
 
     private CreateConversationRequest dailyRequest(Integer maxQuestionCount) {

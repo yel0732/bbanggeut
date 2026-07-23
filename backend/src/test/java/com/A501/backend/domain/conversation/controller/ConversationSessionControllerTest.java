@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.math.BigDecimal;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,10 +30,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
+import com.A501.backend.domain.conversation.entity.ConversationTurn;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import com.A501.backend.domain.conversation.service.ChildAccessVerifier;
 
 @SpringBootTest
@@ -46,11 +49,15 @@ class ConversationSessionControllerTest {
     @Autowired
     private ConversationSessionRepository conversationSessionRepository;
 
+    @Autowired
+    private ConversationTurnRepository conversationTurnRepository;
+
     @MockitoBean
     private ChildAccessVerifier childAccessVerifier;
 
     @BeforeEach
     void setUp() {
+        conversationTurnRepository.deleteAll();
         conversationSessionRepository.deleteAll();
     }
 
@@ -334,6 +341,135 @@ class ConversationSessionControllerTest {
                 .when(childAccessVerifier).verifyAccess(1L, 15L);
 
         mockMvc.perform(get("/api/v1/conversations/conv_denied_api"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("CONVERSATION_ACCESS_DENIED"));
+    }
+
+    @Test
+    void 대화_턴을_순서대로_조회하고_중단_턴과_STT_신뢰도를_포함한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_turns_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 1, 0);
+        ConversationTurn aiCompleted = ConversationTurn.createAiGenerating(
+                "turn_api_001", "conv_turns_api", 1, "오늘 어땠어?",
+                "resp_api_001", startedAt);
+        aiCompleted.complete(startedAt.plusSeconds(2));
+        ConversationTurn childCompleted = ConversationTurn.createChildCompleted(
+                "turn_api_002", "conv_turns_api", 2, "재미있었어요",
+                new BigDecimal("0.9300"), startedAt.plusSeconds(3), startedAt.plusSeconds(5));
+        ConversationTurn aiInterrupted = ConversationTurn.createAiInterrupted(
+                "turn_api_003", "conv_turns_api", 3, "그럼 가장...",
+                "resp_api_003", startedAt.plusSeconds(6), startedAt.plusSeconds(7),
+                "CHILD_BARGE_IN", "int_api_001");
+        conversationTurnRepository.saveAllAndFlush(
+                java.util.List.of(aiInterrupted, childCompleted, aiCompleted));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_turns_api/turns"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conversationId").value("conv_turns_api"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.turns[0].turnId").value("turn_api_001"))
+                .andExpect(jsonPath("$.turns[0].speaker").value("AI"))
+                .andExpect(jsonPath("$.turns[0].startedAt").value("2026-07-22T10:00:00+09:00"))
+                .andExpect(jsonPath("$.turns[1].turnId").value("turn_api_002"))
+                .andExpect(jsonPath("$.turns[1].speaker").value("CHILD"))
+                .andExpect(jsonPath("$.turns[1].sttConfidence").value(0.93))
+                .andExpect(jsonPath("$.turns[2].turnId").value("turn_api_003"))
+                .andExpect(jsonPath("$.turns[2].status").value("INTERRUPTED"))
+                .andExpect(jsonPath("$.turns[2].completedAt").isEmpty());
+    }
+
+    @Test
+    void 화자_필터와_페이지_조건을_적용한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_filter_api", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 1, 0);
+        ConversationTurn first = ConversationTurn.createChildCompleted(
+                "turn_filter_001", "conv_filter_api", 1, "첫 답변",
+                null, startedAt, startedAt.plusSeconds(1));
+        ConversationTurn second = ConversationTurn.createChildCompleted(
+                "turn_filter_002", "conv_filter_api", 2, "둘째 답변",
+                null, startedAt.plusSeconds(2), startedAt.plusSeconds(3));
+        conversationTurnRepository.saveAllAndFlush(java.util.List.of(first, second));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_filter_api/turns")
+                        .param("speaker", "CHILD")
+                        .param("page", "1")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.turns[0].turnId").value("turn_filter_002"));
+    }
+
+    @Test
+    void 잘못된_화자와_페이지_조건은_400을_반환한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_invalid_filter", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_invalid_filter/turns")
+                        .param("speaker", "PARENT"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_SPEAKER"));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_invalid_filter/turns")
+                        .param("page", "-1")
+                        .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 없는_대화의_턴_목록은_404를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/conversations/conv_turns_missing/turns"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("CONVERSATION_NOT_FOUND"));
+    }
+
+    @Test
+    void 숫자가_아닌_페이지_조건은_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/conversations/conv_any/turns")
+                        .param("page", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_any/turns")
+                        .param("size", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void 턴이_없거나_페이지를_초과하면_빈_목록을_반환한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_empty_turns", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_empty_turns/turns"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turns").isArray())
+                .andExpect(jsonPath("$.turns").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/v1/conversations/conv_empty_turns/turns")
+                        .param("page", "3")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(3))
+                .andExpect(jsonPath("$.turns").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void 접근할_수_없는_대화의_턴_목록은_403을_반환한다() throws Exception {
+        conversationSessionRepository.save(ConversationSession.create(
+                "conv_turns_denied", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6));
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
+                .when(childAccessVerifier).verifyAccess(1L, 15L);
+
+        mockMvc.perform(get("/api/v1/conversations/conv_turns_denied/turns"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("CONVERSATION_ACCESS_DENIED"));
     }

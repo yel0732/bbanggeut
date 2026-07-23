@@ -82,7 +82,7 @@ class ReportGameSnapshotServiceTest {
                         180,
                         3500,
                         new DobbleResultMetrics(
-                                0, 0, 0, 0, 0, 0, List.of())),
+                                0, 0, 0, 0, 0, List.of())),
                 source(
                         fruitSessionId,
                         2L,
@@ -182,7 +182,7 @@ class ReportGameSnapshotServiceTest {
                         200,
                         9999,
                         new DobbleResultMetrics(
-                                0, 0, 0, 0, 0, 0, List.of()))));
+                                0, 0, 0, 0, 0, List.of()))));
         snapshotService.createSnapshots(dailyReport.getId());
 
         var snapshot = reportGameResultRepository

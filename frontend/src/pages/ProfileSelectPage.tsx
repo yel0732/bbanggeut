@@ -54,54 +54,21 @@ export function ProfileSelectPage() {
       if (lockTimerRef.current) {
         window.clearInterval(lockTimerRef.current)
       }
+      pinTimersRef.current.forEach(window.clearTimeout)
+      pinTimersRef.current = []
     }
   }, [])
-
-  useEffect(() => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    audio.volume = 0.4
-
-    void audio
-      .play()
-      .then(() => {
-        setIsBgmPlaying(true)
-      })
-      .catch(() => {
-        setIsBgmPlaying(false)
-      })
-  }, [])
-
-  const toggleBgm = async () => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    if (audio.paused) {
-      try {
-        await audio.play()
-        setIsBgmPlaying(true)
-      } catch {
-        setIsBgmPlaying(false)
-      }
-      return
-    }
-
-    audio.pause()
-    setIsBgmPlaying(false)
-  }
 
   const clearLockTimer = () => {
     if (lockTimerRef.current) {
       window.clearInterval(lockTimerRef.current)
       lockTimerRef.current = null
     }
+  }
+
+  const clearPinTimers = () => {
+    pinTimersRef.current.forEach(window.clearTimeout)
+    pinTimersRef.current = []
   }
 
   const openPin = () => {
@@ -114,6 +81,7 @@ export function ProfileSelectPage() {
 
   const closePin = () => {
     clearLockTimer()
+    clearPinTimers()
     setShowPin(false)
     setPin('')
     setPinMessage('')
@@ -154,13 +122,14 @@ export function ProfileSelectPage() {
     setIsPinError(false)
 
     if (next.length === PIN_LENGTH) {
-      window.setTimeout(() => {
+      const confirmTimerId = window.setTimeout(() => {
         if (next === DEMO_PIN) {
           setIsPinError(false)
           setPinMessage('확인되었습니다 ✓')
-          window.setTimeout(() => {
+          const navigateTimerId = window.setTimeout(() => {
             navigate('/parent')
           }, 500)
+          pinTimersRef.current.push(navigateTimerId)
           return
         }
 

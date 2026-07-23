@@ -6,6 +6,12 @@ from app.dialogue.parser import (
     SlotValidationIssue,
     parse_diary_slots,
 )
+from app.dialogue.question_prompts import (
+    QUESTION_TARGET_GUIDANCE,
+    DiaryQuestionGenerationRequest,
+    QuestionGenerationPrompt,
+    build_question_generation_prompt,
+)
 from app.dialogue.prompts import (
     SlotExtractionPrompt,
     build_slot_extraction_prompt,
@@ -25,15 +31,19 @@ from app.dialogue.target_selector import (
 )
 
 __all__ = [
+    "QUESTION_TARGET_GUIDANCE",
     "QUESTION_TARGET_PRIORITY",
     "DiaryAnswerAnalysisRequest",
+    "DiaryQuestionGenerationRequest",
     "DiarySlots",
     "GameContext",
+    "QuestionGenerationPrompt",
     "QuestionTarget",
     "SlotExtractionPrompt",
     "SlotParseError",
     "SlotParseErrorCode",
     "SlotValidationIssue",
+    "build_question_generation_prompt",
     "build_slot_extraction_prompt",
     "build_slot_repair_instruction",
     "diary_slots_json_schema",

@@ -12,7 +12,7 @@ DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는�
 CREATE TABLE conversation_session (
     conversation_id        VARCHAR(40)  NOT NULL,
     child_id               BIGINT       NOT NULL,
-    game_session_id        BIGINT       NULL,
+    game_session_id        BINARY(16)       NULL,
     status                 VARCHAR(20)  NOT NULL,
     context_type           VARCHAR(20)  NOT NULL,
     conversation_goal      VARCHAR(20)  NOT NULL,

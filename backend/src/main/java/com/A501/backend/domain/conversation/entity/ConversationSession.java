@@ -1,6 +1,7 @@
 package com.A501.backend.domain.conversation.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import com.A501.backend.common.entity.BaseTimeEntity;
 
@@ -38,7 +39,7 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
     private Long childId;
 
     @Column(name = "game_session_id")
-    private Long gameSessionId;
+    private UUID gameSessionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -74,7 +75,7 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
     private ConversationSession(
             String conversationId,
             Long childId,
-            Long gameSessionId,
+            UUID gameSessionId,
             ContextType contextType,
             ConversationGoal conversationGoal,
             int maxQuestionCount) {
@@ -92,7 +93,7 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
     public static ConversationSession create(
             String conversationId,
             Long childId,
-            Long gameSessionId,
+            UUID gameSessionId,
             ContextType contextType,
             ConversationGoal conversationGoal,
             int maxQuestionCount) {
@@ -104,6 +105,36 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
                 .conversationGoal(conversationGoal)
                 .maxQuestionCount(maxQuestionCount)
                 .build();
+    }
+
+    public void start() {
+        transitionTo(ConversationStatus.IN_PROGRESS);
+    }
+
+    public void complete() {
+        transitionTo(ConversationStatus.COMPLETED);
+    }
+
+    public void abort() {
+        transitionTo(ConversationStatus.ABORTED);
+    }
+
+    public void expire() {
+        transitionTo(ConversationStatus.EXPIRED);
+    }
+
+    public void fail() {
+        transitionTo(ConversationStatus.FAILED);
+    }
+
+    private void transitionTo(ConversationStatus nextStatus) {
+        if (status == nextStatus) {
+            return;
+        }
+        if (!status.canTransitionTo(nextStatus)) {
+            throw new IllegalStateException("대화 세션 상태를 " + status + "에서 " + nextStatus + "로 변경할 수 없습니다.");
+        }
+        status = nextStatus;
     }
 
     @Override

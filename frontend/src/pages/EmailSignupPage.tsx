@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
@@ -7,6 +7,8 @@ import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const boardSize = {
@@ -17,9 +19,19 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 const MIN_PASSWORD_LENGTH = 8
 const MIN_SIGNUP_AGE = 19
 
+function latestAllowedBirthDate() {
+  const today = new Date()
+  return new Date(
+    today.getFullYear() - MIN_SIGNUP_AGE,
+    today.getMonth(),
+    today.getDate(),
+  )
+}
+
 function ageOf(birth: string) {
   if (!birth) return null
-  const birthDate = new Date(birth)
+  const [year, month, day] = birth.split('-').map(Number)
+  const birthDate = new Date(year, month - 1, day)
   const now = new Date()
   let age = now.getFullYear() - birthDate.getFullYear()
   const monthDiff = now.getMonth() - birthDate.getMonth()
@@ -34,8 +46,7 @@ function ageOf(birth: string) {
 
 export function EmailSignupPage() {
   const navigate = useNavigate()
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [isBgmPlaying, setIsBgmPlaying] = useState(false)
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
 
   const [email, setEmail] = useState('')
   const [emailChecked, setEmailChecked] = useState(false)
@@ -43,52 +54,13 @@ export function EmailSignupPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [birth, setBirth] = useState('')
+  const maxBirthDate = useMemo(latestAllowedBirthDate, [])
 
   const emailValid = EMAIL_PATTERN.test(email)
   const passwordValid = password.length >= MIN_PASSWORD_LENGTH
   const age = useMemo(() => ageOf(birth), [birth])
   const ageValid = age !== null && age >= MIN_SIGNUP_AGE
   const canSubmit = emailChecked && emailAvailable && passwordValid && ageValid
-
-  useEffect(() => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    audio.volume = 0.4
-
-    void audio
-      .play()
-      .then(() => {
-        setIsBgmPlaying(true)
-      })
-      .catch(() => {
-        setIsBgmPlaying(false)
-      })
-  }, [])
-
-  const toggleBgm = async () => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    if (audio.paused) {
-      try {
-        await audio.play()
-        setIsBgmPlaying(true)
-      } catch {
-        setIsBgmPlaying(false)
-      }
-      return
-    }
-
-    audio.pause()
-    setIsBgmPlaying(false)
-  }
 
   const checkEmail = () => {
     if (!emailValid) {
@@ -129,14 +101,8 @@ export function EmailSignupPage() {
       ? '안전한 비밀번호예요!'
       : '8자 이상 입력해요.'
     : ''
-  const ageMessage = birth
-    ? ageValid
-      ? `만 ${age}세 · 가입할 수 있어요!`
-      : '만 19세 이상만 가입할 수 있어요.'
-    : ''
-
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)] p-4 text-white">
+    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)] p-4 text-white">
       <audio
         aria-label="초록 모험 시작 배경 음악"
         autoPlay
@@ -266,22 +232,19 @@ export function EmailSignupPage() {
           {passwordMessage}
         </div>
 
-        <input
-          className="absolute top-[65%] left-[17.5%] z-20 h-[7%] w-[66.5%] border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] focus:outline-none"
-          onChange={(event) => setBirth(event.target.value)}
-          style={jua}
-          type="date"
-          value={birth}
-        />
         <div
-          className="absolute top-[72%] left-[17.5%] z-20 text-[clamp(11px,2.8vw,13px)]"
-          style={{ ...jua, color: ageValid ? '#3a7d2c' : '#c7563a' }}
+          className="absolute top-[65%] left-[17.5%] z-20 h-[7%] w-[66.5%] overflow-hidden rounded-full pr-2"
+          style={jua}
         >
-          {ageMessage}
+          <BirthDatePicker
+            maxDate={maxBirthDate}
+            onChange={setBirth}
+            value={birth}
+          />
         </div>
 
         <button
-          className="absolute top-[76%] left-[17%] z-20 h-[9%] w-[66%] rounded-full border-none text-[clamp(20px,6vw,27px)] text-white transition active:translate-y-0.5"
+          className="absolute top-[75.5%] left-[17%] z-20 h-[9%] w-[66%] rounded-full border-none text-[clamp(20px,6vw,27px)] text-white transition active:translate-y-0.5"
           onClick={submit}
           style={{
             ...jua,

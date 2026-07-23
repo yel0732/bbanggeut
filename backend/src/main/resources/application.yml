@@ -37,11 +37,19 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
     open-in-view: false
 
 logging:
   level:
     org.hibernate.SQL: debug
+
+app:
+  local:
+    mock-principal-id: 1
+    mock-child-id: 15
+    mock-child-owner-id: 1
 
 ---
 # 운영용: MySQL (환경변수로 주입)
@@ -57,6 +65,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
     open-in-view: false
 
 management:

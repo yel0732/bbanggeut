@@ -22,6 +22,50 @@
   --shadow-panel: 0 18px 45px rgba(27, 46, 41, 0.08);
 }
 
+@keyframes child-home-dino-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes child-home-asset-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes child-home-leaf-sway {
+  0%,
+  100% {
+    transform: rotate(-1.5deg);
+  }
+  50% {
+    transform: rotate(1.5deg);
+  }
+}
+
+@keyframes child-home-edge-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.28))
+      drop-shadow(0 0 3px rgba(255, 236, 140, 0.7))
+      drop-shadow(0 0 5px rgba(255, 236, 140, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.28))
+      drop-shadow(0 0 8px rgba(255, 240, 150, 1))
+      drop-shadow(0 0 16px rgba(255, 224, 90, 0.9));
+  }
+}
+
 @layer base {
   :root {
     --cursor-game-default:

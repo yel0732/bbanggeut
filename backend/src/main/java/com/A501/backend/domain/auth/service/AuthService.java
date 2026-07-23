@@ -82,6 +82,15 @@ public class AuthService {
         return issueTokens(token.getParent(), token.isRememberMe());
     }
 
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
+            return;
+        }
+        refreshTokenRepository.findByTokenHash(TokenHasher.hash(rawRefreshToken))
+                .ifPresent(RefreshToken::revoke);
+    }
+
     private Parent findAuthenticatedParent(String email, String rawPassword) {
         return parentRepository.findByEmail(email)
                 .filter(parent -> !parent.isDeleted())

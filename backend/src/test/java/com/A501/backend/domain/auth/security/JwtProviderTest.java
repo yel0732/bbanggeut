@@ -64,6 +64,37 @@ class JwtProviderTest {
                 .isInstanceOf(SignatureException.class);
     }
 
+    @Test
+    void parseAccessToken_returnsParentIdForValidToken() {
+        Parent parent = createParentWithId(42L);
+        String token = jwtProvider.generateAccessToken(parent);
+
+        assertThat(jwtProvider.parseAccessToken(token)).isEqualTo(42L);
+    }
+
+    @Test
+    void parseAccessToken_returnsNullForTamperedToken() {
+        Parent parent = createParentWithId(42L);
+        String token = jwtProvider.generateAccessToken(parent);
+        String tamperedSignature = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+
+        assertThat(jwtProvider.parseAccessToken(tamperedSignature)).isNull();
+    }
+
+    @Test
+    void parseAccessToken_returnsNullForGarbageInput() {
+        assertThat(jwtProvider.parseAccessToken("not-a-jwt")).isNull();
+    }
+
+    @Test
+    void parseAccessToken_returnsNullForExpiredToken() {
+        JwtProvider expiredTokenProvider = new JwtProvider(new JwtProperties(SECRET, -1, 10, 10));
+        Parent parent = createParentWithId(42L);
+        String expiredToken = expiredTokenProvider.generateAccessToken(parent);
+
+        assertThat(jwtProvider.parseAccessToken(expiredToken)).isNull();
+    }
+
     private Claims parseClaims(String token) {
         SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes());
         return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();

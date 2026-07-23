@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -251,5 +252,34 @@ class AuthServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.REFRESH_TOKEN_REUSED));
         assertThat(otherActiveToken.isRevoked()).isTrue();
+    }
+
+    @Test
+    void logout_revokesTokenMatchingCookie() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        RefreshToken token = RefreshToken.issue(
+                parent, TokenHasher.hash("raw-refresh-token"), LocalDateTime.now().plusDays(1), false);
+        when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-refresh-token")))
+                .thenReturn(Optional.of(token));
+
+        authService.logout("raw-refresh-token");
+
+        assertThat(token.isRevoked()).isTrue();
+    }
+
+    @Test
+    void logout_doesNothingWhenCookieMissing() {
+        authService.logout(null);
+
+        verify(refreshTokenRepository, never()).findByTokenHash(any());
+    }
+
+    @Test
+    void logout_doesNothingWhenTokenNotFound() {
+        when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+
+        authService.logout("unknown-token");
+
+        verify(refreshTokenRepository).findByTokenHash(TokenHasher.hash("unknown-token"));
     }
 }

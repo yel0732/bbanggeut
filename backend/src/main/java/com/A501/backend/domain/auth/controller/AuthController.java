@@ -80,6 +80,16 @@ public class AuthController {
                 .body(TokenRefreshResponse.of(result.accessToken(), result.accessTokenExpiresInSeconds()));
     }
 
+    @Operation(summary = "로그아웃")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken) {
+        authService.logout(refreshToken);
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString())
+                .build();
+    }
+
     private ResponseCookie buildRefreshTokenCookie(TokenIssueResult result) {
         return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, result.rawRefreshToken())
                 .httpOnly(true)
@@ -87,6 +97,16 @@ public class AuthController {
                 .sameSite("Lax")
                 .path("/api/auth")
                 .maxAge(Duration.ofSeconds(result.refreshTokenMaxAgeSeconds()))
+                .build();
+    }
+
+    private ResponseCookie buildExpiredRefreshTokenCookie() {
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE_NAME, "")
+                .httpOnly(true)
+                .secure(cookieProperties.secure())
+                .sameSite("Lax")
+                .path("/api/auth")
+                .maxAge(0)
                 .build();
     }
 }

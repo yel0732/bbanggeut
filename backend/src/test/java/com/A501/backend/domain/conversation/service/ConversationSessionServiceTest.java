@@ -5,11 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -18,9 +24,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
+import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
@@ -54,7 +62,7 @@ class ConversationSessionServiceTest {
                 gameSessionService,
                 childAccessVerifier,
                 currentMemberProvider);
-        when(currentMemberProvider.getCurrentMemberId()).thenReturn(7L);
+        lenient().when(currentMemberProvider.getCurrentMemberId()).thenReturn(7L);
     }
 
     @Test
@@ -144,6 +152,79 @@ class ConversationSessionServiceTest {
         verify(conversationSessionRepository, never()).save(any());
     }
 
+    @Test
+    void 접근_가능한_세션을_전체_필드와_KST_시각으로_조회한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_query_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        session.start();
+        session.complete();
+        ReflectionTestUtils.setField(session, "questionCount", 3);
+        ReflectionTestUtils.setField(session, "currentSessionEpoch", 1);
+        ReflectionTestUtils.setField(session, "startedAt", LocalDateTime.of(2026, 7, 22, 1, 0, 10));
+        ReflectionTestUtils.setField(session, "completedAt", LocalDateTime.of(2026, 7, 22, 1, 8));
+        ReflectionTestUtils.setField(session, "terminationReason", "USER_FINISHED");
+        when(conversationSessionRepository.findById("conv_query_001")).thenReturn(Optional.of(session));
+
+        ConversationSessionResponse response = service.getConversation("conv_query_001");
+
+        verify(childAccessVerifier).verifyAccess(7L, 15L);
+        assertThat(response.conversationId()).isEqualTo("conv_query_001");
+        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
+        assertThat(response.questionCount()).isEqualTo(3);
+        assertThat(response.maxQuestionCount()).isEqualTo(6);
+        assertThat(response.currentSessionEpoch()).isEqualTo(1);
+        assertThat(response.startedAt()).isEqualTo(OffsetDateTime.of(
+                2026, 7, 22, 10, 0, 10, 0, ZoneOffset.ofHours(9)));
+        assertThat(response.completedAt()).isEqualTo(OffsetDateTime.of(
+                2026, 7, 22, 10, 8, 0, 0, ZoneOffset.ofHours(9)));
+        assertThat(response.terminationReason()).isEqualTo("USER_FINISHED");
+    }
+
+    @Test
+    void READY_세션의_생명주기_필드는_null로_조회한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_query_002", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        when(conversationSessionRepository.findById("conv_query_002")).thenReturn(Optional.of(session));
+
+        ConversationSessionResponse response = service.getConversation("conv_query_002");
+
+        assertThat(response.startedAt()).isNull();
+        assertThat(response.completedAt()).isNull();
+        assertThat(response.terminationReason()).isNull();
+    }
+
+    @Test
+    void 세션이_없으면_권한을_조회하지_않고_CONVERSATION_NOT_FOUND를_반환한다() {
+        when(conversationSessionRepository.findById("conv_missing")).thenReturn(Optional.empty());
+
+        assertGetError("conv_missing", ConversationErrorCode.CONVERSATION_NOT_FOUND);
+
+        verify(currentMemberProvider, never()).getCurrentMemberId();
+        verify(childAccessVerifier, never()).verifyAccess(anyLong(), anyLong());
+    }
+
+    @Test
+    void 다른_보호자의_세션이면_CONVERSATION_ACCESS_DENIED로_변환한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_denied", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        when(conversationSessionRepository.findById("conv_denied")).thenReturn(Optional.of(session));
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
+                .when(childAccessVerifier).verifyAccess(7L, 15L);
+
+        assertGetError("conv_denied", ConversationErrorCode.CONVERSATION_ACCESS_DENIED);
+    }
+
+    @Test
+    void 연결된_아이를_찾을_수_없으면_CONVERSATION_NOT_FOUND로_변환한다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_orphan", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        when(conversationSessionRepository.findById("conv_orphan")).thenReturn(Optional.of(session));
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_NOT_FOUND))
+                .when(childAccessVerifier).verifyAccess(7L, 15L);
+
+        assertGetError("conv_orphan", ConversationErrorCode.CONVERSATION_NOT_FOUND);
+    }
+
     private CreateConversationRequest dailyRequest(Integer maxQuestionCount) {
         return new CreateConversationRequest(
                 ContextType.DAILY, null, ConversationGoal.DIARY, maxQuestionCount);
@@ -151,6 +232,12 @@ class ConversationSessionServiceTest {
 
     private void assertError(CreateConversationRequest request, ConversationErrorCode expected) {
         assertThatThrownBy(() -> service.create(15L, request))
+                .isInstanceOfSatisfying(ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
+    }
+
+    private void assertGetError(String conversationId, ConversationErrorCode expected) {
+        assertThatThrownBy(() -> service.getConversation(conversationId))
                 .isInstanceOfSatisfying(ConversationException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
     }

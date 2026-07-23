@@ -127,6 +127,50 @@ class FruitNinjaGameSessionControllerTest {
         assertNothingSaved();
     }
 
+    @Test
+    void rejectsSlicedCountGreaterThanGeneratedCount() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replace(
+                        "\"fruitCode\": \"APPLE\", \"generatedCount\": 6, \"slicedCount\": 5",
+                        "\"fruitCode\": \"APPLE\", \"generatedCount\": 4, \"slicedCount\": 5")
+                .replace("\"totalFruitCount\": 10", "\"totalFruitCount\": 8");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest());
+
+        assertNothingSaved();
+    }
+
+    @Test
+    void rejectsUnknownRuleVersion() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replace("\"rulesVersion\": \"fruit-v1\"", "\"rulesVersion\": \"unknown\"");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("FRUIT_NINJA_RULE_NOT_FOUND"));
+
+        assertNothingSaved();
+    }
+
+    @Test
+    void rejectsFruitCodeThatDoesNotExistInRule() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replace("\"fruitCode\": \"BANANA\"", "\"fruitCode\": \"MANGO\"");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("FRUIT_NOT_FOUND_IN_RULE"));
+
+        assertNothingSaved();
+    }
+
     private void assertNothingSaved() {
         assertThat(gameSessionRepository.count()).isZero();
         assertThat(fruitNinjaResultRepository.count()).isZero();

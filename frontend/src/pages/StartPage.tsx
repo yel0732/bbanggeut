@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
@@ -11,64 +11,13 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import whiteButtonUrl from '@/assets/images/start/light-white-button.webp'
 import popupUrl from '@/assets/images/start/wood-popup.webp'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { cn } from '@/lib/utils'
 
 export function StartPage() {
   const navigate = useNavigate()
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [isBgmPlaying, setIsBgmPlaying] = useState(false)
+  const { audioRef, isBgmPlaying, playBgm, toggleBgm } = useBgmPlayer()
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
-
-  useEffect(() => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    audio.volume = 0.4
-
-    void audio
-      .play()
-      .then(() => {
-        setIsBgmPlaying(true)
-      })
-      .catch(() => {
-        setIsBgmPlaying(false)
-      })
-  }, [])
-
-  const playBgm = async () => {
-    const audio = audioRef.current
-
-    if (!audio || !audio.paused) {
-      return
-    }
-
-    try {
-      audio.volume = 0.4
-      await audio.play()
-      setIsBgmPlaying(true)
-    } catch {
-      setIsBgmPlaying(false)
-    }
-  }
-
-  const toggleBgm = async () => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    if (audio.paused) {
-      await playBgm()
-      return
-    }
-
-    audio.pause()
-    setIsBgmPlaying(false)
-  }
 
   const enterForest = async () => {
     await playBgm()
@@ -110,7 +59,7 @@ export function StartPage() {
         />
       </div>
 
-      <div className="absolute bottom-[clamp(72px,10vh,96px)] left-1/2 z-20 -translate-x-1/2 min-[860px]:right-55 min-[860px]:left-auto min-[860px]:translate-x-0">
+      <div className="absolute right-30 bottom-12 z-20">
         <MainStartButton
           imageUrl={greenButtonUrl}
           label="숲 속 들어가기"

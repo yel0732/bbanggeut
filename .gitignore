@@ -17,6 +17,10 @@ dist-ssr/
 .env.*
 !.env.example
 
+# Oh My Codex (OMX)
+.omx/
+.codex/
+
 # Editors
 .idea/
 .vscode/*

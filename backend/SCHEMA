@@ -177,6 +177,38 @@ CREATE INDEX idx_report_generation_attempt_report
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportGenerationAttempt.java
 
 
+-- REPORT-08: report_manual_regeneration -----------------------------------
+
+CREATE TABLE report_manual_regeneration (
+    regeneration_id         BIGINT        NOT NULL AUTO_INCREMENT,
+    report_id               BIGINT        NOT NULL,
+    child_id                BIGINT        NOT NULL,
+    parent_id               BIGINT        NOT NULL,
+    idempotency_key         VARCHAR(100)  NOT NULL,
+    regeneration_status     VARCHAR(20)   NOT NULL,
+    requested_at            DATETIME(6)   NOT NULL,
+    previous_failure_reason VARCHAR(1000) NULL,
+    started_at              DATETIME(6)   NULL,
+    ended_at                DATETIME(6)   NULL,
+    failure_reason          VARCHAR(1000) NULL,
+    created_at              DATETIME(6)   NOT NULL,
+    updated_at              DATETIME(6)   NOT NULL,
+    PRIMARY KEY (regeneration_id),
+    CONSTRAINT uk_report_manual_regeneration_parent_key
+        UNIQUE (parent_id, idempotency_key)
+);
+
+CREATE INDEX idx_report_manual_regeneration_report
+    ON report_manual_regeneration (report_id, requested_at);
+
+-- regeneration_status: PENDING | PROCESSING | COMPLETED | FAILED
+-- The row records who requested a manual regeneration and preserves the
+-- failure reason that was visible when the request was accepted.
+-- The daily_report row is locked and moved from FAILED to PENDING in the same
+-- transaction, preventing another regeneration from being registered.
+-- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportManualRegeneration.java
+
+
 -- REPORT-02: report_game_result --------------------------------------------
 
 CREATE TABLE report_game_result (

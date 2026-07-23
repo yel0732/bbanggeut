@@ -156,4 +156,15 @@ public class DailyReport extends BaseTimeEntity {
         this.failureReason = failureReason;
         completedAt = null;
     }
+
+    public void requestRegeneration() {
+        if (generationStatus != ReportGenerationStatus.FAILED) {
+            throw new IllegalStateException(
+                    "Only a failed report can be regenerated.");
+        }
+
+        generationStatus = ReportGenerationStatus.PENDING;
+        processingStartedAt = null;
+        completedAt = null;
+    }
 }

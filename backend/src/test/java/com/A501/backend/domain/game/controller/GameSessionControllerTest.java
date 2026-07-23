@@ -8,19 +8,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional
 class GameSessionControllerTest {
 
     @Autowired
@@ -28,6 +27,11 @@ class GameSessionControllerTest {
 
     @Autowired
     private GameSessionRepository gameSessionRepository;
+
+    @BeforeEach
+    void setUp() {
+        gameSessionRepository.deleteAll();
+    }
 
     @Test
     void 정상_완료된_게임_결과를_DB에_저장한다() throws Exception {

@@ -16,11 +16,14 @@ import org.springframework.context.annotation.Import;
 import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.GameSession;
+import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.metric.CardResultStatus;
 import com.A501.backend.domain.game.metric.CognitiveGrade;
 import com.A501.backend.domain.game.metric.DobbleResultMetrics;
+import com.A501.backend.domain.game.metric.FruitNinjaResultMetrics;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, GameReportQueryAdapter.class})
@@ -38,12 +41,66 @@ class GameReportQueryAdapterTest {
     private CardRoundRepository cardRoundRepository;
 
     @Autowired
+    private FruitNinjaResultRepository fruitNinjaResultRepository;
+
+    @Autowired
     private GameReportQueryAdapter adapter;
 
     @BeforeEach
     void setUp() {
         cardRoundRepository.deleteAll();
+        fruitNinjaResultRepository.deleteAll();
         gameSessionRepository.deleteAll();
+    }
+
+    @Test
+    void returnsDobbleAndFruitNinjaResultsThroughTheSameQuery() {
+        GameSession dobble = saveSession(
+                15L, 7L, STARTED_AT.plusMinutes(1), 120, 2550);
+        saveRounds(dobble);
+        GameSession fruitNinja = saveSession(
+                15L, 8L, STARTED_AT.plusMinutes(2), 120, 800);
+        fruitNinjaResultRepository.saveAndFlush(FruitNinjaResult.create(
+                fruitNinja.getGameSessionId(), "fruit-v1", 10, 7));
+
+        var sources = adapter.findCompletedGames(15L, STARTED_AT, ENDED_AT);
+
+        assertThat(sources).hasSize(2);
+        assertThat(sources).extracting("gameCode")
+                .containsExactly("DOBBLE", "FRUIT_NINJA");
+
+        var fruitSource = sources.get(1);
+        assertThat(fruitSource.gameSessionId()).isEqualTo(fruitNinja.getGameSessionId());
+        assertThat(fruitSource.gameName()).isEqualTo("후르츠 닌자");
+        assertThat(fruitSource.playDurationSeconds()).isEqualTo(120);
+        assertThat(fruitSource.score()).isEqualTo(800);
+        assertThat(fruitSource.resultMetrics()).isInstanceOf(FruitNinjaResultMetrics.class);
+        var metrics = (FruitNinjaResultMetrics) fruitSource.resultMetrics();
+        assertThat(metrics.totalFruitCount()).isEqualTo(10);
+        assertThat(metrics.slicedFruitCount()).isEqualTo(7);
+        assertThat(metrics.rulesVersion()).isEqualTo("fruit-v1");
+    }
+
+    @Test
+    void excludesFruitNinjaResultAtEndBoundaryAndForAnotherChild() {
+        GameSession included = saveSession(
+                15L, 8L, STARTED_AT, 120, 800);
+        fruitNinjaResultRepository.saveAndFlush(FruitNinjaResult.create(
+                included.getGameSessionId(), "fruit-v1", 10, 7));
+        GameSession endBoundary = saveSession(
+                15L, 8L, ENDED_AT, 120, 500);
+        fruitNinjaResultRepository.saveAndFlush(FruitNinjaResult.create(
+                endBoundary.getGameSessionId(), "fruit-v1", 8, 5));
+        GameSession anotherChild = saveSession(
+                16L, 8L, STARTED_AT.plusHours(1), 120, 300);
+        fruitNinjaResultRepository.saveAndFlush(FruitNinjaResult.create(
+                anotherChild.getGameSessionId(), "fruit-v1", 5, 3));
+
+        var sources = adapter.findCompletedGames(15L, STARTED_AT, ENDED_AT);
+
+        assertThat(sources).singleElement()
+                .extracting("gameSessionId")
+                .isEqualTo(included.getGameSessionId());
     }
 
     @Test

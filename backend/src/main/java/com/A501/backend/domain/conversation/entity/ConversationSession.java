@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 
 import com.A501.backend.common.entity.BaseTimeEntity;
 
+import org.springframework.data.domain.Persistable;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -26,7 +28,7 @@ import lombok.NoArgsConstructor;
                 @Index(name = "idx_conversation_session_status_updated", columnList = "status, updated_at")
         })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class ConversationSession extends BaseTimeEntity {
+public class ConversationSession extends BaseTimeEntity implements Persistable<String> {
 
     @Id
     @Column(name = "conversation_id", length = 40)
@@ -102,5 +104,15 @@ public class ConversationSession extends BaseTimeEntity {
                 .conversationGoal(conversationGoal)
                 .maxQuestionCount(maxQuestionCount)
                 .build();
+    }
+
+    @Override
+    public String getId() {
+        return conversationId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNewEntity();
     }
 }

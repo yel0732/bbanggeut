@@ -1,13 +1,27 @@
 package com.A501.backend.domain.conversation.entity;
 
-/**
- * 대화 세션 상태. 허용 전이 규칙은 DIARY-1-T03에서 다룬다.
- */
 public enum ConversationStatus {
     READY,
     IN_PROGRESS,
     COMPLETED,
     ABORTED,
     EXPIRED,
-    FAILED
+    FAILED;
+
+    public boolean canTransitionTo(ConversationStatus nextStatus) {
+        if (nextStatus == null) {
+            return false;
+        }
+
+        return switch (this) {
+            case READY -> nextStatus == IN_PROGRESS
+                    || nextStatus == ABORTED
+                    || nextStatus == EXPIRED;
+            case IN_PROGRESS -> nextStatus == COMPLETED
+                    || nextStatus == ABORTED
+                    || nextStatus == EXPIRED
+                    || nextStatus == FAILED;
+            case COMPLETED, ABORTED, EXPIRED, FAILED -> false;
+        };
+    }
 }

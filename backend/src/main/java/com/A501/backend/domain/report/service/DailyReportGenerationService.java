@@ -29,6 +29,7 @@ public class DailyReportGenerationService {
     private final ReportGenerationAttemptService attemptService;
     private final ReportManualRegenerationHistoryService
             manualRegenerationHistoryService;
+    private final ReportNotificationPublisher notificationPublisher;
     private final ReportRetryWaiter retryWaiter;
     private final ReportRetryProperties retryProperties;
     private final ObjectProvider<GameReportQueryPort> gameReportQueryPortProvider;
@@ -38,6 +39,7 @@ public class DailyReportGenerationService {
         manualRegenerationHistoryService.markProcessing(reportId);
         try {
             DailyReportGenerationResult result = generateWithRetry(reportId);
+            notificationPublisher.publishCompleted(reportId);
             manualRegenerationHistoryService.markCompleted(reportId);
             return result;
         } catch (RuntimeException exception) {
@@ -221,6 +223,7 @@ public class DailyReportGenerationService {
     ) {
         try {
             statusService.markFailed(reportId, originalException);
+            notificationPublisher.publishFinalFailure(reportId);
         } catch (RuntimeException failureStatusException) {
             originalException.addSuppressed(failureStatusException);
         }

@@ -1,88 +1,290 @@
-import { PageShell } from '@/components/layout/PageShell'
-import { Badge } from '@/components/ui/Badge'
-import { ButtonLink } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { SectionHeader } from '@/components/ui/SectionHeader'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
+import dinoUrl from '@/assets/images/child-home/dino-2.webp'
+import dobbleCardUrl from '@/assets/images/game-entry/dobble-card.webp'
+import fruitCardUrl from '@/assets/images/game-entry/fruit-card.webp'
+import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
+import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
+import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
+import gameMenuPanelUrl from '@/assets/images/game-entry/game-menu-panel.webp'
+import musicOnUrl from '@/assets/images/start/music-btn.webp'
+import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useFitScale } from '@/hooks/useFitScale'
+
+const jua = { fontFamily: "'Jua', sans-serif" } as const
 
 const games = [
   {
-    title: '과일 베기 놀이',
-    category: '운동 게임',
-    description: '손과 몸을 움직이며 과일을 베고 잡아요.',
-    metrics: ['반응 속도', '눈-손 협응', '대근육 활동'],
-    accentClassName: 'border-t-leaf-500',
+    description: '날아오는 과일을 몸으로 슥슥 잘라요.',
+    label: '과일 자르기',
+    imageUrl: fruitCardUrl,
+    floatClassName: '[animation-delay:-0.4s]',
+    positionClassName: 'top-[98px] left-[154px]',
   },
   {
-    title: '같은 그림 찾기',
-    category: '인지 게임',
-    description: '두 카드에서 같은 그림을 빠르게 찾아요.',
-    metrics: ['관찰력', '집중력', '시각 변별'],
-    accentClassName: 'border-t-sun-400',
+    description: '같은 그림을 찾아 반짝이는 카드를 맞춰요.',
+    label: '그림 맞추기',
+    imageUrl: dobbleCardUrl,
+    floatClassName: '[animation-delay:-1.7s]',
+    positionClassName: 'top-[98px] right-[154px]',
   },
 ]
 
 export function GameEntryPage() {
+  const navigate = useNavigate()
+  const canvasRef = useFitScale<HTMLDivElement>()
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const [hoveredGameLabel, setHoveredGameLabel] = useState<string>()
+  const [selectedGameLabel, setSelectedGameLabel] = useState<string>()
+  const [showGameGuide, setShowGameGuide] = useState(false)
+
+  const closeGameMenu = () => {
+    setHoveredGameLabel(undefined)
+    setSelectedGameLabel(undefined)
+    setShowGameGuide(false)
+  }
+
   return (
-    <PageShell>
-      <SectionHeader
-        className="mb-10"
-        eyebrow="Today play"
-        title="오늘의 놀이를 골라요"
-        description="게임을 시작하기 전에 움직일 공간과 카메라 권한을 확인합니다."
-      />
+    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
+      <div
+        ref={canvasRef}
+        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+      >
+        <audio
+          aria-label="초록 모험 시작 배경 음악"
+          autoPlay
+          loop
+          preload="auto"
+          ref={audioRef}
+          src={bgmUrl}
+        />
 
-      <section className="grid grid-cols-[1fr_0.8fr] gap-4 max-[900px]:grid-cols-1">
-        <div className="grid gap-4">
-          {games.map((game) => (
-            <Card
-              className={`grid gap-5 border-t-[6px] ${game.accentClassName}`}
-              key={game.title}
+        <img
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          decoding="async"
+          fetchPriority="high"
+          src={backgroundUrl}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(4,18,9,0.08)_0%,rgba(4,18,9,0)_42%,rgba(4,18,9,0.12)_100%)]" />
+
+        <button
+          aria-label="이전 화면으로"
+          className="absolute top-[25px] left-[45px] z-30 size-[66px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+          onClick={() => navigate('/child')}
+          type="button"
+        >
+          <img
+            alt=""
+            className="block h-full w-full object-contain"
+            decoding="async"
+            draggable={false}
+            src={leftButtonUrl}
+          />
+        </button>
+
+        <h1
+          className="absolute top-[36px] left-[118px] z-30 text-[36px] leading-none text-white [text-shadow:0_4px_0_#4f8a30,0_7px_10px_rgba(19,50,18,0.28)]"
+          style={jua}
+        >
+          게임 선택
+        </h1>
+
+        {games.map((game) => {
+          const isFlipped =
+            hoveredGameLabel === game.label || selectedGameLabel === game.label
+
+          return (
+            <div
+              className={`absolute z-20 flex w-[270px] [animation:child-home-asset-bob_3.5s_ease-in-out_infinite] flex-col items-center gap-7 transition duration-200 focus-within:-translate-y-2 focus-within:scale-[1.03] hover:-translate-y-2 hover:scale-[1.03] ${game.floatClassName} ${game.positionClassName}`}
+              key={game.label}
+              onMouseEnter={() => setHoveredGameLabel(game.label)}
+              onMouseLeave={() => {
+                setHoveredGameLabel(undefined)
+                if (!showGameGuide) setSelectedGameLabel(undefined)
+              }}
             >
-              <div className="grid gap-2">
-                <p className="text-leaf-600 text-sm font-bold tracking-normal uppercase">
-                  {game.category}
-                </p>
-                <h2 className="text-ink-950 text-3xl font-bold">
-                  {game.title}
-                </h2>
-                <p className="text-ink-600 text-lg">{game.description}</p>
-              </div>
+              <span className="relative h-[300px] w-[270px] [perspective:900px]">
+                <span
+                  className={`absolute inset-0 transition-transform duration-700 [transform-style:preserve-3d] ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`}
+                >
+                  <button
+                    aria-label={`${game.label} 게임 선택`}
+                    className="absolute inset-0 grid place-items-center border-0 bg-transparent p-0 [backface-visibility:hidden] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98]"
+                    onClick={() => {
+                      setHoveredGameLabel(game.label)
+                      setShowGameGuide(false)
+                    }}
+                    onFocus={() => setHoveredGameLabel(game.label)}
+                    type="button"
+                  >
+                    <span className="absolute inset-[12px] rounded-[38px] bg-[#f9e4a6]/32 shadow-[0_14px_30px_rgba(31,70,22,0.28),inset_0_0_0_4px_rgba(91,63,32,0.24)]" />
+                    <img
+                      alt=""
+                      className="relative z-[1] h-full w-full [animation:child-home-edge-glow_3s_ease-in-out_infinite] object-contain drop-shadow-[0_16px_22px_rgba(30,60,22,0.34)]"
+                      decoding="async"
+                      src={game.imageUrl}
+                    />
+                  </button>
+                  <div
+                    aria-hidden={!isFlipped}
+                    className="absolute inset-0 flex [transform:rotateY(180deg)] items-center justify-center [backface-visibility:hidden]"
+                  >
+                    <span className="relative h-[324px] w-[237px]">
+                      <img
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-contain drop-shadow-[0_18px_28px_rgba(22,50,16,0.35)]"
+                        decoding="async"
+                        src={gameMenuPanelUrl}
+                      />
+                      <span
+                        className="absolute top-[48px] right-6 left-6 text-center text-[22px] leading-none text-white [text-shadow:0_3px_0_#724216,0_6px_10px_rgba(58,31,11,0.22)]"
+                        style={jua}
+                      >
+                        {game.label}
+                      </span>
+                      <span className="absolute top-[108px] right-0 left-0 flex flex-col items-center gap-4">
+                        <GameMenuButton
+                          label="게임 시작"
+                          onClick={() => navigate('/games/play')}
+                          size="card"
+                        />
+                        <GameMenuButton
+                          label="게임 방법"
+                          onClick={() => {
+                            setSelectedGameLabel(game.label)
+                            setShowGameGuide((value) => !value)
+                          }}
+                          size="card"
+                        />
+                      </span>
+                    </span>
+                  </div>
+                </span>
+              </span>
+              <span
+                className="relative z-20 rounded-full bg-[#173618]/45 px-5 py-2 text-[28px] leading-none text-white shadow-[0_5px_12px_rgba(12,38,13,0.22),inset_0_0_0_2px_rgba(255,255,255,0.12)] backdrop-blur-[1px] [text-shadow:0_3px_0_#2e6d2e,0_6px_8px_rgba(9,35,10,0.52)]"
+                style={jua}
+              >
+                {game.label}
+              </span>
+            </div>
+          )
+        })}
 
-              <ul className="flex flex-wrap gap-2">
-                {game.metrics.map((metric) => (
-                  <li key={metric}>
-                    <Badge>{metric}</Badge>
-                  </li>
-                ))}
-              </ul>
-
-              <ButtonLink className="w-fit" size="lg" to="/games/play">
-                이 놀이 시작
-              </ButtonLink>
-            </Card>
-          ))}
+        <div className="absolute top-[200px] left-1/2 z-20 -translate-x-1/2">
+          <div className="relative flex h-[88px] w-[258px] items-center justify-center rounded-[28px] bg-white px-8 text-center shadow-[0_10px_22px_rgba(35,80,35,0.22)] after:absolute after:right-[94px] after:bottom-[-24px] after:h-0 after:w-0 after:border-x-[18px] after:border-t-[26px] after:border-x-transparent after:border-t-white">
+            <span
+              className="text-[28px] leading-none whitespace-nowrap text-[#526d4c]"
+              style={jua}
+            >
+              무슨 게임 할까?
+            </span>
+          </div>
         </div>
 
-        <Card className="grid content-start gap-6">
-          <div className="grid gap-2">
-            <p className="text-leaf-600 text-sm font-bold tracking-normal uppercase">
-              Before play
-            </p>
-            <h2 className="text-ink-950 text-2xl font-bold">시작 전 확인</h2>
+        <div
+          aria-label="공룡"
+          className="absolute bottom-[55px] left-1/2 z-10 h-[310px] w-[330px] -translate-x-1/2 [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
+          role="img"
+        >
+          <div className="absolute bottom-0 left-1/2 h-12 w-[230px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(45,90,35,0.32),rgba(45,90,35,0)_100%)]" />
+          <img
+            alt=""
+            className="absolute bottom-0 left-1/2 h-[330px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_16px_18px_rgba(25,54,25,0.26)]"
+            decoding="async"
+            src={dinoUrl}
+          />
+        </div>
+
+        <button
+          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
+          className="absolute bottom-[28px] left-[48px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          onClick={() => {
+            void toggleBgm()
+          }}
+          type="button"
+        >
+          <img
+            alt=""
+            className="block h-full w-full object-contain"
+            decoding="async"
+            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          />
+        </button>
+
+        {selectedGameLabel && showGameGuide ? (
+          <div
+            aria-modal="true"
+            className="absolute inset-0 z-50 flex items-end justify-center bg-[rgba(14,30,15,0.18)] pb-[86px]"
+            onClick={closeGameMenu}
+            role="dialog"
+          >
+            <div
+              className="relative min-h-[112px] w-[420px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p
+                className="rounded-[28px] border-[5px] border-[#895524] bg-[#fff4cf]/95 px-7 py-5 text-center text-[22px] leading-snug text-[#704719] shadow-[0_16px_30px_rgba(23,50,17,0.28),inset_0_0_0_3px_rgba(123,72,22,0.18)]"
+                style={jua}
+              >
+                {
+                  games.find((game) => game.label === selectedGameLabel)
+                    ?.description
+                }
+              </p>
+              <button
+                aria-label="게임 방법 닫기"
+                className="absolute -top-4 -right-4 grid size-10 place-items-center rounded-full border-[3px] border-white bg-[#a7d85d] text-[24px] leading-none text-white shadow-[0_4px_0_#5d8e2e] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white active:translate-y-1 active:shadow-[0_1px_0_#5d8e2e]"
+                onClick={closeGameMenu}
+                style={jua}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
           </div>
-          <ul className="grid gap-3">
-            <li className="rounded-control bg-leaf-50 text-ink-800 px-4 py-3 font-bold">
-              카메라를 켤 수 있어야 해요.
-            </li>
-            <li className="rounded-control bg-leaf-50 text-ink-800 px-4 py-3 font-bold">
-              팔을 움직일 공간을 비워요.
-            </li>
-            <li className="rounded-control bg-leaf-50 text-ink-800 px-4 py-3 font-bold">
-              게임 후 캐릭터와 오늘 이야기를 나눠요.
-            </li>
-          </ul>
-        </Card>
-      </section>
-    </PageShell>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function GameMenuButton({
+  label,
+  onClick,
+  size = 'panel',
+}: {
+  label: string
+  onClick: () => void
+  size?: 'card' | 'panel'
+}) {
+  const isCardSize = size === 'card'
+
+  return (
+    <button
+      className={`${isCardSize ? 'h-[50px] w-[168px]' : 'h-[82px] w-[272px]'} relative border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98]`}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
+      type="button"
+    >
+      <img
+        alt=""
+        className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_12px_rgba(55,30,10,0.28)]"
+        decoding="async"
+        src={gameMenuButtonUrl}
+      />
+      <span
+        className={`${isCardSize ? 'text-[20px] [text-shadow:0_2px_0_#744514,0_5px_8px_rgba(55,30,10,0.22)]' : 'text-[32px] [text-shadow:0_4px_0_#744514,0_7px_10px_rgba(55,30,10,0.22)]'} absolute inset-0 flex items-center justify-center pb-1 leading-none text-white`}
+        style={jua}
+      >
+        {label}
+      </span>
+    </button>
   )
 }

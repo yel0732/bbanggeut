@@ -15,6 +15,9 @@ import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
+const DEMO_PIN = '1234'
+const MAX_PIN_FAILS = 5
+const PIN_LOCK_SECONDS = 30
 const KEYPAD_DIGITS = [
   '1',
   '2',
@@ -40,6 +43,18 @@ export function ProfileSelectPage() {
   const [showPin, setShowPin] = useState(false)
   const [pin, setPin] = useState('')
   const [pinMessage, setPinMessage] = useState('')
+  const [isPinError, setIsPinError] = useState(false)
+  const [pinFailCount, setPinFailCount] = useState(0)
+  const [isPinLocked, setIsPinLocked] = useState(false)
+  const lockTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (lockTimerRef.current) {
+        window.clearInterval(lockTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -81,38 +96,94 @@ export function ProfileSelectPage() {
     setIsBgmPlaying(false)
   }
 
+  const clearLockTimer = () => {
+    if (lockTimerRef.current) {
+      window.clearInterval(lockTimerRef.current)
+      lockTimerRef.current = null
+    }
+  }
+
   const openPin = () => {
     setPin('')
     setPinMessage('')
+    setIsPinError(false)
     setShowPin(true)
   }
 
   const closePin = () => {
+    clearLockTimer()
     setShowPin(false)
     setPin('')
     setPinMessage('')
+    setIsPinError(false)
+    setIsPinLocked(false)
+    setPinFailCount(0)
+  }
+
+  const startPinLock = () => {
+    setIsPinLocked(true)
+    setPin('')
+    setIsPinError(true)
+    setPinMessage(
+      `${MAX_PIN_FAILS}번 틀렸어요. ${PIN_LOCK_SECONDS}초 뒤에 다시 시도해 주세요.`,
+    )
+
+    const lockUntil = Date.now() + PIN_LOCK_SECONDS * 1000
+    lockTimerRef.current = window.setInterval(() => {
+      const secondsLeft = Math.ceil((lockUntil - Date.now()) / 1000)
+      if (secondsLeft <= 0) {
+        clearLockTimer()
+        setIsPinLocked(false)
+        setPinFailCount(0)
+        setIsPinError(false)
+        setPinMessage('')
+      } else {
+        setPinMessage(`${secondsLeft}초 뒤에 다시 시도할 수 있어요.`)
+      }
+    }, 1000)
   }
 
   const pressDigit = (digit: string) => {
+    if (isPinLocked) return
     if (pin.length >= PIN_LENGTH) return
     const next = pin + digit
     setPin(next)
     setPinMessage('')
+    setIsPinError(false)
 
     if (next.length === PIN_LENGTH) {
-      // 데모: 4자리 숫자는 모두 통과 처리 (실제 인증 연동 전)
       window.setTimeout(() => {
-        setPinMessage('확인되었습니다 ✓')
-        window.setTimeout(() => {
-          navigate('/parent')
-        }, 500)
+        if (next === DEMO_PIN) {
+          setIsPinError(false)
+          setPinMessage('확인되었습니다 ✓')
+          window.setTimeout(() => {
+            navigate('/parent')
+          }, 500)
+          return
+        }
+
+        const nextFailCount = pinFailCount + 1
+        setPinFailCount(nextFailCount)
+
+        if (nextFailCount >= MAX_PIN_FAILS) {
+          startPinLock()
+          return
+        }
+
+        setIsPinError(true)
+        setPinMessage(
+          `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
+        )
+        setPin('')
       }, 150)
     }
   }
 
   const pressBackspace = () => {
+    if (isPinLocked) return
     setPin((value) => value.slice(0, -1))
     setPinMessage('')
+    setIsPinError(false)
   }
 
   return (
@@ -268,7 +339,11 @@ export function ProfileSelectPage() {
                   className="h-[22px] text-center text-[18px]"
                   style={{
                     ...jua,
-                    color: pinMessage ? '#3a7d2c' : 'transparent',
+                    color: !pinMessage
+                      ? 'transparent'
+                      : isPinError
+                        ? '#d1483a'
+                        : '#3a7d2c',
                   }}
                 >
                   {pinMessage || '.'}
@@ -280,7 +355,8 @@ export function ProfileSelectPage() {
                       <div key={`blank-${index}`} />
                     ) : (
                       <button
-                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95"
+                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={isPinLocked}
                         key={digit}
                         onClick={() =>
                           digit === '⌫' ? pressBackspace() : pressDigit(digit)

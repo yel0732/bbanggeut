@@ -56,6 +56,18 @@ public class DailyReport extends BaseTimeEntity {
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
+    @Column(name = "processing_started_at")
+    private LocalDateTime processingStartedAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    @Column(name = "failed_at")
+    private LocalDateTime failedAt;
+
+    @Column(name = "failure_reason", length = 1000)
+    private String failureReason;
+
     @Builder(access = AccessLevel.PRIVATE)
     private DailyReport(
             Long childId,
@@ -83,7 +95,10 @@ public class DailyReport extends BaseTimeEntity {
                 .build();
     }
 
-    public void startProcessing() {
+    public void startProcessing(LocalDateTime startedAt) {
+        if (startedAt == null) {
+            throw new IllegalArgumentException("Processing start time is required.");
+        }
         if (generationStatus == ReportGenerationStatus.COMPLETED) {
             throw new IllegalStateException("A completed report cannot be processed again.");
         }
@@ -95,22 +110,42 @@ public class DailyReport extends BaseTimeEntity {
         }
 
         generationStatus = ReportGenerationStatus.PROCESSING;
+        processingStartedAt = startedAt;
+        completedAt = null;
+        failedAt = null;
+        failureReason = null;
     }
 
-    public void complete() {
+    public void complete(LocalDateTime completedAt) {
+        if (completedAt == null) {
+            throw new IllegalArgumentException("Completion time is required.");
+        }
         if (generationStatus != ReportGenerationStatus.PROCESSING) {
             throw new IllegalStateException(
                     "Only a processing report can be completed.");
         }
 
         generationStatus = ReportGenerationStatus.COMPLETED;
+        this.completedAt = completedAt;
+        failedAt = null;
+        failureReason = null;
     }
 
-    public void fail() {
-        if (generationStatus == ReportGenerationStatus.COMPLETED) {
-            throw new IllegalStateException("A completed report cannot be failed.");
+    public void fail(LocalDateTime failedAt, String failureReason) {
+        if (failedAt == null) {
+            throw new IllegalArgumentException("Failure time is required.");
+        }
+        if (failureReason == null || failureReason.isBlank()) {
+            throw new IllegalArgumentException("Failure reason is required.");
+        }
+        if (generationStatus != ReportGenerationStatus.PROCESSING) {
+            throw new IllegalStateException(
+                    "Only a processing report can be failed.");
         }
 
         generationStatus = ReportGenerationStatus.FAILED;
+        this.failedAt = failedAt;
+        this.failureReason = failureReason;
+        completedAt = null;
     }
 }

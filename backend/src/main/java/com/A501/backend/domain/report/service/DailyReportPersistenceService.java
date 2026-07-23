@@ -1,11 +1,15 @@
 package com.A501.backend.domain.report.service;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,10 +23,7 @@ import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportConversationSummaryRepository;
 import com.A501.backend.domain.report.repository.ReportGameResultRepository;
 
-import lombok.RequiredArgsConstructor;
-
 @Service
-@RequiredArgsConstructor
 public class DailyReportPersistenceService {
 
     private final DailyReportRepository dailyReportRepository;
@@ -30,6 +31,23 @@ public class DailyReportPersistenceService {
     private final ReportConversationSummaryRepository conversationSummaryRepository;
     private final ReportGameResultMapper gameResultMapper;
     private final ReportConversationSummaryMapper conversationSummaryMapper;
+    private final Clock clock;
+
+    public DailyReportPersistenceService(
+            DailyReportRepository dailyReportRepository,
+            ReportGameResultRepository reportGameResultRepository,
+            ReportConversationSummaryRepository conversationSummaryRepository,
+            ReportGameResultMapper gameResultMapper,
+            ReportConversationSummaryMapper conversationSummaryMapper,
+            @Qualifier("utcClock") Clock clock
+    ) {
+        this.dailyReportRepository = dailyReportRepository;
+        this.reportGameResultRepository = reportGameResultRepository;
+        this.conversationSummaryRepository = conversationSummaryRepository;
+        this.gameResultMapper = gameResultMapper;
+        this.conversationSummaryMapper = conversationSummaryMapper;
+        this.clock = clock;
+    }
 
     @Transactional
     public DailyReportGenerationResult persist(
@@ -48,7 +66,7 @@ public class DailyReportPersistenceService {
         boolean summaryCreated = createConversationSummary(
                 reportId, conversationSummary);
 
-        report.complete();
+        report.complete(LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS));
 
         return new DailyReportGenerationResult(
                 reportId,

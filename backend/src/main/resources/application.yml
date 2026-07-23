@@ -12,6 +12,9 @@ report:
     enabled: ${REPORT_SCHEDULE_ENABLED:false}
     cron: ${REPORT_DAILY_CRON:0 0 19 * * *}
     zone: Asia/Seoul
+  retry:
+    max-attempts: ${REPORT_RETRY_MAX_ATTEMPTS:3}
+    interval: ${REPORT_RETRY_INTERVAL:PT5S}
 
 app:
   jwt:

@@ -8,7 +8,6 @@ public record DobbleResultMetrics(
         int excellentCount,
         int goodCount,
         int incompleteCardCount,
-        long averageResponseTimeMs,
         List<CardResultMetrics> cardResults
 ) implements GameResultMetrics {
 
@@ -20,9 +19,6 @@ public record DobbleResultMetrics(
         if (solvedCardCount < 0 || perfectCount < 0 || excellentCount < 0
                 || goodCount < 0 || incompleteCardCount < 0) {
             throw new IllegalArgumentException("카드 결과 개수는 0 이상이어야 합니다.");
-        }
-        if (averageResponseTimeMs < 0) {
-            throw new IllegalArgumentException("평균 반응시간은 0 이상이어야 합니다.");
         }
         if (cardResults == null) {
             throw new IllegalArgumentException("카드별 결과는 필수입니다.");

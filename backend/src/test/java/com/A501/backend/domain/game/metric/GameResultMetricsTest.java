@@ -17,7 +17,6 @@ class GameResultMetricsTest {
                 1,
                 1,
                 1,
-                1200,
                 List.of(
                         completedCard("card-1", CognitiveGrade.PERFECT, 800L),
                         completedCard("card-2", CognitiveGrade.EXCELLENT, 1200L),
@@ -36,7 +35,6 @@ class GameResultMetricsTest {
                 0,
                 0,
                 0,
-                800,
                 List.of(completedCard("card-1", CognitiveGrade.PERFECT, 800L))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("해결 카드 수는 등급별 카드 수의 합과 같아야 합니다.");
@@ -50,7 +48,6 @@ class GameResultMetricsTest {
                 0,
                 0,
                 0,
-                800,
                 List.of(completedCard("card-1", CognitiveGrade.PERFECT, 800L)));
 
         assertThat(metrics.cardResults()).hasSize(1);

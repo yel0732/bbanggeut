@@ -21,7 +21,9 @@ import com.A501.backend.domain.auth.security.RefreshTokenProperties;
 import com.A501.backend.domain.auth.security.TokenHasher;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -58,7 +60,26 @@ public class AuthService {
     @Transactional
     public TokenIssueResult login(LoginRequest request) {
         Parent parent = findAuthenticatedParent(request.email(), request.password());
-        return issueTokens(parent);
+        return issueTokens(parent, false);
+    }
+
+    @Transactional
+    public TokenIssueResult refresh(String rawRefreshToken) {
+        RefreshToken token = refreshTokenRepository.findByTokenHash(TokenHasher.hash(rawRefreshToken))
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        if (token.isRevoked()) {
+            log.warn("Refresh token reuse detected for parentId={}", token.getParent().getParentId());
+            refreshTokenRepository.findAllByParentAndRevokedFalse(token.getParent())
+                    .forEach(RefreshToken::revoke);
+            throw new BusinessException(AuthErrorCode.REFRESH_TOKEN_REUSED);
+        }
+        if (token.isExpired()) {
+            throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+
+        token.revoke();
+        return issueTokens(token.getParent(), token.isRememberMe());
     }
 
     private Parent findAuthenticatedParent(String email, String rawPassword) {
@@ -73,14 +94,16 @@ public class AuthService {
         return Period.between(birthDate, LocalDate.now()).getYears() < MINIMUM_SIGNUP_AGE;
     }
 
-    private TokenIssueResult issueTokens(Parent parent) {
+    private TokenIssueResult issueTokens(Parent parent, boolean rememberMe) {
         String accessToken = jwtProvider.generateAccessToken(parent);
-        long refreshTokenExpiryDays = refreshTokenProperties.defaultExpiryDays();
+        long refreshTokenExpiryDays = rememberMe
+                ? refreshTokenProperties.rememberMeExpiryDays()
+                : refreshTokenProperties.defaultExpiryDays();
 
         String rawRefreshToken = TokenHasher.generateRawToken();
         LocalDateTime expiresAt = LocalDateTime.now().plusDays(refreshTokenExpiryDays);
         refreshTokenRepository.save(
-                RefreshToken.issue(parent, TokenHasher.hash(rawRefreshToken), expiresAt, false));
+                RefreshToken.issue(parent, TokenHasher.hash(rawRefreshToken), expiresAt, rememberMe));
 
         long maxAgeSeconds = refreshTokenExpiryDays * 24 * 60 * 60;
         return new TokenIssueResult(

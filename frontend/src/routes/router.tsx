@@ -1,12 +1,14 @@
 import { createBrowserRouter } from 'react-router-dom'
 
-import { ChildHomePage } from '@/pages/ChildHomePage'
-import { EmailLoginPage } from '@/pages/EmailLoginPage'
-import { EmailSignupPage } from '@/pages/EmailSignupPage'
-import { GameEntryPage } from '@/pages/GameEntryPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
-import { ProfileSelectPage } from '@/pages/ProfileSelectPage'
-import { StartPage } from '@/pages/StartPage'
+import {
+  ChildHomePage,
+  EmailLoginPage,
+  EmailSignupPage,
+  GameEntryPage,
+  ProfileSelectPage,
+  StartPage,
+} from '@/routes/lazyPages'
 
 export const router = createBrowserRouter([
   {

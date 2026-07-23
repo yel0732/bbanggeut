@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
@@ -7,6 +7,7 @@ import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const boardSize = {
@@ -15,52 +16,11 @@ const boardSize = {
 } as const
 
 export function EmailLoginPage() {
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [isBgmPlaying, setIsBgmPlaying] = useState(false)
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
-
-  useEffect(() => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    audio.volume = 0.4
-
-    void audio
-      .play()
-      .then(() => {
-        setIsBgmPlaying(true)
-      })
-      .catch(() => {
-        setIsBgmPlaying(false)
-      })
-  }, [])
-
-  const toggleBgm = async () => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    if (audio.paused) {
-      try {
-        await audio.play()
-        setIsBgmPlaying(true)
-      } catch {
-        setIsBgmPlaying(false)
-      }
-      return
-    }
-
-    audio.pause()
-    setIsBgmPlaying(false)
-  }
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)] p-4 text-white">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
@@ -14,6 +14,7 @@ import dino5Url from '@/assets/images/child-home/dino-5.webp'
 import gateUrl from '@/assets/images/child-home/gate.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -29,58 +30,47 @@ const DINO_STEP_INTERVAL_MS = 320
 export function ChildHomePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [isBgmPlaying, setIsBgmPlaying] = useState(false)
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const [isGateHovered, setIsGateHovered] = useState(false)
   const [isCaveHovered, setIsCaveHovered] = useState(false)
   const [dinoStep, setDinoStep] = useState(0)
+  const [dinoFramesReady, setDinoFramesReady] = useState(false)
 
   useEffect(() => {
-    const audio = audioRef.current
+    let cancelled = false
+    const frames = Object.values(DINO_FRAMES)
+    Promise.all(
+      frames.map(
+        (frame) =>
+          new Promise<void>((resolve) => {
+            const image = new Image()
+            image.onload = () => {
+              void image
+                .decode()
+                .catch(() => undefined)
+                .finally(resolve)
+            }
+            image.onerror = () => resolve()
+            image.src = frame
+          }),
+      ),
+    ).then(() => {
+      if (!cancelled) setDinoFramesReady(true)
+    })
 
-    if (!audio) {
-      return
+    return () => {
+      cancelled = true
     }
-
-    audio.volume = 0.4
-
-    void audio
-      .play()
-      .then(() => {
-        setIsBgmPlaying(true)
-      })
-      .catch(() => {
-        setIsBgmPlaying(false)
-      })
   }, [])
 
   useEffect(() => {
+    if (!dinoFramesReady) return
     const id = window.setInterval(() => {
+      if (document.hidden) return
       setDinoStep((step) => (step + 1) % DINO_STEP_SEQUENCE.length)
     }, DINO_STEP_INTERVAL_MS)
     return () => window.clearInterval(id)
-  }, [])
-
-  const toggleBgm = async () => {
-    const audio = audioRef.current
-
-    if (!audio) {
-      return
-    }
-
-    if (audio.paused) {
-      try {
-        await audio.play()
-        setIsBgmPlaying(true)
-      } catch {
-        setIsBgmPlaying(false)
-      }
-      return
-    }
-
-    audio.pause()
-    setIsBgmPlaying(false)
-  }
+  }, [dinoFramesReady])
 
   const activeDinoFrame = DINO_STEP_SEQUENCE[dinoStep]
 
@@ -128,12 +118,14 @@ export function ChildHomePage() {
               className="relative flex h-[94px] w-[132px] items-center justify-center transition-opacity duration-200"
               style={{ opacity: isGateHovered ? 1 : 0 }}
             >
-              <img
-                alt=""
-                className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
-                decoding="async"
-                src={bubbleSmallUrl}
-              />
+              {isGateHovered ? (
+                <img
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
+                  decoding="async"
+                  src={bubbleSmallUrl}
+                />
+              ) : null}
               <span
                 className="relative z-[1] mb-3.5 text-[24px] whitespace-nowrap text-[#3a7d2c]"
                 style={jua}
@@ -165,12 +157,14 @@ export function ChildHomePage() {
               className="relative flex h-[96px] w-[178px] items-center justify-center transition-opacity duration-200"
               style={{ opacity: isCaveHovered ? 1 : 0 }}
             >
-              <img
-                alt=""
-                className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
-                decoding="async"
-                src={bubbleMediumUrl}
-              />
+              {isCaveHovered ? (
+                <img
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
+                  decoding="async"
+                  src={bubbleMediumUrl}
+                />
+              ) : null}
               <span
                 className="relative z-[1] mb-4 text-[21px] whitespace-nowrap text-[#c96a2e]"
                 style={jua}
@@ -198,20 +192,33 @@ export function ChildHomePage() {
             </span>
           </div>
 
-          <div className="absolute top-[30px] left-[8px] h-[320px] w-[320px] [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]">
+          <div
+            aria-label="공룡"
+            className="absolute top-[30px] left-[8px] h-[320px] w-[320px] [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
+            role="img"
+          >
             <div className="absolute bottom-2 left-1/2 h-10 w-[210px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,_rgba(60,110,50,0.42),_rgba(60,110,50,0)_100%)]" />
-            {Object.entries(DINO_FRAMES).map(([frameNumber, frame], index) => (
+            {dinoFramesReady ? (
+              Object.entries(DINO_FRAMES).map(([frameNumber, frame]) => (
+                <img
+                  alt=""
+                  className="absolute bottom-0 left-1/2 h-[340px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_12px_12px_rgba(0,0,0,0.22)] will-change-[opacity]"
+                  decoding="sync"
+                  key={frame}
+                  src={frame}
+                  style={{
+                    opacity: activeDinoFrame === Number(frameNumber) ? 1 : 0,
+                  }}
+                />
+              ))
+            ) : (
               <img
-                alt={index === 0 ? '공룡' : ''}
+                alt=""
                 className="absolute bottom-0 left-1/2 h-[340px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_12px_12px_rgba(0,0,0,0.22)]"
                 decoding="async"
-                key={frame}
-                src={frame}
-                style={{
-                  opacity: activeDinoFrame === Number(frameNumber) ? 1 : 0,
-                }}
+                src={DINO_FRAMES[activeDinoFrame]}
               />
-            ))}
+            )}
           </div>
         </div>
 

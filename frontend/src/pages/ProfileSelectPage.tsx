@@ -11,6 +11,7 @@ import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
 import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -38,8 +39,8 @@ const childProfiles = [{ name: '하린' }, { name: '도윤' }]
 export function ProfileSelectPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [isBgmPlaying, setIsBgmPlaying] = useState(false)
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const pinTimersRef = useRef<number[]>([])
   const [showPin, setShowPin] = useState(false)
   const [pin, setPin] = useState('')
   const [pinMessage, setPinMessage] = useState('')
@@ -104,6 +105,7 @@ export function ProfileSelectPage() {
   }
 
   const openPin = () => {
+    clearPinTimers()
     setPin('')
     setPinMessage('')
     setIsPinError(false)
@@ -176,6 +178,7 @@ export function ProfileSelectPage() {
         )
         setPin('')
       }, 150)
+      pinTimersRef.current.push(confirmTimerId)
     }
   }
 

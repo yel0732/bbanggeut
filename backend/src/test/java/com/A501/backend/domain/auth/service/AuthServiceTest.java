@@ -211,6 +211,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void refresh_throwsWhenCookieMissing() {
+        assertThatThrownBy(() -> authService.refresh(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        verify(refreshTokenRepository, never()).findByTokenHash(any());
+    }
+
+    @Test
     void refresh_throwsWhenTokenNotFound() {
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
 

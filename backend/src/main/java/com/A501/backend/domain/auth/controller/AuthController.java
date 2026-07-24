@@ -73,7 +73,7 @@ public class AuthController {
     @Operation(summary = "토큰 재발급")
     @PostMapping("/token/refresh")
     public ResponseEntity<TokenRefreshResponse> refresh(
-            @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME) String refreshToken) {
+            @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken) {
         TokenIssueResult result = authService.refresh(refreshToken);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result).toString())

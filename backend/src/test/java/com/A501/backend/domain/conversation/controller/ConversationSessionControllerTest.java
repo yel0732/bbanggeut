@@ -320,6 +320,7 @@ class ConversationSessionControllerTest {
                                 "USER_FINISHED",
                                 "MAX_QUESTION_REACHED",
                                 "CHILD_REQUESTED_STOP",
+                                "REQUIRED_SLOTS_FILLED",
                                 "INACTIVITY_TIMEOUT",
                                 "CONNECTION_LOST",
                                 "PAGE_CLOSED",

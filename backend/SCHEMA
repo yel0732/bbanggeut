@@ -36,10 +36,29 @@ CREATE INDEX idx_conversation_session_status_updated ON conversation_session (st
 -- context_type: GAME | DAILY
 -- conversation_goal: DIARY
 -- termination_reason:
--- USER_FINISHED | MAX_QUESTION_REACHED | CHILD_REQUESTED_STOP
+-- USER_FINISHED | MAX_QUESTION_REACHED | CHILD_REQUESTED_STOP | REQUIRED_SLOTS_FILLED
 -- INACTIVITY_TIMEOUT | CONNECTION_LOST | PAGE_CLOSED | SYSTEM_ERROR
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationSession.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+
+
+-- DIARY-1-T15: conversation_dialogue_state -------------------------------
+
+CREATE TABLE conversation_dialogue_state (
+    conversation_id  VARCHAR(40)  NOT NULL,
+    slots_json       TEXT         NOT NULL,
+    version          BIGINT       NOT NULL DEFAULT 0,
+    created_at       DATETIME(6)  NOT NULL,
+    updated_at       DATETIME(6)  NOT NULL,
+    PRIMARY KEY (conversation_id),
+    CONSTRAINT fk_dialogue_state_conversation
+        FOREIGN KEY (conversation_id) REFERENCES conversation_session (conversation_id)
+);
+
+-- slots_json은 AI DiarySlots camelCase JSON Snapshot이다.
+-- FastAPI는 MySQL에 접근하지 않고 Spring 내부 API 계약으로만 Snapshot을 받는다.
+-- Entity:
+-- backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationDialogueState.java
 
 
 -- GAME-01: game_session -----------------------------------------------------

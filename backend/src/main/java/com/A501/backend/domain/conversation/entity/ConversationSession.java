@@ -117,6 +117,27 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
         transitionTo(ConversationStatus.IN_PROGRESS);
     }
 
+    public void start(LocalDateTime startedAt) {
+        if (startedAt == null) {
+            throw new IllegalArgumentException("시작 시각이 필요합니다.");
+        }
+        if (status == ConversationStatus.IN_PROGRESS) {
+            return;
+        }
+        transitionTo(ConversationStatus.IN_PROGRESS);
+        this.startedAt = startedAt;
+    }
+
+    public void incrementQuestionCount() {
+        if (status != ConversationStatus.IN_PROGRESS) {
+            throw new IllegalStateException("진행 중인 대화만 질문 수를 증가시킬 수 있습니다.");
+        }
+        if (questionCount >= maxQuestionCount) {
+            throw new IllegalStateException("최대 질문 수를 초과할 수 없습니다.");
+        }
+        questionCount++;
+    }
+
     public void terminate(LocalDateTime completedAt, TerminationReason terminationReason) {
         if (completedAt == null) {
             throw new IllegalArgumentException("종료 시각이 필요합니다.");

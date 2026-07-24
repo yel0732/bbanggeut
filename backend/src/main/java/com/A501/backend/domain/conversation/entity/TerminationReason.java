@@ -10,6 +10,7 @@ public enum TerminationReason {
     USER_FINISHED(ConversationStatus.COMPLETED),
     MAX_QUESTION_REACHED(ConversationStatus.COMPLETED),
     CHILD_REQUESTED_STOP(ConversationStatus.COMPLETED),
+    REQUIRED_SLOTS_FILLED(ConversationStatus.COMPLETED),
     INACTIVITY_TIMEOUT(ConversationStatus.EXPIRED),
     CONNECTION_LOST(ConversationStatus.ABORTED),
     PAGE_CLOSED(ConversationStatus.ABORTED),

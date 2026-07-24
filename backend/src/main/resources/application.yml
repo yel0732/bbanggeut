@@ -16,6 +16,11 @@ report:
     max-attempts: ${REPORT_RETRY_MAX_ATTEMPTS:3}
     interval: ${REPORT_RETRY_INTERVAL:PT5S}
 
+conversation:
+  ai:
+    base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
+    timeout: ${AI_SERVER_TIMEOUT:PT30S}
+
 app:
   jwt:
     access-token-expiry-minutes: 30

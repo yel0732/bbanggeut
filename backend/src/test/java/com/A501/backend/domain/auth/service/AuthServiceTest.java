@@ -265,21 +265,36 @@ class AuthServiceTest {
     }
 
     @Test
-    void logout_revokesTokenMatchingCookie() {
+    void logout_revokesTokenMatchingCookieWhenOwnedByAuthenticatedParent() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
         RefreshToken token = RefreshToken.issue(
                 parent, TokenHasher.hash("raw-refresh-token"), LocalDateTime.now().plusDays(1), false);
         when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-refresh-token")))
                 .thenReturn(Optional.of(token));
 
-        authService.logout("raw-refresh-token");
+        authService.logout(1L, "raw-refresh-token");
 
         assertThat(token.isRevoked()).isTrue();
     }
 
     @Test
+    void logout_doesNotRevokeTokenOwnedByDifferentParent() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        RefreshToken token = RefreshToken.issue(
+                parent, TokenHasher.hash("raw-refresh-token"), LocalDateTime.now().plusDays(1), false);
+        when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-refresh-token")))
+                .thenReturn(Optional.of(token));
+
+        authService.logout(2L, "raw-refresh-token");
+
+        assertThat(token.isRevoked()).isFalse();
+    }
+
+    @Test
     void logout_doesNothingWhenCookieMissing() {
-        authService.logout(null);
+        authService.logout(1L, null);
 
         verify(refreshTokenRepository, never()).findByTokenHash(any());
     }
@@ -288,7 +303,7 @@ class AuthServiceTest {
     void logout_doesNothingWhenTokenNotFound() {
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
 
-        authService.logout("unknown-token");
+        authService.logout(1L, "unknown-token");
 
         verify(refreshTokenRepository).findByTokenHash(TokenHasher.hash("unknown-token"));
     }

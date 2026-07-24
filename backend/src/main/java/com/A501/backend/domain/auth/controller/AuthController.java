@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -83,8 +84,10 @@ public class AuthController {
     @Operation(summary = "로그아웃")
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
+            Authentication authentication,
             @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken) {
-        authService.logout(refreshToken);
+        Long parentId = (Long) authentication.getPrincipal();
+        authService.logout(parentId, refreshToken);
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString())
                 .build();

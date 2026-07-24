@@ -87,11 +87,12 @@ public class AuthService {
     }
 
     @Transactional
-    public void logout(String rawRefreshToken) {
+    public void logout(Long authenticatedParentId, String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             return;
         }
         refreshTokenRepository.findByTokenHash(TokenHasher.hash(rawRefreshToken))
+                .filter(token -> token.getParent().getParentId().equals(authenticatedParentId))
                 .ifPresent(RefreshToken::revoke);
     }
 

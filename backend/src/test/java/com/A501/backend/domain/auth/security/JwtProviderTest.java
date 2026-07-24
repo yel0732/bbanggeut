@@ -11,7 +11,9 @@ import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.exception.AuthErrorCode;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -93,6 +95,69 @@ class JwtProviderTest {
         String expiredToken = expiredTokenProvider.generateAccessToken(parent);
 
         assertThat(jwtProvider.parseAccessToken(expiredToken)).isNull();
+    }
+
+    @Test
+    void generateSignupToken_roundTripsProviderIdAndEmail() {
+        String token = jwtProvider.generateSignupToken("google-sub-123", "new@example.com");
+
+        JwtProvider.SignupTokenClaims claims = jwtProvider.parseSignupToken(token);
+
+        assertThat(claims.providerId()).isEqualTo("google-sub-123");
+        assertThat(claims.email()).isEqualTo("new@example.com");
+    }
+
+    @Test
+    void generateLinkToken_roundTripsParentIdAndProviderId() {
+        String token = jwtProvider.generateLinkToken(7L, "google-sub-456");
+
+        JwtProvider.LinkTokenClaims claims = jwtProvider.parseLinkToken(token);
+
+        assertThat(claims.parentId()).isEqualTo(7L);
+        assertThat(claims.providerId()).isEqualTo("google-sub-456");
+    }
+
+    @Test
+    void parseSignupToken_throwsWhenGivenAccessToken() {
+        Parent parent = createParentWithId(1L);
+        String accessToken = jwtProvider.generateAccessToken(parent);
+
+        assertThatThrownBy(() -> jwtProvider.parseSignupToken(accessToken))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+    }
+
+    @Test
+    void parseLinkToken_throwsWhenGivenSignupToken() {
+        String signupToken = jwtProvider.generateSignupToken("google-sub", "a@example.com");
+
+        assertThatThrownBy(() -> jwtProvider.parseLinkToken(signupToken))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_LINK_TOKEN));
+    }
+
+    @Test
+    void parseSignupToken_throwsForTamperedToken() {
+        String token = jwtProvider.generateSignupToken("google-sub", "a@example.com");
+        String tampered = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+
+        assertThatThrownBy(() -> jwtProvider.parseSignupToken(tampered))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+    }
+
+    @Test
+    void parseSignupToken_throwsForExpiredToken() {
+        JwtProvider expiredTokenProvider = new JwtProvider(new JwtProperties(SECRET, 30, -1, 10));
+        String expiredToken = expiredTokenProvider.generateSignupToken("google-sub", "a@example.com");
+
+        assertThatThrownBy(() -> jwtProvider.parseSignupToken(expiredToken))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
     }
 
     private Claims parseClaims(String token) {

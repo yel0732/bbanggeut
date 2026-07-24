@@ -18,7 +18,11 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
-import { loadChildProfiles, saveChildProfiles } from '@/lib/childProfiles'
+import {
+  loadChildProfiles,
+  MAX_CHILD_PROFILES,
+  saveChildProfiles,
+} from '@/lib/childProfiles'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
@@ -41,6 +45,8 @@ export function ParentProfilePage() {
   const [childPhotoUrl, setChildPhotoUrl] = useState<string | null>(null)
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [childFormMessage, setChildFormMessage] = useState('')
+  const childProfileCount = loadChildProfiles().length
+  const isChildProfileLimitReached = childProfileCount >= MAX_CHILD_PROFILES
   const [pin, setPin] = useState('')
   const [firstPin, setFirstPin] = useState<string | null>(null)
   const [pinMessage, setPinMessage] = useState('')
@@ -197,12 +203,19 @@ export function ParentProfilePage() {
   }
 
   const createChildProfile = () => {
+    const profiles = loadChildProfiles()
+    if (profiles.length >= MAX_CHILD_PROFILES) {
+      setChildFormMessage(
+        `아이 프로필은 최대 ${MAX_CHILD_PROFILES}개까지 만들 수 있어요.`,
+      )
+      return
+    }
+
     const name = childName.trim()
     if (!name) {
       setChildFormMessage('아이 이름을 입력해 주세요.')
       return
     }
-    const profiles = loadChildProfiles()
     saveChildProfiles([
       ...profiles,
       {
@@ -430,7 +443,7 @@ export function ParentProfilePage() {
                 아이 프로필 생성
               </h2>
 
-              <div className="absolute top-[19.5%] left-[24.5%] size-[114px] overflow-hidden rounded-full bg-[#fdf6e3] shadow-[0_0_0_4px_#d9c79a]">
+              <div className="absolute top-[20.8%] left-[22%] size-[120px] overflow-hidden rounded-full bg-[#fdf6e3] shadow-[0_0_0_4px_#d9c79a]">
                 {isCameraOn ? (
                   <video
                     autoPlay
@@ -448,9 +461,9 @@ export function ParentProfilePage() {
                 )}
               </div>
 
-              <div className="absolute top-[19%] right-[20%] flex flex-col">
+              <div className="absolute top-[18.2%] right-[18%] flex flex-col">
                 <button
-                  className="h-16 w-[180px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
+                  className="h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
                   onClick={() => {
                     stopCamera()
                     childPhotoInputRef.current?.click()
@@ -461,12 +474,24 @@ export function ParentProfilePage() {
                   사진 추가
                 </button>
                 <button
-                  className="-mt-[23px] h-16 w-[180px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
+                  className="-mt-5 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
                   onClick={() => void toggleCamera()}
                   style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
                   type="button"
                 >
                   {isCameraOn ? '📸 사진 찍기' : '웹캠 촬영'}
+                </button>
+                <button
+                  className="-mt-5 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
+                  onClick={() => {
+                    stopCamera()
+                    setChildPhotoUrl(null)
+                    setChildFormMessage('')
+                  }}
+                  style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
+                  type="button"
+                >
+                  기본 이미지
                 </button>
               </div>
               <input
@@ -478,7 +503,7 @@ export function ParentProfilePage() {
               />
 
               <p
-                className="absolute top-[40%] right-0 left-0 text-center text-[15px] text-[#8a7a55]"
+                className="absolute top-[42%] right-0 left-0 text-center text-[15px] text-[#8a7a55]"
                 style={jua}
               >
                 기본 프사를 사용하거나 사진을 추가할 수 있어요.
@@ -491,16 +516,18 @@ export function ParentProfilePage() {
                 🌿 아이 이름
               </label>
               <div
-                className="absolute top-[53%] right-[19.5%] left-[19.5%] h-[72px] -translate-x-1.5 bg-[length:100%_100%] bg-center bg-no-repeat"
+                className="absolute top-[52.5%] right-[19.5%] left-[19.5%] h-[72px] -translate-x-1.5 bg-[length:100%_100%] bg-center bg-no-repeat"
                 style={{ backgroundImage: `url(${inputBarUrl})` }}
               >
                 <input
                   className="absolute inset-y-1.5 right-5 left-5 bg-transparent text-center text-[19px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f]"
                   id="child-profile-name"
-                  maxLength={12}
                   onChange={(event) => {
-                    setChildName(event.target.value)
-                    setChildFormMessage('')
+                    const nextName = event.target.value
+                    setChildName(nextName.slice(0, 15))
+                    setChildFormMessage(
+                      nextName.length > 15 ? '이름은 15자까지 가능해요' : '',
+                    )
                   }}
                   placeholder="이름을 입력해 주세요"
                   style={jua}
@@ -508,13 +535,16 @@ export function ParentProfilePage() {
                 />
               </div>
               <p
-                className="absolute top-[63%] right-0 left-0 text-center text-[14px] text-[#c7563a]"
+                className="absolute top-[62%] right-0 left-0 text-center text-[14px] text-[#c7563a]"
                 style={jua}
               >
-                {childFormMessage}
+                {isChildProfileLimitReached
+                  ? `아이 프로필은 최대 ${MAX_CHILD_PROFILES}개까지 만들 수 있어요.`
+                  : childFormMessage}
               </p>
               <button
-                className="absolute top-[65.5%] left-1/2 h-[84px] w-[370px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white active:translate-y-0.5"
+                className="absolute top-[65.5%] left-1/2 h-[84px] w-[370px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isChildProfileLimitReached}
                 onClick={createChildProfile}
                 style={{
                   ...jua,
@@ -524,7 +554,9 @@ export function ParentProfilePage() {
                 }}
                 type="button"
               >
-                아이 프로필 만들기
+                {isChildProfileLimitReached
+                  ? '프로필 10개 생성 완료'
+                  : '아이 프로필 만들기'}
               </button>
               <button
                 className="absolute top-[74.5%] left-1/2 h-[78px] w-[265px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[18px] text-[#5a4a2a] active:translate-y-0.5"

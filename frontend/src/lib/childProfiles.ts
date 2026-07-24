@@ -4,6 +4,8 @@ export type ChildProfile = {
   photoUrl: string | null
 }
 
+export const MAX_CHILD_PROFILES = 10
+
 const STORAGE_KEY = 'bbanggut-child-profiles'
 
 export function loadChildProfiles(): ChildProfile[] {
@@ -19,7 +21,9 @@ export function loadChildProfiles(): ChildProfile[] {
 }
 
 export function saveChildProfiles(profiles: ChildProfile[]) {
+  if (profiles.length > MAX_CHILD_PROFILES) return false
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles))
+  return true
 }
 
 function isChildProfile(value: unknown): value is ChildProfile {

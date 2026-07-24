@@ -347,4 +347,16 @@ class AuthServiceTest {
 
         assertThat(result.accessToken()).isEqualTo("access-token");
     }
+
+    @Test
+    void cleanupExpiredRefreshTokens_deletesTokensExpiredBeyondRetentionWindow() {
+        when(refreshTokenRepository.deleteByExpiresAtBefore(any())).thenReturn(3L);
+
+        authService.cleanupExpiredRefreshTokens();
+
+        org.mockito.ArgumentCaptor<LocalDateTime> cutoffCaptor =
+                org.mockito.ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(refreshTokenRepository).deleteByExpiresAtBefore(cutoffCaptor.capture());
+        assertThat(cutoffCaptor.getValue()).isBefore(LocalDateTime.now().minusDays(29));
+    }
 }

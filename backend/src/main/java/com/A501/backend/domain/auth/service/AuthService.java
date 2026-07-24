@@ -31,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthService {
 
     private static final int MINIMUM_SIGNUP_AGE = 19;
+    private static final int REFRESH_TOKEN_CLEANUP_RETENTION_DAYS = 30;
 
     private final ParentRepository parentRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -96,6 +97,13 @@ public class AuthService {
         refreshTokenRepository.findByTokenHash(TokenHasher.hash(rawRefreshToken))
                 .filter(token -> token.getParent().getParentId().equals(authenticatedParentId))
                 .ifPresent(RefreshToken::revoke);
+    }
+
+    @Transactional
+    public void cleanupExpiredRefreshTokens() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(REFRESH_TOKEN_CLEANUP_RETENTION_DAYS);
+        long deletedCount = refreshTokenRepository.deleteByExpiresAtBefore(cutoff);
+        log.info("Deleted {} refresh tokens with expiresAt before {}", deletedCount, cutoff);
     }
 
     private String normalizeEmail(String email) {

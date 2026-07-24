@@ -4,6 +4,7 @@ import pytest
 
 from app.dialogue import (
     QUESTION_TARGET_PRIORITY,
+    QUESTION_TARGET_SLOT_FIELDS,
     DiarySlots,
     QuestionTarget,
     select_next_question_target,
@@ -30,6 +31,22 @@ def test_question_target_priority_matches_functional_spec() -> None:
     )
     assert "people" not in QUESTION_TARGET_PRIORITY
     assert "place" not in QUESTION_TARGET_PRIORITY
+
+
+def test_target_slot_mapping_is_the_single_priority_source() -> None:
+    assert tuple(QUESTION_TARGET_SLOT_FIELDS) == QUESTION_TARGET_PRIORITY
+    assert QUESTION_TARGET_SLOT_FIELDS == {
+        QuestionTarget.EVENT: "event",
+        QuestionTarget.EMOTION: "emotion",
+        QuestionTarget.EMOTION_REASON: "emotion_reason",
+        QuestionTarget.MEMORABLE_MOMENT: "memorable_moment",
+        QuestionTarget.RESULT: "result",
+    }
+
+    with pytest.raises(TypeError):
+        QUESTION_TARGET_SLOT_FIELDS[QuestionTarget.EVENT] = (  # type: ignore[index]
+            "result"
+        )
 
 
 @pytest.mark.parametrize(
@@ -155,3 +172,35 @@ def test_selection_is_deterministic() -> None:
 
     assert first is QuestionTarget.EMOTION
     assert second is first
+
+
+def test_excluded_target_is_skipped_without_changing_priority() -> None:
+    excluded = {QuestionTarget.EVENT}
+
+    selected = select_next_question_target(
+        DiarySlots(),
+        excluded_targets=excluded,
+    )
+
+    assert selected is QuestionTarget.EMOTION
+    assert excluded == {QuestionTarget.EVENT}
+
+
+def test_returns_none_when_every_unfilled_target_is_excluded() -> None:
+    selected = select_next_question_target(
+        DiarySlots(),
+        excluded_targets=frozenset(QuestionTarget),
+    )
+
+    assert selected is None
+
+
+def test_rejects_invalid_excluded_target() -> None:
+    with pytest.raises(
+        ValueError,
+        match="excluded_targets must contain QuestionTarget values",
+    ):
+        select_next_question_target(
+            DiarySlots(),
+            excluded_targets={"event"},  # type: ignore[arg-type]
+        )

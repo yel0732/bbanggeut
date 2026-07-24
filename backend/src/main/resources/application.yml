@@ -15,6 +15,11 @@ report:
   retry:
     max-attempts: ${REPORT_RETRY_MAX_ATTEMPTS:3}
     interval: ${REPORT_RETRY_INTERVAL:PT5S}
+  notification:
+    sse:
+      # SseEmitter 생성 시 타임아웃으로 사용되어 서블릿 async 타임아웃과 일치시킨다.
+      timeout: ${REPORT_SSE_TIMEOUT:PT30M}
+      heartbeat-interval: ${REPORT_SSE_HEARTBEAT:PT15S}
 
 app:
   jwt:

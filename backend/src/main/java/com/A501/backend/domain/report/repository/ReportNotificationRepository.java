@@ -15,4 +15,8 @@ public interface ReportNotificationRepository
     boolean existsByReportIdAndNotificationType(
             Long reportId,
             ReportNotificationType notificationType);
+
+    List<ReportNotification> findByParentIdAndIdGreaterThanOrderByIdAsc(
+            Long parentId,
+            Long id);
 }

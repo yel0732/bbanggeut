@@ -1,6 +1,7 @@
 package com.A501.backend.domain.report.service;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +10,7 @@ import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.entity.ReportNotification;
 import com.A501.backend.domain.report.entity.ReportNotificationType;
+import com.A501.backend.domain.report.event.ReportNotificationCreatedEvent;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
@@ -25,16 +27,19 @@ public class ReportNotificationPersistenceService {
     private final ReportNotificationRepository notificationRepository;
     private final ObjectProvider<ReportNotificationRecipientPort>
             recipientPortProvider;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReportNotificationPersistenceService(
             DailyReportRepository dailyReportRepository,
             ReportNotificationRepository notificationRepository,
             ObjectProvider<ReportNotificationRecipientPort>
-                    recipientPortProvider
+                    recipientPortProvider,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.dailyReportRepository = dailyReportRepository;
         this.notificationRepository = notificationRepository;
         this.recipientPortProvider = recipientPortProvider;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -60,13 +65,23 @@ public class ReportNotificationPersistenceService {
         }
         Long parentId = recipientPort.findParentId(report.getChildId());
 
-        notificationRepository.saveAndFlush(ReportNotification.create(
-                parentId,
-                report.getId(),
-                report.getChildId(),
-                report.getReportDate(),
-                notificationType,
-                messageOf(notificationType)));
+        ReportNotification saved = notificationRepository.saveAndFlush(
+                ReportNotification.create(
+                        parentId,
+                        report.getId(),
+                        report.getChildId(),
+                        report.getReportDate(),
+                        notificationType,
+                        messageOf(notificationType)));
+
+        // 저장 트랜잭션(REQUIRES_NEW) 커밋 이후에만 SSE 전송이 일어나도록
+        // AFTER_COMMIT 리스너용 이벤트만 발행한다. 실제 전송은 리스너가 맡는다.
+        eventPublisher.publishEvent(new ReportNotificationCreatedEvent(
+                saved.getId(),
+                saved.getParentId(),
+                saved.getNotificationType(),
+                saved.getReportDate(),
+                saved.getMessage()));
     }
 
     private void validateTerminalStatus(

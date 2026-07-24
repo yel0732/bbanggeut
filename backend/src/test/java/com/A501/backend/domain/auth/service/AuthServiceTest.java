@@ -307,4 +307,44 @@ class AuthServiceTest {
 
         verify(refreshTokenRepository).findByTokenHash(TokenHasher.hash("unknown-token"));
     }
+
+    @Test
+    void signup_normalizesEmailCaseAndWhitespaceBeforeDuplicateCheck() {
+        SignupRequest request = new SignupRequest(
+                "  New@Example.com  ", "Abcdef1!", LocalDate.now().minusYears(20));
+        when(parentRepository.findByEmail("new@example.com")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(request.password())).thenReturn("hashed-password");
+        when(parentRepository.save(any(Parent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Parent result = authService.signup(request);
+
+        assertThat(result.getEmail()).isEqualTo("new@example.com");
+    }
+
+    @Test
+    void signup_throwsWhenEmailAlreadyExistsWithDifferentCase() {
+        SignupRequest request = new SignupRequest(
+                "TAKEN@Example.com", "Abcdef1!", LocalDate.now().minusYears(20));
+        Parent existing = Parent.createLocal("taken@example.com", "hash", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail("taken@example.com")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.EMAIL_ALREADY_EXISTS));
+    }
+
+    @Test
+    void login_normalizesEmailCaseAndWhitespaceBeforeLookup() {
+        LoginRequest request = new LoginRequest("  Parent@Example.com  ", "Abcdef1!", false);
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail("parent@example.com")).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches(request.password(), parent.getPasswordHash())).thenReturn(true);
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        TokenIssueResult result = authService.login(request);
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+    }
 }

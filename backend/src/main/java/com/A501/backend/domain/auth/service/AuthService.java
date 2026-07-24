@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
+import java.util.Locale;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -38,12 +39,13 @@ public class AuthService {
     private final RefreshTokenProperties refreshTokenProperties;
 
     public boolean isEmailAvailable(String email) {
-        return parentRepository.findByEmail(email).isEmpty();
+        return parentRepository.findByEmail(normalizeEmail(email)).isEmpty();
     }
 
     @Transactional
     public Parent signup(SignupRequest request) {
-        if (parentRepository.findByEmail(request.email()).isPresent()) {
+        String email = normalizeEmail(request.email());
+        if (parentRepository.findByEmail(email).isPresent()) {
             throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_EXISTS);
         }
         if (isUnderAge(request.birthDate())) {
@@ -51,7 +53,7 @@ public class AuthService {
         }
 
         Parent parent = Parent.createLocal(
-                request.email(),
+                email,
                 passwordEncoder.encode(request.password()),
                 request.birthDate());
         return parentRepository.save(parent);
@@ -59,7 +61,7 @@ public class AuthService {
 
     @Transactional
     public TokenIssueResult login(LoginRequest request) {
-        Parent parent = findAuthenticatedParent(request.email(), request.password());
+        Parent parent = findAuthenticatedParent(normalizeEmail(request.email()), request.password());
         return issueTokens(parent, request.autoLogin());
     }
 
@@ -94,6 +96,10 @@ public class AuthService {
         refreshTokenRepository.findByTokenHash(TokenHasher.hash(rawRefreshToken))
                 .filter(token -> token.getParent().getParentId().equals(authenticatedParentId))
                 .ifPresent(RefreshToken::revoke);
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private Parent findAuthenticatedParent(String email, String rawPassword) {

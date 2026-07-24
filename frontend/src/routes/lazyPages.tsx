@@ -58,3 +58,18 @@ export const GameResultPage = lazy(() =>
     default: GameResultPage,
   })),
 )
+export const ConversationPage = lazy(() =>
+  import('@/pages/ConversationPage').then(({ ConversationPage }) => ({
+    default: ConversationPage,
+  })),
+)
+export const DiaryListPage = lazy(() =>
+  import('@/pages/DiaryListPage').then(({ DiaryListPage }) => ({
+    default: DiaryListPage,
+  })),
+)
+export const ParentModePage = lazy(() =>
+  import('@/pages/ParentModePage').then(({ ParentModePage }) => ({
+    default: ParentModePage,
+  })),
+)

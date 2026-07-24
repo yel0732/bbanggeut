@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import cutSoundUrl from '@/assets/audio/fruit-game/cut-fruit.mp3'
+import leafSwordUrl from '@/assets/images/fruit-game/leaf-sword.webp'
 import playFrameUrl from '@/assets/images/fruit-game/play-frame.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import {
@@ -17,6 +24,8 @@ import { useFitScale } from '@/hooks/useFitScale'
 import { useHandTracking } from '@/hooks/useHandTracking'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
+
+const PRAISES = ['멋져요!', '최고예요!', '슝!', '좋아요!', '와아!', '나이스!']
 
 function formatTime(totalSec: number): string {
   const min = Math.floor(totalSec / 60)
@@ -38,6 +47,11 @@ export function GamePlayPage() {
   const game = getGameById(gameId)
 
   const handleEnd = (result: FruitGameResult) => {
+    // MGAME-21/22: 정합성 통과한 정상 결과만 결과 화면으로. 잘못되면 폐기.
+    if (!result.valid) {
+      navigate('/games', { replace: true })
+      return
+    }
     navigate(`/games/${gameId}/result`, { replace: true, state: result })
   }
 
@@ -57,20 +71,31 @@ export function GamePlayPage() {
     }
   }, [])
 
-  const playCut = useCallback(() => {
+  // 긍정 성공 문구 (MGAME-19)
+  const [praise, setPraise] = useState<string | null>(null)
+  const praiseTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(praiseTimerRef.current), [])
+
+  const handleSlice = useCallback(() => {
     const pool = cutPoolRef.current
-    if (pool.length === 0) return
-    const audio = pool[cutIndexRef.current % pool.length]
-    cutIndexRef.current += 1
-    audio.currentTime = 0
-    void audio.play().catch(() => {})
+    if (pool.length > 0) {
+      const audio = pool[cutIndexRef.current % pool.length]
+      cutIndexRef.current += 1
+      audio.currentTime = 0
+      void audio.play().catch(() => {})
+    }
+    setPraise(PRAISES[Math.floor(Math.random() * PRAISES.length)])
+    clearTimeout(praiseTimerRef.current)
+    praiseTimerRef.current = setTimeout(() => setPraise(null), 750)
   }, [])
 
   const fruitGame = useFruitGame(
     handRef,
-    status === 'granted',
+    status === 'granted' || status === 'error',
     handleEnd,
-    playCut,
+    handleSlice,
+    hand.redesignate,
+    status === 'error',
   )
 
   // MGAME-02: 게임 화면 진입 시 카메라를 시작한다. (종료는 훅 언마운트에서 처리)
@@ -97,12 +122,11 @@ export function GamePlayPage() {
       >
         <div className="absolute inset-0 bg-[radial-gradient(110%_90%_at_50%_38%,#cfe6a0_0%,#a9d47f_46%,#77b458_78%,#4f8f43_100%)]" />
 
-        {/* 손 인식용 카메라 (영상은 표시하지 않음, 손만 사용) */}
+        {/* 자기 모습 미리보기 (구석, 위치 확인용) — 동작 인식도 이 영상에서 수행 */}
         {status === 'granted' ? (
           <video
-            aria-hidden
             autoPlay
-            className="pointer-events-none absolute h-px w-px opacity-0"
+            className="pointer-events-none absolute right-4 bottom-4 z-[6] h-[150px] w-[200px] scale-x-[-1] rounded-2xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
             muted
             playsInline
             ref={videoRef}
@@ -118,9 +142,13 @@ export function GamePlayPage() {
           src={playFrameUrl}
         />
 
-        {status === 'granted' ? (
+        {status === 'granted' || status === 'error' ? (
           <>
-            <PlayField game={fruitGame} handModelReady={hand.modelReady} />
+            <PlayField
+              game={fruitGame}
+              handModelReady={hand.modelReady}
+              praise={praise}
+            />
 
             <PlayHud
               onPause={fruitGame.pause}
@@ -132,7 +160,20 @@ export function GamePlayPage() {
             />
 
             {fruitGame.phase === 'paused' ? (
-              <PauseOverlay onQuit={leaveGame} onResume={fruitGame.resume} />
+              <PauseOverlay
+                onQuit={leaveGame}
+                onRestart={fruitGame.restart}
+                onResume={fruitGame.resume}
+              />
+            ) : null}
+
+            {status === 'error' ? (
+              <CameraErrorOverlay
+                onQuit={leaveGame}
+                onRetry={() => {
+                  void requestCamera()
+                }}
+              />
             ) : null}
           </>
         ) : (
@@ -153,11 +194,20 @@ export function GamePlayPage() {
 function PlayField({
   game,
   handModelReady,
+  praise,
 }: {
   game: FruitGameState
   handModelReady: boolean
+  praise: string | null
 }) {
   const { phase, fruits, hand, countdown } = game
+
+  // 카메라 거리 안내 (MGAME 친화적 안내)
+  let distanceHint: string | null = null
+  if (hand && hand.distance === 'near')
+    distanceHint = '손을 조금 뒤로 빼 볼까요?'
+  else if (hand && hand.distance === 'far')
+    distanceHint = '손을 조금 앞으로 내밀어 볼까요?'
 
   return (
     <div className="absolute inset-0 z-10">
@@ -169,9 +219,39 @@ function PlayField({
       {/* 손날(베는 날) + 스와이프 트레일 */}
       {hand ? <HandBlade hand={hand} /> : null}
 
-      {/* 카운트다운 / 손 대기 안내 */}
+      {/* 거리 안내 (손이 보이고 적당 거리가 아닐 때) */}
+      {distanceHint && phase !== 'ended' ? (
+        <div className="absolute top-[96px] left-1/2 -translate-x-1/2">
+          <p
+            className="rounded-full bg-[rgba(255,153,0,0.85)] px-6 py-2 text-[24px] leading-none text-white [text-shadow:0_2px_4px_rgba(0,0,0,0.35)]"
+            style={jua}
+          >
+            {distanceHint}
+          </p>
+        </div>
+      ) : null}
+
+      {/* 긍정 성공 문구 (MGAME-19) */}
+      {praise && phase === 'playing' ? (
+        <div className="absolute top-[34%] left-1/2 -translate-x-1/2">
+          <span
+            className="text-[64px] leading-none text-[#fff2a8] [text-shadow:0_4px_0_#e08a2e,0_8px_14px_rgba(0,0,0,0.35)]"
+            style={jua}
+          >
+            {praise}
+          </span>
+        </div>
+      ) : null}
+
+      {/* 카운트다운 */}
       {phase === 'countdown' ? (
-        <div className="absolute inset-0 grid place-items-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+          <span
+            className="text-[46px] leading-none text-white [text-shadow:0_3px_0_#4f8a30,0_6px_12px_rgba(19,50,18,0.5)]"
+            style={jua}
+          >
+            시작하겠습니다!
+          </span>
           <span
             className="text-[180px] leading-none text-white [text-shadow:0_6px_0_#4f8a30,0_12px_20px_rgba(19,50,18,0.5)]"
             style={jua}
@@ -181,13 +261,29 @@ function PlayField({
         </div>
       ) : null}
 
+      {/* 손 대기 안내 */}
       {phase === 'waiting-hand' ? (
         <div className="absolute inset-0 grid place-items-center">
           <p
             className="rounded-[28px] bg-[rgba(14,30,15,0.55)] px-8 py-5 text-center text-[32px] leading-snug text-white [text-shadow:0_3px_8px_rgba(0,0,0,0.5)]"
             style={jua}
           >
-            {handModelReady ? '손을 화면에 보여 주세요' : '손 인식 준비 중...'}
+            {handModelReady
+              ? '몸이 보이게 뒤로 물러나 한 손을 번쩍 들어 주세요'
+              : '동작 인식 준비 중...'}
+          </p>
+        </div>
+      ) : null}
+
+      {/* 자동 일시정지 (손 사라짐) 안내 (MGAME-24) */}
+      {phase === 'interrupted' ? (
+        <div className="absolute inset-0 grid place-items-center bg-[rgba(14,30,15,0.35)]">
+          <p
+            className="rounded-[28px] bg-[rgba(14,30,15,0.6)] px-8 py-5 text-center text-[32px] leading-snug text-white [text-shadow:0_3px_8px_rgba(0,0,0,0.5)]"
+            style={jua}
+          >
+            손이 안 보여요!
+            <br />한 손을 다시 들어 주세요
           </p>
         </div>
       ) : null}
@@ -279,110 +375,72 @@ function FruitSprite({ fruit }: { fruit: RenderFruit }) {
   )
 }
 
+// leaf-sword.webp 내 손잡이 끝/칼끝 앵커 (이미지 비율 좌표)
+const SWORD_SIZE = 360
+const SWORD_HANDLE = { x: 0.8, y: 0.82 }
+const SWORD_TIP = { x: 0.14, y: 0.16 }
+
 function HandBlade({ hand }: { hand: HandScreen }) {
   const { blade, trail, fast } = hand
-  const dx = blade.bx - blade.ax
-  const dy = blade.by - blade.ay
-  const len = Math.hypot(dx, dy) || 1
-  const ux = dx / len
-  const uy = dy / len
-  const nx = -uy
-  const ny = ux
 
-  // 손목(a) 뒤쪽에 손잡이, 손끝(b)까지 칼날인 장난감 칼
-  const gripStartX = blade.ax - ux * 26
-  const gripStartY = blade.ay - uy * 26
-  const guardX = blade.ax + ux * len * 0.24
-  const guardY = blade.ay + uy * len * 0.24
-
-  const bladeLen = len * 0.76
-  const midX = guardX + ux * bladeLen * 0.72
-  const midY = guardY + uy * bladeLen * 0.72
-  const hw = 16
-  const hwMid = hw * 0.82
-
-  const bladePts = [
-    `${guardX + nx * hw},${guardY + ny * hw}`,
-    `${midX + nx * hwMid},${midY + ny * hwMid}`,
-    `${blade.bx},${blade.by}`,
-    `${midX - nx * hwMid},${midY - ny * hwMid}`,
-    `${guardX - nx * hw},${guardY - ny * hw}`,
-  ].join(' ')
+  // 손목(a)→손끝(b)에 검 이미지를 맞추는 유사변환(회전+스케일). 단일 img +
+  // GPU 합성 transform이라 빠르게 움직여도 가볍다.
+  const hix = SWORD_HANDLE.x * SWORD_SIZE
+  const hiy = SWORD_HANDLE.y * SWORD_SIZE
+  const vix = (SWORD_TIP.x - SWORD_HANDLE.x) * SWORD_SIZE
+  const viy = (SWORD_TIP.y - SWORD_HANDLE.y) * SWORD_SIZE
+  const viLen = Math.hypot(vix, viy) || 1
+  const vtx = blade.bx - blade.ax
+  const vty = blade.by - blade.ay
+  const vtLen = Math.hypot(vtx, vty) || 1
+  const scale = Math.max(vtLen / viLen, 0.62)
+  const rot = Math.atan2(vty, vtx) - Math.atan2(viy, vix)
+  const cos = Math.cos(rot)
+  const sin = Math.sin(rot)
+  // 이미지 손잡이 앵커를 손목 좌표로 보내는 오프셋 (회전·스케일 반영)
+  const originX = blade.ax - scale * (cos * hix - sin * hiy)
+  const originY = blade.ay - scale * (sin * hix + cos * hiy)
 
   const trailPts = trail.map((point) => `${point.x},${point.y}`).join(' ')
-  const bladeFill = fast ? '#ffffff' : '#e8f0f6'
-  const bladeStroke = fast ? '#ff8a5c' : '#8fa7bd'
-  const guardHalf = 22
 
   return (
-    <svg
-      className="pointer-events-none absolute inset-0"
-      height="100%"
-      preserveAspectRatio="none"
-      viewBox="0 0 1280 720"
-      width="100%"
-    >
+    <div className="pointer-events-none absolute inset-0">
       {trail.length > 1 ? (
-        <polyline
-          fill="none"
-          opacity={0.6}
-          points={trailPts}
-          stroke={fast ? '#ffe27a' : 'rgba(255,255,255,0.5)'}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={fast ? 18 : 10}
-        />
+        <svg
+          className="absolute inset-0"
+          height="100%"
+          preserveAspectRatio="none"
+          viewBox="0 0 1280 720"
+          width="100%"
+        >
+          <polyline
+            fill="none"
+            opacity={0.55}
+            points={trailPts}
+            stroke={fast ? '#d6f56a' : 'rgba(255,255,255,0.45)'}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={fast ? 18 : 10}
+          />
+        </svg>
       ) : null}
-
-      {/* 손잡이 */}
-      <line
-        stroke="#b4552b"
-        strokeLinecap="round"
-        strokeWidth={20}
-        x1={gripStartX}
-        x2={blade.ax + ux * len * 0.12}
-        y1={gripStartY}
-        y2={blade.ay + uy * len * 0.12}
+      <img
+        alt=""
+        className="absolute top-0 left-0 will-change-transform"
+        decoding="async"
+        draggable={false}
+        src={leafSwordUrl}
+        style={{
+          width: SWORD_SIZE,
+          height: SWORD_SIZE,
+          transformOrigin: '0 0',
+          transform: `translate(${originX}px, ${originY}px) rotate(${rot}rad) scale(${scale})`,
+          filter: fast
+            ? 'drop-shadow(0 0 12px rgba(214,245,106,0.9))'
+            : 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+        }}
       />
-      <line
-        stroke="#e07a3e"
-        strokeLinecap="round"
-        strokeWidth={12}
-        x1={gripStartX}
-        x2={blade.ax + ux * len * 0.12}
-        y1={gripStartY}
-        y2={blade.ay + uy * len * 0.12}
-      />
-      {/* 가드(십자) */}
-      <line
-        stroke="#ffcf4d"
-        strokeLinecap="round"
-        strokeWidth={11}
-        x1={guardX + nx * guardHalf}
-        x2={guardX - nx * guardHalf}
-        y1={guardY + ny * guardHalf}
-        y2={guardY - ny * guardHalf}
-      />
-      {/* 칼날 */}
-      <polygon
-        fill={bladeFill}
-        points={bladePts}
-        stroke={bladeStroke}
-        strokeLinejoin="round"
-        strokeWidth={3}
-      />
-      {/* 칼날 광택 라인 */}
-      <line
-        opacity={0.6}
-        stroke="#ffffff"
-        strokeLinecap="round"
-        strokeWidth={3}
-        x1={guardX + ux * 10}
-        x2={midX}
-        y1={guardY + uy * 10}
-        y2={midY}
-      />
-    </svg>
+    </div>
   )
 }
 
@@ -401,7 +459,8 @@ function PlayHud({
   score: number
   title: string
 }) {
-  const canPause = phase === 'playing' || phase === 'countdown'
+  const canPause =
+    phase === 'playing' || phase === 'countdown' || phase === 'interrupted'
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
@@ -532,11 +591,56 @@ function CameraPermissionView({
   )
 }
 
+function CameraErrorOverlay({
+  onQuit,
+  onRetry,
+}: {
+  onQuit: () => void
+  onRetry: () => void
+}) {
+  return (
+    <div
+      aria-modal="true"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(14,30,15,0.6)]"
+      role="dialog"
+    >
+      <div className="flex w-[440px] flex-col items-center gap-6 rounded-[36px] border-[8px] border-[#8a5a2b] bg-[#f4ead0] px-10 py-9 shadow-[0_22px_44px_rgba(20,48,16,0.45)]">
+        <p
+          className="text-center text-[32px] leading-snug text-[#6f4a1f]"
+          style={jua}
+        >
+          카메라에 문제가 생겼어요
+        </p>
+        <div className="flex w-full flex-col items-center gap-3">
+          <button
+            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#8fc75a] text-[26px] leading-none text-white shadow-[0_6px_0_#5d8e2e] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#5d8e2e]"
+            onClick={onRetry}
+            style={jua}
+            type="button"
+          >
+            다시 시도
+          </button>
+          <button
+            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#e6a838] text-[26px] leading-none text-white shadow-[0_6px_0_#a9761f] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#a9761f]"
+            onClick={onQuit}
+            style={jua}
+            type="button"
+          >
+            메인으로
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PauseOverlay({
   onQuit,
+  onRestart,
   onResume,
 }: {
   onQuit: () => void
+  onRestart: () => void
   onResume: () => void
 }) {
   return (
@@ -557,6 +661,14 @@ function PauseOverlay({
             type="button"
           >
             이어하기
+          </button>
+          <button
+            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#f0c94b] text-[26px] leading-none text-white shadow-[0_6px_0_#b6892a] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#b6892a]"
+            onClick={onRestart}
+            style={jua}
+            type="button"
+          >
+            처음부터 다시
           </button>
           <button
             className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#e6a838] text-[26px] leading-none text-white shadow-[0_6px_0_#a9761f] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#a9761f]"

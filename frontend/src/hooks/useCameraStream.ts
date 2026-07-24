@@ -7,9 +7,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * - granted: 카메라 사용 가능
  * - denied: 사용자가 권한을 거부
  * - unavailable: 카메라 없음 또는 브라우저 미지원
+ * - error: 사용 중 연결이 끊김 (MGAME-30)
  */
 export type CameraStatus =
-  'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
+  'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable' | 'error'
 
 /**
  * 게임 플레이 화면용 카메라 훅.
@@ -23,9 +24,12 @@ export type CameraStatus =
 export function useCameraStream() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  // 의도적 종료(언마운트/재요청)와 예기치 못한 끊김을 구분한다.
+  const intentionalStopRef = useRef(false)
   const [status, setStatus] = useState<CameraStatus>('idle')
 
   const stopCamera = useCallback(() => {
+    intentionalStopRef.current = true
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) {
@@ -40,6 +44,7 @@ export function useCameraStream() {
     }
 
     setStatus('requesting')
+    intentionalStopRef.current = false
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -50,6 +55,14 @@ export function useCameraStream() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream
       }
+      // 사용 중 트랙이 끊기면(장치 분리 등) 오류로 표시 (MGAME-30).
+      stream.getVideoTracks().forEach((track) => {
+        track.addEventListener('ended', () => {
+          if (!intentionalStopRef.current) {
+            setStatus('error')
+          }
+        })
+      })
       setStatus('granted')
     } catch (error) {
       if (error instanceof DOMException && error.name === 'NotFoundError') {

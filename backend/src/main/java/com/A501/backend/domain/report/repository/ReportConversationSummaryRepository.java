@@ -1,8 +1,11 @@
 package com.A501.backend.domain.report.repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import com.A501.backend.domain.report.entity.ReportConversationSummary;
 
@@ -12,4 +15,11 @@ public interface ReportConversationSummaryRepository
     Optional<ReportConversationSummary> findByReportId(Long reportId);
 
     boolean existsByReportId(Long reportId);
+
+    @Query("""
+            select summary.reportId
+            from ReportConversationSummary summary
+            where summary.reportId in :reportIds
+            """)
+    List<Long> findReportIdsWithConversationData(Collection<Long> reportIds);
 }

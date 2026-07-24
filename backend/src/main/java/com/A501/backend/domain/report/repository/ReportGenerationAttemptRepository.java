@@ -1,6 +1,7 @@
 package com.A501.backend.domain.report.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +14,9 @@ public interface ReportGenerationAttemptRepository
 
     List<ReportGenerationAttempt> findAllByReportIdOrderByAttemptNumberAsc(
             Long reportId);
+
+    Optional<ReportGenerationAttempt>
+            findFirstByReportIdOrderByAttemptNumberDesc(Long reportId);
 
     @Query("""
             select coalesce(max(attempt.attemptNumber), 0)

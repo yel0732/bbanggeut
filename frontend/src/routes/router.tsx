@@ -4,6 +4,8 @@ import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import {
   ChildHomePage,
   ChildProfileListPage,
+  ConversationPage,
+  DiaryListPage,
   EmailLoginPage,
   EmailSignupPage,
   GameEntryPage,
@@ -55,13 +57,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/conversation',
-    element: (
-      <PlaceholderPage
-        eyebrow="Conversation"
-        title="캐릭터와 대화하기"
-        description="음성 안내, 마이크 입력, 대화 진행 상태를 연결할 자리입니다."
-      />
-    ),
+    element: <ConversationPage />,
   },
   {
     path: '/auth',
@@ -97,13 +93,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/diaries',
-    element: (
-      <PlaceholderPage
-        eyebrow="Diary"
-        title="일기 모아보기"
-        description="대화 로그와 완성된 일기를 다시 볼 수 있는 화면을 연결할 자리입니다."
-      />
-    ),
+    element: <DiaryListPage />,
   },
   {
     path: '/reports',

@@ -5,6 +5,10 @@ import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import { getGameById } from '@/features/games/games'
 import { useCameraStream } from '@/hooks/useCameraStream'
 import { useFitScale } from '@/hooks/useFitScale'
+import {
+  useHandTracking,
+  type HandTrackingState,
+} from '@/hooks/useHandTracking'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
@@ -13,6 +17,7 @@ export function GamePlayPage() {
   const { gameId } = useParams()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { videoRef, status, requestCamera } = useCameraStream()
+  const hand = useHandTracking(videoRef, status === 'granted')
   const [isPaused, setIsPaused] = useState(false)
 
   const game = getGameById(gameId)
@@ -79,6 +84,7 @@ export function GamePlayPage() {
 
         <div className="absolute inset-0 z-10 flex items-center justify-center">
           <CameraStage
+            hand={hand}
             onRetry={() => {
               void requestCamera()
             }}
@@ -99,15 +105,33 @@ export function GamePlayPage() {
 }
 
 function CameraStage({
+  hand,
   onRetry,
   status,
   videoRef,
 }: {
+  hand: HandTrackingState
   onRetry: () => void
   status: ReturnType<typeof useCameraStream>['status']
   videoRef: ReturnType<typeof useCameraStream>['videoRef']
 }) {
   if (status === 'granted') {
+    const { modelReady, playHand, designated, error } = hand
+    const pct = (value: number) => `${value * 100}%`
+
+    let guide: string | null
+    if (error) {
+      guide = error
+    } else if (!modelReady) {
+      guide = '손 인식 준비 중...'
+    } else if (!playHand) {
+      guide = designated
+        ? '손이 안 보여요. 화면 안으로 손을 옮겨 주세요'
+        : '손을 화면에 보여 주세요'
+    } else {
+      guide = null
+    }
+
     return (
       <div className="relative h-[440px] w-[600px] overflow-hidden rounded-[28px] border-[5px] border-white/80 bg-black/30 shadow-[0_18px_36px_rgba(15,45,15,0.4)]">
         <video
@@ -117,12 +141,46 @@ function CameraStage({
           playsInline
           ref={videoRef}
         />
-        <p
-          className="absolute inset-x-0 bottom-0 bg-[linear-gradient(0deg,rgba(10,30,12,0.6),transparent)] pt-8 pb-4 text-center text-[24px] leading-none text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]"
-          style={jua}
-        >
-          손을 화면에 보여 주세요
-        </p>
+
+        {/* 손 영역/포인터 — 영상과 동일하게 좌우 반전해 아이가 보는 위치와 맞춘다 */}
+        <div className="pointer-events-none absolute inset-0 scale-x-[-1]">
+          {playHand ? (
+            <>
+              <div
+                className="absolute rounded-[18px] border-[3px] border-[#ffd84d] bg-[#ffe27a]/15 shadow-[0_0_18px_rgba(255,216,77,0.5)]"
+                style={{
+                  left: pct(playHand.box.minX),
+                  top: pct(playHand.box.minY),
+                  width: pct(playHand.box.maxX - playHand.box.minX),
+                  height: pct(playHand.box.maxY - playHand.box.minY),
+                }}
+              />
+              <div
+                className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-[#ff7a59] shadow-[0_0_12px_rgba(255,122,89,0.8)]"
+                style={{
+                  left: pct(playHand.pointer.x),
+                  top: pct(playHand.pointer.y),
+                }}
+              />
+            </>
+          ) : null}
+        </div>
+
+        {guide ? (
+          <p
+            className="absolute inset-x-0 bottom-0 bg-[linear-gradient(0deg,rgba(10,30,12,0.6),transparent)] pt-8 pb-4 text-center text-[24px] leading-none text-white [text-shadow:0_2px_6px_rgba(0,0,0,0.5)]"
+            style={jua}
+          >
+            {guide}
+          </p>
+        ) : (
+          <p
+            className="absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#173618]/55 px-5 py-1.5 text-[20px] leading-none text-white [text-shadow:0_2px_4px_rgba(0,0,0,0.4)]"
+            style={jua}
+          >
+            이 손으로 놀아요
+          </p>
+        )}
       </div>
     )
   }

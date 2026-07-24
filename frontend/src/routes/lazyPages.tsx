@@ -53,3 +53,8 @@ export const GamePlayPage = lazy(() =>
     default: GamePlayPage,
   })),
 )
+export const GameResultPage = lazy(() =>
+  import('@/pages/GameResultPage').then(({ GameResultPage }) => ({
+    default: GameResultPage,
+  })),
+)

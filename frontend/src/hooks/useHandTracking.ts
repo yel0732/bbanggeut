@@ -25,6 +25,8 @@ export type PlayHand = {
   box: HandBox
   /** 정규화 손 중심 포인터 */
   pointer: { x: number; y: number }
+  /** 손날(베는 날): 손목 -> 중지 끝 선분, 정규화 좌표 */
+  blade: { ax: number; ay: number; bx: number; by: number }
 }
 
 export type HandTrackingState = {
@@ -136,12 +138,21 @@ export function useHandTracking(
         sumY += landmarks[i].y
       }
 
+      const wrist = landmarks[0]
+      const middleTip = landmarks[12]
+
       setPlayHand({
         handedness: playHandednessRef.current,
         box: { minX, minY, maxX, maxY },
         pointer: {
           x: sumX / PALM_LANDMARKS.length,
           y: sumY / PALM_LANDMARKS.length,
+        },
+        blade: {
+          ax: wrist.x,
+          ay: wrist.y,
+          bx: middleTip.x,
+          by: middleTip.y,
         },
       })
     }

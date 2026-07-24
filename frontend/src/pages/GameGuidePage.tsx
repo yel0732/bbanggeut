@@ -1,7 +1,9 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
-import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
+import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
+import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
+import guideStartButtonUrl from '@/assets/images/game-entry/guide-start-btn.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
@@ -81,34 +83,52 @@ export function GameGuidePage() {
           />
         </button>
 
-        <div className="absolute top-[92px] left-1/2 z-10 h-[556px] w-[936px] -translate-x-1/2 rounded-[40px] border-[10px] border-[#8a5a2b] bg-[#f4ead0] shadow-[0_22px_44px_rgba(20,48,16,0.4),inset_0_0_0_5px_rgba(154,101,49,0.28),inset_0_0_60px_rgba(155,109,54,0.14)]">
-          <div className="absolute -top-[42px] left-1/2 flex h-[82px] w-[300px] -translate-x-1/2 items-center justify-center rounded-[26px] border-[6px] border-[#8a5a2b] bg-[linear-gradient(180deg,#f4c65a_0%,#e6a838_100%)] shadow-[0_10px_20px_rgba(40,70,20,0.32),inset_0_3px_0_rgba(255,255,255,0.4)]">
-            <span
-              className="text-[36px] leading-none text-white [text-shadow:0_3px_0_#9a6a2f,0_6px_10px_rgba(58,31,11,0.32)]"
+        {/* 나무 보드 패널 (Image 11) */}
+        <div className="absolute top-1/2 left-1/2 h-[700px] w-[836px] -translate-x-1/2 -translate-y-1/2">
+          <img
+            alt=""
+            className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_20px_40px_rgba(15,40,12,0.42)]"
+            decoding="async"
+            draggable={false}
+            src={guideBoardUrl}
+          />
+
+          <div className="absolute top-[12%] right-[11%] bottom-[9%] left-[11%] flex flex-col items-center">
+            <h2
+              className="text-[40px] leading-none text-[#6f4a1f] [text-shadow:0_2px_0_rgba(255,255,255,0.5)]"
               style={jua}
             >
               게임 방법
-            </span>
-          </div>
+            </h2>
 
-          <div className="absolute inset-x-[64px] top-[86px] bottom-[130px] flex flex-col items-center justify-center gap-8">
             <div
-              className="flex h-[236px] w-full items-center justify-center rounded-[24px] border-[3px] border-dashed border-[#b98a4d] bg-[#fffaec] text-[30px] text-[#9a6a34] shadow-[inset_0_2px_10px_rgba(120,80,30,0.14)]"
+              className="mt-5 flex w-full flex-1 items-center justify-center rounded-[24px] border-[3px] border-dashed border-[#c39a5d] bg-[#fffaec]/70 text-[28px] text-[#9a6a34] shadow-[inset_0_2px_10px_rgba(120,80,30,0.12)]"
               style={jua}
             >
               게임 플레이 예시 영상
             </div>
+
             <p
-              className="max-w-[720px] text-center text-[26px] leading-snug text-[#6f4a1f]"
+              className="mt-5 max-w-[640px] text-center text-[25px] leading-snug text-[#6f4a1f]"
               style={jua}
             >
               {game.howTo}
             </p>
-          </div>
 
-          <div className="absolute inset-x-0 bottom-[34px] flex items-center justify-center gap-16">
-            <WoodPlaqueButton label="다른 게임 할래요" onClick={backToSelect} />
-            <WoodPlaqueButton label="시작할래요" onClick={startGame} />
+            <div className="mt-6 flex items-center justify-center gap-10">
+              <GuideButton
+                imageUrl={guideBackButtonUrl}
+                label="다른 게임 할래요"
+                labelClassName="text-[#6f4a1f] [text-shadow:0_2px_0_rgba(255,255,255,0.4)]"
+                onClick={backToSelect}
+              />
+              <GuideButton
+                imageUrl={guideStartButtonUrl}
+                label="시작할래요"
+                labelClassName="text-white [text-shadow:0_2px_0_#3f7d1e,0_5px_8px_rgba(20,50,15,0.3)]"
+                onClick={startGame}
+              />
+            </div>
           </div>
         </div>
 
@@ -132,28 +152,32 @@ export function GameGuidePage() {
   )
 }
 
-function WoodPlaqueButton({
+function GuideButton({
+  imageUrl,
   label,
+  labelClassName,
   onClick,
 }: {
+  imageUrl: string
   label: string
+  labelClassName: string
   onClick: () => void
 }) {
   return (
     <button
-      className="relative h-[74px] w-[236px] border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98]"
+      className="relative h-[96px] w-[236px] border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98]"
       onClick={onClick}
       type="button"
     >
       <img
         alt=""
-        className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_12px_rgba(55,30,10,0.28)]"
+        className="absolute inset-0 h-full w-full object-contain drop-shadow-[0_8px_12px_rgba(55,30,10,0.28)]"
         decoding="async"
         draggable={false}
-        src={gameMenuButtonUrl}
+        src={imageUrl}
       />
       <span
-        className="absolute inset-0 flex items-center justify-center pb-1 text-[26px] leading-none text-white [text-shadow:0_3px_0_#744514,0_6px_9px_rgba(55,30,10,0.24)]"
+        className={`absolute inset-0 flex items-center justify-center pb-1 text-[24px] leading-none ${labelClassName}`}
         style={jua}
       >
         {label}

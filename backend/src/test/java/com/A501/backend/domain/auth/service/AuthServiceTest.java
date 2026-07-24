@@ -22,8 +22,10 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
+import com.A501.backend.domain.auth.entity.AuthProvider;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
@@ -414,5 +416,58 @@ class AuthServiceTest {
         assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.SIGNUP_REQUIRED);
         assertThat(result.signupToken()).isEqualTo("signup-token");
         assertThat(result.email()).isEqualTo("new-google@example.com");
+    }
+
+    @Test
+    void googleComplete_createsGoogleAccountWithUserProvidedBirthDate() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("signup-token", LocalDate.now().minusYears(20));
+        when(jwtProvider.parseSignupToken("signup-token"))
+                .thenReturn(new JwtProvider.SignupTokenClaims("google-sub-4", "complete@example.com"));
+        when(parentRepository.findByEmail("complete@example.com")).thenReturn(Optional.empty());
+        when(parentRepository.save(any(Parent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Parent result = authService.googleComplete(request);
+
+        assertThat(result.getEmail()).isEqualTo("complete@example.com");
+        assertThat(result.getProvider()).isEqualTo(AuthProvider.GOOGLE);
+        assertThat(result.hasPassword()).isFalse();
+    }
+
+    @Test
+    void googleComplete_throwsWhenUnderMinimumAge() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("signup-token", LocalDate.now().minusYears(18));
+        when(jwtProvider.parseSignupToken("signup-token"))
+                .thenReturn(new JwtProvider.SignupTokenClaims("google-sub-5", "young@example.com"));
+
+        assertThatThrownBy(() -> authService.googleComplete(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.UNDER_AGE));
+    }
+
+    @Test
+    void googleComplete_throwsWhenEmailAlreadyRegisteredSinceTokenWasIssued() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("signup-token", LocalDate.now().minusYears(20));
+        when(jwtProvider.parseSignupToken("signup-token"))
+                .thenReturn(new JwtProvider.SignupTokenClaims("google-sub-6", "taken@example.com"));
+        Parent existing = Parent.createLocal("taken@example.com", "hash", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail("taken@example.com")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.googleComplete(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.EMAIL_ALREADY_EXISTS));
+    }
+
+    @Test
+    void googleComplete_propagatesInvalidSignupTokenError() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("bad-token", LocalDate.now().minusYears(20));
+        when(jwtProvider.parseSignupToken("bad-token"))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+
+        assertThatThrownBy(() -> authService.googleComplete(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
     }
 }

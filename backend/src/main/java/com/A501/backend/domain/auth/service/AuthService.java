@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
@@ -134,6 +135,23 @@ public class AuthService {
     // 자동 조회를 붙이더라도 클라이언트가 보낸 값이 아닌, 서버가 직접 확보한 값만 신뢰해야 한다(연령 검증 우회 방지).
     private LocalDate resolveGoogleBirthDate(GoogleUserInfo googleUser) {
         return null;
+    }
+
+    @Transactional
+    public Parent googleComplete(GoogleCompleteRequest request) {
+        JwtProvider.SignupTokenClaims claims = jwtProvider.parseSignupToken(request.signupToken());
+
+        if (isUnderAge(request.birthDate())) {
+            throw new BusinessException(AuthErrorCode.UNDER_AGE);
+        }
+
+        String email = normalizeEmail(claims.email());
+        if (parentRepository.findByEmail(email).isPresent()) {
+            throw new BusinessException(AuthErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        Parent parent = Parent.createGoogle(email, claims.providerId(), request.birthDate());
+        return parentRepository.save(parent);
     }
 
     @Transactional

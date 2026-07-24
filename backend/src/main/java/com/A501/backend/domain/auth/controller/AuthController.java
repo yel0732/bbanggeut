@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.auth.dto.request.EmailPatterns;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.dto.response.AuthTokenResponse;
@@ -105,6 +106,13 @@ public class AuthController {
             responseBuilder.header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result.tokenIssueResult()).toString());
         }
         return responseBuilder.body(GoogleAuthResponse.from(result));
+    }
+
+    @Operation(summary = "구글 회원가입 완료(생년월일 입력)")
+    @PostMapping("/google/complete")
+    public ResponseEntity<SignupResponse> googleComplete(@Valid @RequestBody GoogleCompleteRequest request) {
+        Parent parent = authService.googleComplete(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(SignupResponse.of(parent));
     }
 
     private ResponseCookie buildRefreshTokenCookie(TokenIssueResult result) {

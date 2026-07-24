@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
@@ -14,10 +14,17 @@ import popupUrl from '@/assets/images/start/wood-popup.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { cn } from '@/lib/utils'
 
+type StartPageLocationState = {
+  openLoginModal?: boolean
+}
+
 export function StartPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { audioRef, isBgmPlaying, playBgm, toggleBgm } = useBgmPlayer()
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(
+    Boolean((location.state as StartPageLocationState | null)?.openLoginModal),
+  )
 
   const enterForest = async () => {
     await playBgm()
@@ -129,7 +136,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             label="구글로 들어가기"
             textLeft="35%"
             textTop="44%"
-            to="/profiles"
+            to="/auth/google"
           />
           <ModalMenuButton
             color="#5a4a2a"

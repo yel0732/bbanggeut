@@ -3,49 +3,23 @@ import { useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import dinoUrl from '@/assets/images/child-home/dino-2.webp'
-import dobbleCardUrl from '@/assets/images/game-entry/dobble-card.webp'
-import fruitCardUrl from '@/assets/images/game-entry/fruit-card.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
 import gameMenuPanelUrl from '@/assets/images/game-entry/game-menu-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { GAMES } from '@/features/games/games'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
-const games = [
-  {
-    description: '날아오는 과일을 몸으로 슥슥 잘라요.',
-    label: '과일 자르기',
-    imageUrl: fruitCardUrl,
-    floatClassName: '[animation-delay:-0.4s]',
-    positionClassName: 'top-[98px] left-[154px]',
-  },
-  {
-    description: '같은 그림을 찾아 반짝이는 카드를 맞춰요.',
-    label: '그림 맞추기',
-    imageUrl: dobbleCardUrl,
-    floatClassName: '[animation-delay:-1.7s]',
-    positionClassName: 'top-[98px] right-[154px]',
-  },
-]
-
 export function GameEntryPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const [hoveredGameLabel, setHoveredGameLabel] = useState<string>()
-  const [selectedGameLabel, setSelectedGameLabel] = useState<string>()
-  const [showGameGuide, setShowGameGuide] = useState(false)
-
-  const closeGameMenu = () => {
-    setHoveredGameLabel(undefined)
-    setSelectedGameLabel(undefined)
-    setShowGameGuide(false)
-  }
+  const [hoveredGameId, setHoveredGameId] = useState<string>()
 
   return (
     <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
@@ -93,19 +67,15 @@ export function GameEntryPage() {
           게임 선택
         </h1>
 
-        {games.map((game) => {
-          const isFlipped =
-            hoveredGameLabel === game.label || selectedGameLabel === game.label
+        {GAMES.map((game) => {
+          const isFlipped = hoveredGameId === game.id
 
           return (
             <div
               className={`absolute z-20 flex w-[270px] [animation:child-home-asset-bob_3.5s_ease-in-out_infinite] flex-col items-center gap-7 transition duration-200 focus-within:-translate-y-2 focus-within:scale-[1.03] hover:-translate-y-2 hover:scale-[1.03] ${game.floatClassName} ${game.positionClassName}`}
-              key={game.label}
-              onMouseEnter={() => setHoveredGameLabel(game.label)}
-              onMouseLeave={() => {
-                setHoveredGameLabel(undefined)
-                if (!showGameGuide) setSelectedGameLabel(undefined)
-              }}
+              key={game.id}
+              onMouseEnter={() => setHoveredGameId(game.id)}
+              onMouseLeave={() => setHoveredGameId(undefined)}
             >
               <span className="relative h-[300px] w-[270px] [perspective:900px]">
                 <span
@@ -113,12 +83,9 @@ export function GameEntryPage() {
                 >
                   <button
                     aria-label={`${game.label} 게임 선택`}
-                    className="absolute inset-0 grid place-items-center border-0 bg-transparent p-0 [backface-visibility:hidden] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98]"
-                    onClick={() => {
-                      setHoveredGameLabel(game.label)
-                      setShowGameGuide(false)
-                    }}
-                    onFocus={() => setHoveredGameLabel(game.label)}
+                    className={`absolute inset-0 grid place-items-center border-0 bg-transparent p-0 [backface-visibility:hidden] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white active:scale-[0.98] ${isFlipped ? 'pointer-events-none' : ''}`}
+                    onClick={() => setHoveredGameId(game.id)}
+                    onFocus={() => setHoveredGameId(game.id)}
                     type="button"
                   >
                     <span className="absolute inset-[12px] rounded-[38px] bg-[#f9e4a6]/32 shadow-[0_14px_30px_rgba(31,70,22,0.28),inset_0_0_0_4px_rgba(91,63,32,0.24)]" />
@@ -126,12 +93,12 @@ export function GameEntryPage() {
                       alt=""
                       className="relative z-[1] h-full w-full [animation:child-home-edge-glow_3s_ease-in-out_infinite] object-contain drop-shadow-[0_16px_22px_rgba(30,60,22,0.34)]"
                       decoding="async"
-                      src={game.imageUrl}
+                      src={game.cardImageUrl}
                     />
                   </button>
                   <div
                     aria-hidden={!isFlipped}
-                    className="absolute inset-0 flex [transform:rotateY(180deg)] items-center justify-center [backface-visibility:hidden]"
+                    className={`absolute inset-0 flex [transform:rotateY(180deg)] items-center justify-center [backface-visibility:hidden] ${isFlipped ? 'pointer-events-auto' : 'pointer-events-none'}`}
                   >
                     <span className="relative h-[324px] w-[237px]">
                       <img
@@ -149,15 +116,12 @@ export function GameEntryPage() {
                       <span className="absolute top-[108px] right-0 left-0 flex flex-col items-center gap-4">
                         <GameMenuButton
                           label="게임 시작"
-                          onClick={() => navigate('/games/play')}
+                          onClick={() => navigate(`/games/${game.id}/play`)}
                           size="card"
                         />
                         <GameMenuButton
                           label="게임 방법"
-                          onClick={() => {
-                            setSelectedGameLabel(game.label)
-                            setShowGameGuide((value) => !value)
-                          }}
+                          onClick={() => navigate(`/games/${game.id}/guide`)}
                           size="card"
                         />
                       </span>
@@ -215,39 +179,6 @@ export function GameEntryPage() {
             src={isBgmPlaying ? musicOnUrl : musicOffUrl}
           />
         </button>
-
-        {selectedGameLabel && showGameGuide ? (
-          <div
-            aria-modal="true"
-            className="absolute inset-0 z-50 flex items-end justify-center bg-[rgba(14,30,15,0.18)] pb-[86px]"
-            onClick={closeGameMenu}
-            role="dialog"
-          >
-            <div
-              className="relative min-h-[112px] w-[420px]"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <p
-                className="rounded-[28px] border-[5px] border-[#895524] bg-[#fff4cf]/95 px-7 py-5 text-center text-[22px] leading-snug text-[#704719] shadow-[0_16px_30px_rgba(23,50,17,0.28),inset_0_0_0_3px_rgba(123,72,22,0.18)]"
-                style={jua}
-              >
-                {
-                  games.find((game) => game.label === selectedGameLabel)
-                    ?.description
-                }
-              </p>
-              <button
-                aria-label="게임 방법 닫기"
-                className="absolute -top-4 -right-4 grid size-10 place-items-center rounded-full border-[3px] border-white bg-[#a7d85d] text-[24px] leading-none text-white shadow-[0_4px_0_#5d8e2e] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white active:translate-y-1 active:shadow-[0_1px_0_#5d8e2e]"
-                onClick={closeGameMenu}
-                style={jua}
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   )

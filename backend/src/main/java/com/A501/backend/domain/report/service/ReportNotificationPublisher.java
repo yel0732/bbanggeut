@@ -1,6 +1,7 @@
 package com.A501.backend.domain.report.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.A501.backend.domain.report.entity.ReportNotificationType;
 
@@ -29,6 +30,12 @@ public class ReportNotificationPublisher {
     ) {
         try {
             persistenceService.create(reportId, notificationType);
+        } catch (DataIntegrityViolationException duplicateException) {
+            log.debug(
+                    "Duplicate report notification was ignored. "
+                            + "reportId={}, type={}",
+                    reportId,
+                    notificationType);
         } catch (RuntimeException notificationException) {
             log.warn(
                     "Report notification creation failed. reportId={}, type={}",

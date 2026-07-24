@@ -3,9 +3,15 @@ import { createBrowserRouter } from 'react-router-dom'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import {
   ChildHomePage,
+  ChildProfileListPage,
   EmailLoginPage,
   EmailSignupPage,
   GameEntryPage,
+  GameGuidePage,
+  GamePlayPage,
+  GameResultPage,
+  GoogleBirthdatePage,
+  ParentProfilePage,
   ProfileSelectPage,
   StartPage,
 } from '@/routes/lazyPages'
@@ -21,13 +27,11 @@ export const router = createBrowserRouter([
   },
   {
     path: '/profiles/new',
-    element: (
-      <PlaceholderPage
-        eyebrow="Profile"
-        title="아이 프로필 만들기"
-        description="부모 가입 후 아이 이름, 나이, 프로필 이미지를 입력하는 화면을 연결할 자리입니다."
-      />
-    ),
+    element: <ParentProfilePage />,
+  },
+  {
+    path: '/profiles/children',
+    element: <ChildProfileListPage />,
   },
   {
     path: '/child',
@@ -38,14 +42,16 @@ export const router = createBrowserRouter([
     element: <GameEntryPage />,
   },
   {
-    path: '/games/play',
-    element: (
-      <PlaceholderPage
-        eyebrow="Game"
-        title="게임 플레이"
-        description="카메라와 게임 엔진이 연결될 실제 플레이 화면입니다."
-      />
-    ),
+    path: '/games/:gameId/guide',
+    element: <GameGuidePage />,
+  },
+  {
+    path: '/games/:gameId/play',
+    element: <GamePlayPage />,
+  },
+  {
+    path: '/games/:gameId/result',
+    element: <GameResultPage />,
   },
   {
     path: '/conversation',
@@ -66,6 +72,10 @@ export const router = createBrowserRouter([
         description="프로필 선택 후 부모 모드로 들어갈 때 거치는 PIN·비밀번호 인증 화면을 연결할 자리입니다."
       />
     ),
+  },
+  {
+    path: '/auth/google',
+    element: <GoogleBirthdatePage />,
   },
   {
     path: '/auth/login',

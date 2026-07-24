@@ -68,3 +68,8 @@ export const DiaryListPage = lazy(() =>
     default: DiaryListPage,
   })),
 )
+export const ParentModePage = lazy(() =>
+  import('@/pages/ParentModePage').then(({ ParentModePage }) => ({
+    default: ParentModePage,
+  })),
+)

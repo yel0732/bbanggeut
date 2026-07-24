@@ -182,7 +182,7 @@ export function ChildProfileListPage() {
         <Link
           aria-label="뒤로"
           className="absolute top-4 left-[78px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
-          to="/profiles/new"
+          to="/parent"
         >
           <img
             alt=""

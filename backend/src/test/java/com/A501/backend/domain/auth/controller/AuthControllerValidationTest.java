@@ -1,5 +1,6 @@
 package com.A501.backend.domain.auth.controller;
 
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,7 +13,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.config.CorsProperties;
 import com.A501.backend.config.SecurityConfig;
+import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.security.CookieProperties;
 import com.A501.backend.domain.auth.security.JwtAuthenticationEntryPoint;
 import com.A501.backend.domain.auth.security.JwtAuthenticationFilter;
@@ -22,7 +26,7 @@ import com.A501.backend.domain.auth.service.AuthService;
 
 @WebMvcTest(AuthController.class)
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtAuthenticationEntryPoint.class, JwtProvider.class})
-@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class})
+@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class, CorsProperties.class})
 class AuthControllerValidationTest {
 
     @Autowired
@@ -30,6 +34,14 @@ class AuthControllerValidationTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @Test
+    void refresh_returnsUnauthorizedWhenCookieMissing() throws Exception {
+        when(authService.refresh(null)).thenThrow(new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        mockMvc.perform(post("/api/auth/token/refresh"))
+                .andExpect(status().isUnauthorized());
+    }
 
     @Test
     void signup_returnsBadRequestWhenEmailHasNoTld() throws Exception {

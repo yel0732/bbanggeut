@@ -64,4 +64,26 @@ class RefreshTokenRepositoryTest {
                 .extracting(RefreshToken::getTokenHash)
                 .containsExactly("active-hash");
     }
+
+    @Test
+    void deletesOnlyTokensExpiredBeforeCutoff() {
+        Parent parent = parentRepository.save(
+                Parent.createLocal("cleanup@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
+        RefreshToken longExpired = RefreshToken.issue(
+                parent, "long-expired-hash", LocalDateTime.now().minusDays(40), false);
+        RefreshToken recentlyExpired = RefreshToken.issue(
+                parent, "recently-expired-hash", LocalDateTime.now().minusDays(5), false);
+        RefreshToken stillValid = RefreshToken.issue(
+                parent, "still-valid-hash", LocalDateTime.now().plusDays(1), false);
+        refreshTokenRepository.save(longExpired);
+        refreshTokenRepository.save(recentlyExpired);
+        refreshTokenRepository.save(stillValid);
+
+        long deletedCount = refreshTokenRepository.deleteByExpiresAtBefore(LocalDateTime.now().minusDays(30));
+
+        assertThat(deletedCount).isEqualTo(1);
+        assertThat(refreshTokenRepository.findAll())
+                .extracting(RefreshToken::getTokenHash)
+                .containsExactlyInAnyOrder("recently-expired-hash", "still-valid-hash");
+    }
 }

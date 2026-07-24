@@ -21,13 +21,19 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
+import com.A501.backend.domain.auth.entity.AuthProvider;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
+import com.A501.backend.domain.auth.security.GoogleTokenVerifier;
+import com.A501.backend.domain.auth.security.GoogleUserInfo;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.security.RefreshTokenProperties;
 import com.A501.backend.domain.auth.security.TokenHasher;
@@ -49,12 +55,15 @@ class AuthServiceTest {
     @Mock
     private JwtProvider jwtProvider;
 
+    @Mock
+    private GoogleTokenVerifier googleTokenVerifier;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(
-                parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider, REFRESH_TOKEN_PROPERTIES);
+        authService = new AuthService(parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider,
+                REFRESH_TOKEN_PROPERTIES, googleTokenVerifier);
     }
 
     @Test
@@ -211,6 +220,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void refresh_throwsWhenCookieMissing() {
+        assertThatThrownBy(() -> authService.refresh(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+
+        verify(refreshTokenRepository, never()).findByTokenHash(any());
+    }
+
+    @Test
     void refresh_throwsWhenTokenNotFound() {
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
 
@@ -255,21 +274,36 @@ class AuthServiceTest {
     }
 
     @Test
-    void logout_revokesTokenMatchingCookie() {
+    void logout_revokesTokenMatchingCookieWhenOwnedByAuthenticatedParent() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
         RefreshToken token = RefreshToken.issue(
                 parent, TokenHasher.hash("raw-refresh-token"), LocalDateTime.now().plusDays(1), false);
         when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-refresh-token")))
                 .thenReturn(Optional.of(token));
 
-        authService.logout("raw-refresh-token");
+        authService.logout(1L, "raw-refresh-token");
 
         assertThat(token.isRevoked()).isTrue();
     }
 
     @Test
+    void logout_doesNotRevokeTokenOwnedByDifferentParent() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        RefreshToken token = RefreshToken.issue(
+                parent, TokenHasher.hash("raw-refresh-token"), LocalDateTime.now().plusDays(1), false);
+        when(refreshTokenRepository.findByTokenHash(TokenHasher.hash("raw-refresh-token")))
+                .thenReturn(Optional.of(token));
+
+        authService.logout(2L, "raw-refresh-token");
+
+        assertThat(token.isRevoked()).isFalse();
+    }
+
+    @Test
     void logout_doesNothingWhenCookieMissing() {
-        authService.logout(null);
+        authService.logout(1L, null);
 
         verify(refreshTokenRepository, never()).findByTokenHash(any());
     }
@@ -278,8 +312,226 @@ class AuthServiceTest {
     void logout_doesNothingWhenTokenNotFound() {
         when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
 
-        authService.logout("unknown-token");
+        authService.logout(1L, "unknown-token");
 
         verify(refreshTokenRepository).findByTokenHash(TokenHasher.hash("unknown-token"));
+    }
+
+    @Test
+    void signup_normalizesEmailCaseAndWhitespaceBeforeDuplicateCheck() {
+        SignupRequest request = new SignupRequest(
+                "  New@Example.com  ", "Abcdef1!", LocalDate.now().minusYears(20));
+        when(parentRepository.findByEmail("new@example.com")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(request.password())).thenReturn("hashed-password");
+        when(parentRepository.save(any(Parent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Parent result = authService.signup(request);
+
+        assertThat(result.getEmail()).isEqualTo("new@example.com");
+    }
+
+    @Test
+    void signup_throwsWhenEmailAlreadyExistsWithDifferentCase() {
+        SignupRequest request = new SignupRequest(
+                "TAKEN@Example.com", "Abcdef1!", LocalDate.now().minusYears(20));
+        Parent existing = Parent.createLocal("taken@example.com", "hash", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail("taken@example.com")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.signup(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.EMAIL_ALREADY_EXISTS));
+    }
+
+    @Test
+    void login_normalizesEmailCaseAndWhitespaceBeforeLookup() {
+        LoginRequest request = new LoginRequest("  Parent@Example.com  ", "Abcdef1!", false);
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail("parent@example.com")).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches(request.password(), parent.getPasswordHash())).thenReturn(true);
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        TokenIssueResult result = authService.login(request);
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+    }
+
+    @Test
+    void cleanupExpiredRefreshTokens_deletesTokensExpiredBeyondRetentionWindow() {
+        when(refreshTokenRepository.deleteByExpiresAtBefore(any())).thenReturn(3L);
+
+        authService.cleanupExpiredRefreshTokens();
+
+        org.mockito.ArgumentCaptor<LocalDateTime> cutoffCaptor =
+                org.mockito.ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(refreshTokenRepository).deleteByExpiresAtBefore(cutoffCaptor.capture());
+        assertThat(cutoffCaptor.getValue()).isBefore(LocalDateTime.now().minusDays(29));
+    }
+
+    @Test
+    void googleAuth_returnsLoginSuccessWhenProviderIdAlreadyRegistered() {
+        GoogleAuthRequest request = new GoogleAuthRequest("google-id-token");
+        Parent parent = Parent.createGoogle("google@example.com", "google-sub-1", LocalDate.of(1990, 1, 1));
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-1", "google@example.com"));
+        when(parentRepository.findByProviderId("google-sub-1")).thenReturn(Optional.of(parent));
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        GoogleAuthResult result = authService.googleAuth(request);
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.LOGIN_SUCCESS);
+        assertThat(result.tokenIssueResult().refreshTokenMaxAgeSeconds()).isEqualTo(60 * 24 * 60 * 60L);
+        verify(refreshTokenRepository).save(any());
+    }
+
+    @Test
+    void googleAuth_returnsLinkRequiredWhenEmailMatchesExistingLocalAccount() {
+        GoogleAuthRequest request = new GoogleAuthRequest("google-id-token");
+        Parent existingLocal = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(existingLocal, "parentId", 9L);
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-2", "shared@example.com"));
+        when(parentRepository.findByProviderId("google-sub-2")).thenReturn(Optional.empty());
+        when(parentRepository.findByEmail("shared@example.com")).thenReturn(Optional.of(existingLocal));
+        when(jwtProvider.generateLinkToken(9L, "google-sub-2")).thenReturn("link-token");
+
+        GoogleAuthResult result = authService.googleAuth(request);
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.LINK_REQUIRED);
+        assertThat(result.linkToken()).isEqualTo("link-token");
+    }
+
+    @Test
+    void googleAuth_returnsSignupRequiredWhenNoAccountMatches() {
+        GoogleAuthRequest request = new GoogleAuthRequest("google-id-token");
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-3", "new-google@example.com"));
+        when(parentRepository.findByProviderId("google-sub-3")).thenReturn(Optional.empty());
+        when(parentRepository.findByEmail("new-google@example.com")).thenReturn(Optional.empty());
+        when(jwtProvider.generateSignupToken("google-sub-3", "new-google@example.com")).thenReturn("signup-token");
+
+        GoogleAuthResult result = authService.googleAuth(request);
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.SIGNUP_REQUIRED);
+        assertThat(result.signupToken()).isEqualTo("signup-token");
+        assertThat(result.email()).isEqualTo("new-google@example.com");
+    }
+
+    @Test
+    void googleComplete_createsGoogleAccountWithUserProvidedBirthDate() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("signup-token", LocalDate.now().minusYears(20));
+        when(jwtProvider.parseSignupToken("signup-token"))
+                .thenReturn(new JwtProvider.SignupTokenClaims("google-sub-4", "complete@example.com"));
+        when(parentRepository.findByEmail("complete@example.com")).thenReturn(Optional.empty());
+        when(parentRepository.save(any(Parent.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Parent result = authService.googleComplete(request);
+
+        assertThat(result.getEmail()).isEqualTo("complete@example.com");
+        assertThat(result.getProvider()).isEqualTo(AuthProvider.GOOGLE);
+        assertThat(result.hasPassword()).isFalse();
+    }
+
+    @Test
+    void googleComplete_throwsWhenUnderMinimumAge() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("signup-token", LocalDate.now().minusYears(18));
+        when(jwtProvider.parseSignupToken("signup-token"))
+                .thenReturn(new JwtProvider.SignupTokenClaims("google-sub-5", "young@example.com"));
+
+        assertThatThrownBy(() -> authService.googleComplete(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.UNDER_AGE));
+    }
+
+    @Test
+    void googleComplete_throwsWhenEmailAlreadyRegisteredSinceTokenWasIssued() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("signup-token", LocalDate.now().minusYears(20));
+        when(jwtProvider.parseSignupToken("signup-token"))
+                .thenReturn(new JwtProvider.SignupTokenClaims("google-sub-6", "taken@example.com"));
+        Parent existing = Parent.createLocal("taken@example.com", "hash", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findByEmail("taken@example.com")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> authService.googleComplete(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.EMAIL_ALREADY_EXISTS));
+    }
+
+    @Test
+    void googleComplete_propagatesInvalidSignupTokenError() {
+        GoogleCompleteRequest request = new GoogleCompleteRequest("bad-token", LocalDate.now().minusYears(20));
+        when(jwtProvider.parseSignupToken("bad-token"))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+
+        assertThatThrownBy(() -> authService.googleComplete(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+    }
+
+    @Test
+    void googleLink_linksAccountAndIssuesTokensWhenPasswordMatches() {
+        GoogleLinkRequest request = new GoogleLinkRequest("link-token", "Abcdef1!");
+        Parent parent = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 11L);
+        when(jwtProvider.parseLinkToken("link-token"))
+                .thenReturn(new JwtProvider.LinkTokenClaims(11L, "google-sub-7"));
+        when(parentRepository.findById(11L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("Abcdef1!", "hashed-password")).thenReturn(true);
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        TokenIssueResult result = authService.googleLink(request);
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.refreshTokenMaxAgeSeconds()).isEqualTo(60 * 24 * 60 * 60L);
+        assertThat(parent.getProviderId()).isEqualTo("google-sub-7");
+    }
+
+    @Test
+    void googleLink_throwsGenericInvalidCredentialsWhenPasswordDoesNotMatch() {
+        GoogleLinkRequest request = new GoogleLinkRequest("link-token", "WrongPass1!");
+        Parent parent = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 11L);
+        when(jwtProvider.parseLinkToken("link-token"))
+                .thenReturn(new JwtProvider.LinkTokenClaims(11L, "google-sub-7"));
+        when(parentRepository.findById(11L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("WrongPass1!", "hashed-password")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.googleLink(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void googleLink_throwsWhenAccountDeleted() {
+        GoogleLinkRequest request = new GoogleLinkRequest("link-token", "Abcdef1!");
+        Parent parent = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 11L);
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
+        when(jwtProvider.parseLinkToken("link-token"))
+                .thenReturn(new JwtProvider.LinkTokenClaims(11L, "google-sub-7"));
+        when(parentRepository.findById(11L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.googleLink(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void googleLink_propagatesInvalidLinkTokenError() {
+        GoogleLinkRequest request = new GoogleLinkRequest("bad-token", "Abcdef1!");
+        when(jwtProvider.parseLinkToken("bad-token"))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_LINK_TOKEN));
+
+        assertThatThrownBy(() -> authService.googleLink(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_LINK_TOKEN));
     }
 }

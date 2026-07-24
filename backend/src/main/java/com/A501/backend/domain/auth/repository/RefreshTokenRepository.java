@@ -1,5 +1,6 @@
 package com.A501.backend.domain.auth.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,4 +14,6 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     List<RefreshToken> findAllByParentAndRevokedFalse(Parent parent);
+
+    long deleteByExpiresAtBefore(LocalDateTime cutoff);
 }

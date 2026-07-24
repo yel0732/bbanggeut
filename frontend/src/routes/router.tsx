@@ -13,6 +13,7 @@ import {
   GamePlayPage,
   GameResultPage,
   GoogleBirthdatePage,
+  ParentModePage,
   ParentProfilePage,
   ProfileSelectPage,
   StartPage,
@@ -83,13 +84,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/parent',
-    element: (
-      <PlaceholderPage
-        eyebrow="Parent"
-        title="부모 홈"
-        description="리포트 목록, 일기 열람, 아이 프로필 관리 화면을 연결할 자리입니다."
-      />
-    ),
+    element: <ParentModePage />,
   },
   {
     path: '/diaries',

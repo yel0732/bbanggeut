@@ -142,4 +142,57 @@ class PinServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(PinErrorCode.PIN_LOCKED));
     }
+
+    @Test
+    void changePin_succeedsWhenCurrentPinMatchesAndConfirmMatches() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("old-hash");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("1234", "old-hash")).thenReturn(true);
+        when(passwordEncoder.encode("5678")).thenReturn("new-hash");
+
+        pinService.changePin(1L, "1234", "5678", "5678");
+
+        assertThat(parent.getPinHash()).isEqualTo("new-hash");
+    }
+
+    @Test
+    void changePin_throwsWhenCurrentPinWrongAndIncrementsFailures() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("old-hash");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("wrong", "old-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> pinService.changePin(1L, "wrong", "5678", "5678"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_MISMATCH));
+        assertThat(parent.getPinFailedAttempts()).isEqualTo(1);
+        assertThat(parent.getPinHash()).isEqualTo("old-hash");
+    }
+
+    @Test
+    void changePin_throwsWhenPinNotSet() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> pinService.changePin(1L, "1234", "5678", "5678"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_NOT_SET));
+    }
+
+    @Test
+    void changePin_throwsWhenNewPinConfirmationDoesNotMatch() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("old-hash");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("1234", "old-hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> pinService.changePin(1L, "1234", "5678", "0000"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_CONFIRMATION_MISMATCH));
+        assertThat(parent.getPinHash()).isEqualTo("old-hash");
+    }
 }

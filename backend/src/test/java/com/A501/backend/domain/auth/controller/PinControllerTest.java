@@ -1,6 +1,7 @@
 package com.A501.backend.domain.auth.controller;
 
 import static org.mockito.Mockito.doThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -141,6 +142,62 @@ class PinControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pin\":\"0000\"}"))
                 .andExpect(status().isLocked());
+    }
+
+    @Test
+    void changePin_returnsUnauthorizedWithoutBearerToken() throws Exception {
+        mockMvc.perform(patch("/api/profile/pin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPin\":\"1234\",\"newPin\":\"5678\",\"newPinConfirm\":\"5678\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changePin_returnsOkWhenCurrentPinMatchesAndConfirmationMatches() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(patch("/api/profile/pin")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPin\":\"1234\",\"newPin\":\"5678\",\"newPinConfirm\":\"5678\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void changePin_returnsBadRequestForNonFourDigitNewPin() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(patch("/api/profile/pin")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPin\":\"1234\",\"newPin\":\"56a8\",\"newPinConfirm\":\"56a8\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void changePin_returnsBadRequestWhenConfirmationMismatch() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_CONFIRMATION_MISMATCH))
+                .when(pinService).changePin(1L, "1234", "5678", "0000");
+
+        mockMvc.perform(patch("/api/profile/pin")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPin\":\"1234\",\"newPin\":\"5678\",\"newPinConfirm\":\"0000\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void changePin_returnsUnauthorizedWhenCurrentPinWrong() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH))
+                .when(pinService).changePin(1L, "0000", "5678", "5678");
+
+        mockMvc.perform(patch("/api/profile/pin")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPin\":\"0000\",\"newPin\":\"5678\",\"newPinConfirm\":\"5678\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     private String generateAccessToken() {

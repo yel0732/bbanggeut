@@ -65,4 +65,24 @@ class PinServiceIntegrationTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(PinErrorCode.PIN_LOCKED));
     }
+
+    // changePin()은 verifyPin()을 this.verifyPin(...)으로 self-invocation 호출한다 — Spring
+    // 프록시를 거치지 않으므로 verifyPin 자체의 @Transactional(noRollbackFor=...)는 적용되지 않고,
+    // changePin의 트랜잭션 경계가 대신 적용된다. changePin에도 noRollbackFor를 빼먹으면 이 테스트가
+    // 실패해야 한다 — self-invocation 시나리오를 별도로 검증해둔다.
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void changePin_persistsFailureCountWhenCurrentPinWrong() {
+        Parent parent = authService.signup(
+                new SignupRequest("pin-change-integration@example.com", "Abcdef1!", LocalDate.of(2000, 1, 1)));
+        pinService.setPin(parent.getParentId(), "1234");
+
+        assertThatThrownBy(() -> pinService.changePin(parent.getParentId(), "0000", "5678", "5678"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_MISMATCH));
+
+        Parent reloaded = parentRepository.findById(parent.getParentId()).orElseThrow();
+        assertThat(reloaded.getPinFailedAttempts()).isEqualTo(1);
+    }
 }

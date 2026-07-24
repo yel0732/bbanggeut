@@ -59,6 +59,23 @@ public class PinService {
         parent.resetPinFailures();
     }
 
+    // verifyPin과 마찬가지 이유로 noRollbackFor가 필요하다 — changePin 안에서 verifyPin을
+    // this.verifyPin(...)으로 self-invocation 호출하면 Spring 프록시를 거치지 않아
+    // verifyPin 자체의 @Transactional 설정이 적용되지 않고, changePin의 트랜잭션 경계가
+    // 실제로 적용된다. 즉 이 메서드에도 동일하게 선언해야 한다.
+    @Transactional(noRollbackFor = BusinessException.class)
+    public void changePin(Long parentId, String currentPin, String newPin, String newPinConfirm) {
+        verifyPin(parentId, currentPin);
+
+        if (!newPin.equals(newPinConfirm)) {
+            throw new BusinessException(PinErrorCode.PIN_CONFIRMATION_MISMATCH);
+        }
+
+        Parent parent = getParent(parentId);
+        parent.setPin(passwordEncoder.encode(newPin));
+        // TODO(TBD-P6): 신규 PIN이 기존 PIN과 동일한 경우의 허용/거부 정책 미정 — 지금은 허용.
+    }
+
     private Parent getParent(Long parentId) {
         return parentRepository.findById(parentId)
                 .orElseThrow(() -> new IllegalStateException(

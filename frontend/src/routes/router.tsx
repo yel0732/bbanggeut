@@ -9,6 +9,7 @@ import {
   GameEntryPage,
   GameGuidePage,
   GamePlayPage,
+  GameResultPage,
   GoogleBirthdatePage,
   ParentProfilePage,
   ProfileSelectPage,
@@ -47,6 +48,10 @@ export const router = createBrowserRouter([
   {
     path: '/games/:gameId/play',
     element: <GamePlayPage />,
+  },
+  {
+    path: '/games/:gameId/result',
+    element: <GameResultPage />,
   },
   {
     path: '/conversation',

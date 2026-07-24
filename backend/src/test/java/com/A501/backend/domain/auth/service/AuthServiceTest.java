@@ -23,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.AuthProvider;
@@ -469,5 +470,68 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+    }
+
+    @Test
+    void googleLink_linksAccountAndIssuesTokensWhenPasswordMatches() {
+        GoogleLinkRequest request = new GoogleLinkRequest("link-token", "Abcdef1!");
+        Parent parent = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 11L);
+        when(jwtProvider.parseLinkToken("link-token"))
+                .thenReturn(new JwtProvider.LinkTokenClaims(11L, "google-sub-7"));
+        when(parentRepository.findById(11L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("Abcdef1!", "hashed-password")).thenReturn(true);
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        TokenIssueResult result = authService.googleLink(request);
+
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.refreshTokenMaxAgeSeconds()).isEqualTo(60 * 24 * 60 * 60L);
+        assertThat(parent.getProviderId()).isEqualTo("google-sub-7");
+    }
+
+    @Test
+    void googleLink_throwsGenericInvalidCredentialsWhenPasswordDoesNotMatch() {
+        GoogleLinkRequest request = new GoogleLinkRequest("link-token", "WrongPass1!");
+        Parent parent = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 11L);
+        when(jwtProvider.parseLinkToken("link-token"))
+                .thenReturn(new JwtProvider.LinkTokenClaims(11L, "google-sub-7"));
+        when(parentRepository.findById(11L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("WrongPass1!", "hashed-password")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.googleLink(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void googleLink_throwsWhenAccountDeleted() {
+        GoogleLinkRequest request = new GoogleLinkRequest("link-token", "Abcdef1!");
+        Parent parent = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 11L);
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
+        when(jwtProvider.parseLinkToken("link-token"))
+                .thenReturn(new JwtProvider.LinkTokenClaims(11L, "google-sub-7"));
+        when(parentRepository.findById(11L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.googleLink(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    @Test
+    void googleLink_propagatesInvalidLinkTokenError() {
+        GoogleLinkRequest request = new GoogleLinkRequest("bad-token", "Abcdef1!");
+        when(jwtProvider.parseLinkToken("bad-token"))
+                .thenThrow(new BusinessException(AuthErrorCode.INVALID_LINK_TOKEN));
+
+        assertThatThrownBy(() -> authService.googleLink(request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.INVALID_LINK_TOKEN));
     }
 }

@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.A501.backend.domain.auth.dto.request.EmailPatterns;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.dto.response.AuthTokenResponse;
@@ -113,6 +114,15 @@ public class AuthController {
     public ResponseEntity<SignupResponse> googleComplete(@Valid @RequestBody GoogleCompleteRequest request) {
         Parent parent = authService.googleComplete(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(SignupResponse.of(parent));
+    }
+
+    @Operation(summary = "구글 계정 연동")
+    @PostMapping("/google/link")
+    public ResponseEntity<AuthTokenResponse> googleLink(@Valid @RequestBody GoogleLinkRequest request) {
+        TokenIssueResult result = authService.googleLink(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result).toString())
+                .body(AuthTokenResponse.of(result.parent(), result.accessToken(), result.accessTokenExpiresInSeconds()));
     }
 
     private ResponseCookie buildRefreshTokenCookie(TokenIssueResult result) {

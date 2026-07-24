@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
+import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
@@ -152,6 +153,20 @@ public class AuthService {
 
         Parent parent = Parent.createGoogle(email, claims.providerId(), request.birthDate());
         return parentRepository.save(parent);
+    }
+
+    @Transactional
+    public TokenIssueResult googleLink(GoogleLinkRequest request) {
+        JwtProvider.LinkTokenClaims claims = jwtProvider.parseLinkToken(request.linkToken());
+
+        Parent parent = parentRepository.findById(claims.parentId())
+                .filter(p -> !p.isDeleted())
+                .filter(Parent::hasPassword)
+                .filter(p -> passwordEncoder.matches(request.password(), p.getPasswordHash()))
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_CREDENTIALS));
+
+        parent.linkGoogleAccount(claims.providerId());
+        return issueTokens(parent, true);
     }
 
     @Transactional

@@ -12,13 +12,20 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "report_notification")
+@Table(
+        name = "report_notification",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_report_notification_report_type",
+                        columnNames = {"report_id", "notification_type"})
+        })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ReportNotification extends BaseTimeEntity {
 

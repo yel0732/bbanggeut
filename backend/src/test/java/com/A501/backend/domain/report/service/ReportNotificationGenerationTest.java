@@ -9,6 +9,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +54,9 @@ class ReportNotificationGenerationTest {
 
     @Autowired
     private DailyReportGenerationService generationService;
+
+    @Autowired
+    private ReportNotificationPublisher notificationPublisher;
 
     @Autowired
     private DailyReportRepository dailyReportRepository;
@@ -192,10 +199,83 @@ class ReportNotificationGenerationTest {
                 });
     }
 
+    @Test
+    void repeatedFinalFailurePublicationCreatesOneNotification() {
+        DailyReport report = createFailedReport();
+
+        notificationPublisher.publishFinalFailure(report.getId());
+        notificationPublisher.publishFinalFailure(report.getId());
+
+        assertThat(notificationRepository
+                .findAllByReportIdOrderByIdAsc(report.getId()))
+                .singleElement()
+                .satisfies(notification ->
+                        assertThat(notification.getNotificationType())
+                                .isEqualTo(
+                                        ReportNotificationType.REPORT_FAILED));
+        assertThat(failureRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void concurrentCompletedPublicationCreatesOneNotification()
+            throws Exception {
+        DailyReport report = createCompletedReport();
+        int requestCount = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(requestCount);
+        CountDownLatch ready = new CountDownLatch(requestCount);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<Object>> futures = java.util.stream.IntStream
+                    .range(0, requestCount)
+                    .mapToObj(index -> executor.submit(() -> {
+                        ready.countDown();
+                        start.await();
+                        notificationPublisher.publishCompleted(report.getId());
+                        return null;
+                    }))
+                    .toList();
+
+            ready.await();
+            start.countDown();
+            for (Future<Object> future : futures) {
+                future.get();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(notificationRepository
+                .findAllByReportIdOrderByIdAsc(report.getId()))
+                .singleElement()
+                .satisfies(notification ->
+                        assertThat(notification.getNotificationType())
+                                .isEqualTo(
+                                        ReportNotificationType.REPORT_COMPLETED));
+        assertThat(failureRepository.findAll()).isEmpty();
+    }
+
     private DailyReport createPendingReport() {
         return dailyReportRepository.saveAndFlush(DailyReport.pending(
                 CHILD_ID,
                 new ReportPeriod(STARTED_AT, ENDED_AT, REPORT_DATE)));
+    }
+
+    private DailyReport createCompletedReport() {
+        DailyReport report = DailyReport.pending(
+                CHILD_ID,
+                new ReportPeriod(STARTED_AT, ENDED_AT, REPORT_DATE));
+        report.startProcessing(ENDED_AT.plusMinutes(1));
+        report.complete(ENDED_AT.plusMinutes(2));
+        return dailyReportRepository.saveAndFlush(report);
+    }
+
+    private DailyReport createFailedReport() {
+        DailyReport report = DailyReport.pending(
+                CHILD_ID,
+                new ReportPeriod(STARTED_AT, ENDED_AT, REPORT_DATE));
+        report.startProcessing(ENDED_AT.plusMinutes(1));
+        report.fail(ENDED_AT.plusMinutes(2), "generation failed");
+        return dailyReportRepository.saveAndFlush(report);
     }
 
     private ReportGameSource validGame() {

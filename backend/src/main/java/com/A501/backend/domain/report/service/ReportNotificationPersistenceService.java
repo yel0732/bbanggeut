@@ -46,6 +46,11 @@ public class ReportNotificationPersistenceService {
                 .orElseThrow(() ->
                         new IllegalArgumentException("Daily report not found."));
         validateTerminalStatus(report, notificationType);
+        if (notificationRepository.existsByReportIdAndNotificationType(
+                reportId,
+                notificationType)) {
+            return;
+        }
 
         ReportNotificationRecipientPort recipientPort =
                 recipientPortProvider.getIfAvailable();
@@ -55,7 +60,7 @@ public class ReportNotificationPersistenceService {
         }
         Long parentId = recipientPort.findParentId(report.getChildId());
 
-        notificationRepository.save(ReportNotification.create(
+        notificationRepository.saveAndFlush(ReportNotification.create(
                 parentId,
                 report.getId(),
                 report.getChildId(),

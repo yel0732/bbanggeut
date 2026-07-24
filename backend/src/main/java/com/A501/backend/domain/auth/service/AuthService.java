@@ -73,7 +73,9 @@ public class AuthService {
         return issueTokens(parent, request.autoLogin());
     }
 
-    @Transactional
+    // 재사용 감지 시 다른 활성 토큰을 전부 폐기하는 부분이 BusinessException으로 인한
+    // 트랜잭션 롤백에 같이 취소되지 않도록, 이 메서드에서 던지는 예외는 롤백 대상에서 제외한다.
+    @Transactional(noRollbackFor = BusinessException.class)
     public TokenIssueResult refresh(String rawRefreshToken) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);

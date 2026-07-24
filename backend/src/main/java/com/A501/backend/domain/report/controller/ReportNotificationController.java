@@ -1,0 +1,59 @@
+package com.A501.backend.domain.report.controller;
+
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.report.exception.ReportApiErrorCode;
+import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
+import com.A501.backend.domain.report.sse.ReportNotificationStreamService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+
+@Tag(name = "Report Notifications")
+@RestController
+@RequestMapping("/api/notifications")
+@RequiredArgsConstructor
+public class ReportNotificationController {
+
+    private final ReportNotificationStreamService streamService;
+    private final ObjectProvider<ReportCurrentParentProvider>
+            currentParentProvider;
+
+    @Operation(summary = "Stream report notifications over SSE")
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(
+            @RequestHeader(value = "Last-Event-ID", required = false)
+            String lastEventId
+    ) {
+        Long parentId = requiredParentProvider().getCurrentParentId();
+        return streamService.subscribe(parentId, parseLastEventId(lastEventId));
+    }
+
+    private ReportCurrentParentProvider requiredParentProvider() {
+        ReportCurrentParentProvider provider =
+                currentParentProvider.getIfAvailable();
+        if (provider == null) {
+            throw new BusinessException(ReportApiErrorCode.UNAUTHORIZED);
+        }
+        return provider;
+    }
+
+    private Long parseLastEventId(String lastEventId) {
+        if (lastEventId == null || lastEventId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(lastEventId.trim());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+}

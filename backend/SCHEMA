@@ -239,6 +239,10 @@ CREATE INDEX idx_report_notification_report
 -- generation failure reason.
 -- REPORT-10 prevents duplicate creation with the report_id and
 -- notification_type unique constraint.
+-- REPORT-11 delivers stored notifications over SSE. The auto-increment
+-- notification_id is used as the SSE event id, and Last-Event-ID recovery
+-- queries by (parent_id, notification_id > lastEventId) ordered by
+-- notification_id. No column change is required for REPORT-11.
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportNotification.java
 
 

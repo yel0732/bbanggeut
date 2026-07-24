@@ -1,8 +1,19 @@
 """Deterministic policy for selecting the next diary question target."""
 
+from collections.abc import Collection
 from enum import StrEnum
+from types import MappingProxyType
+from typing import Mapping, Protocol
 
-from app.dialogue.schemas import DiarySlots
+
+class QuestionTargetSlotValues(Protocol):
+    """Structural slot values required by question-target policies."""
+
+    event: str | None
+    emotion: str | None
+    emotion_reason: str | None
+    memorable_moment: str | None
+    result: str | None
 
 
 class QuestionTarget(StrEnum):
@@ -15,23 +26,27 @@ class QuestionTarget(StrEnum):
     RESULT = "result"
 
 
-_TARGET_RULES: tuple[tuple[QuestionTarget, str], ...] = (
-    (QuestionTarget.EVENT, "event"),
-    (QuestionTarget.EMOTION, "emotion"),
-    (QuestionTarget.EMOTION_REASON, "emotion_reason"),
-    (QuestionTarget.MEMORABLE_MOMENT, "memorable_moment"),
-    (QuestionTarget.RESULT, "result"),
+QUESTION_TARGET_SLOT_FIELDS: Mapping[QuestionTarget, str] = MappingProxyType(
+    {
+        QuestionTarget.EVENT: "event",
+        QuestionTarget.EMOTION: "emotion",
+        QuestionTarget.EMOTION_REASON: "emotion_reason",
+        QuestionTarget.MEMORABLE_MOMENT: "memorable_moment",
+        QuestionTarget.RESULT: "result",
+    }
 )
 
 # This is only the order for choosing a question target. Required slots and
 # conversation termination belong to the separate termination policy.
 QUESTION_TARGET_PRIORITY: tuple[QuestionTarget, ...] = tuple(
-    target for target, _ in _TARGET_RULES
+    QUESTION_TARGET_SLOT_FIELDS
 )
 
 
 def select_next_question_target(
-    slots: DiarySlots,
+    slots: QuestionTargetSlotValues,
+    *,
+    excluded_targets: Collection[QuestionTarget] = (),
 ) -> QuestionTarget | None:
     """Return the first unfilled target without changing the slots.
 
@@ -39,7 +54,13 @@ def select_next_question_target(
     not by itself mean that the conversation should terminate.
     """
 
-    for target, field_name in _TARGET_RULES:
+    excluded = frozenset(excluded_targets)
+    if any(not isinstance(target, QuestionTarget) for target in excluded):
+        raise ValueError("excluded_targets must contain QuestionTarget values")
+
+    for target, field_name in QUESTION_TARGET_SLOT_FIELDS.items():
+        if target in excluded:
+            continue
         if not _is_filled(getattr(slots, field_name)):
             return target
     return None

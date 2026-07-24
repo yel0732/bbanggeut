@@ -73,7 +73,11 @@ class DiaryAnswerAnalysisRequest(BaseModel):
         validate_assignment=True,
     )
 
-    current_question: str = Field(alias="currentQuestion", repr=False)
+    current_question: str | None = Field(
+        default=None,
+        alias="currentQuestion",
+        repr=False,
+    )
     child_answer: str = Field(alias="childAnswer", repr=False)
     current_slots: DiarySlots = Field(alias="currentSlots", repr=False)
     game_context: GameContext | None = Field(
@@ -82,7 +86,22 @@ class DiaryAnswerAnalysisRequest(BaseModel):
         repr=False,
     )
 
-    @field_validator("current_question", "child_answer")
+    @field_validator("current_question")
+    @classmethod
+    def strip_optional_current_question(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        """Normalize a delivered question while allowing the first free turn."""
+
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must contain non-whitespace text")
+        return stripped
+
+    @field_validator("child_answer")
     @classmethod
     def strip_and_reject_blank_text(cls, value: str) -> str:
         """Normalize outer whitespace and reject text without content."""

@@ -28,3 +28,13 @@ export const GameEntryPage = lazy(() =>
     default: GameEntryPage,
   })),
 )
+export const GameGuidePage = lazy(() =>
+  import('@/pages/GameGuidePage').then(({ GameGuidePage }) => ({
+    default: GameGuidePage,
+  })),
+)
+export const GamePlayPage = lazy(() =>
+  import('@/pages/GamePlayPage').then(({ GamePlayPage }) => ({
+    default: GamePlayPage,
+  })),
+)

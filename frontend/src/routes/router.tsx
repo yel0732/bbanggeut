@@ -6,6 +6,8 @@ import {
   EmailLoginPage,
   EmailSignupPage,
   GameEntryPage,
+  GameGuidePage,
+  GamePlayPage,
   ProfileSelectPage,
   StartPage,
 } from '@/routes/lazyPages'
@@ -38,14 +40,12 @@ export const router = createBrowserRouter([
     element: <GameEntryPage />,
   },
   {
-    path: '/games/play',
-    element: (
-      <PlaceholderPage
-        eyebrow="Game"
-        title="게임 플레이"
-        description="카메라와 게임 엔진이 연결될 실제 플레이 화면입니다."
-      />
-    ),
+    path: '/games/:gameId/guide',
+    element: <GameGuidePage />,
+  },
+  {
+    path: '/games/:gameId/play',
+    element: <GamePlayPage />,
   },
   {
     path: '/conversation',

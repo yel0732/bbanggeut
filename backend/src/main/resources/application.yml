@@ -60,6 +60,10 @@ app:
     secret: ${JWT_SECRET:local-dev-only-CHANGE-ME-this-is-not-a-real-secret}
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
+  cors:
+    allowed-origins: http://localhost:*
+  cookie:
+    secure: false
   local:
     mock-principal-id: 1
     mock-child-id: 15
@@ -94,6 +98,8 @@ app:
     secret: ${JWT_SECRET}
   google:
     client-id: ${GOOGLE_CLIENT_ID}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
 management:
   endpoints:

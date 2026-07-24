@@ -9,7 +9,13 @@ import {
 } from './fruitGameConfig'
 
 export type GamePhase =
-  'waiting-hand' | 'countdown' | 'playing' | 'paused' | 'ended'
+  | 'waiting-hand'
+  | 'countdown'
+  | 'playing'
+  | 'paused'
+  | 'interrupted'
+  | 'error'
+  | 'ended'
 
 export type RenderFruit = {
   id: number
@@ -27,6 +33,8 @@ export type RenderFruit = {
   cutAngle: number
 }
 
+export type DistanceHint = 'near' | 'ok' | 'far'
+
 export type HandScreen = {
   /** 화면(미러링) 좌표 px */
   box: { x: number; y: number; w: number; h: number }
@@ -37,6 +45,8 @@ export type HandScreen = {
   trail: { x: number; y: number }[]
   /** 현재 프레임에서 베기 기준 속도 이상인지 */
   fast: boolean
+  /** 카메라와의 거리 힌트 (손 크기로 추정) */
+  distance: DistanceHint
 }
 
 export type FruitGameResult = {
@@ -45,6 +55,8 @@ export type FruitGameResult = {
   totalFruitCount: number
   activePlaySec: number
   ruleVersion: string
+  /** 결과 정합성 통과 여부 (MGAME-21) */
+  valid: boolean
 }
 
 export type FruitGameState = {
@@ -56,6 +68,7 @@ export type FruitGameState = {
   hand: HandScreen | null
   pause: () => void
   resume: () => void
+  restart: () => void
 }
 
 type Fruit = {
@@ -81,12 +94,14 @@ type Engine = {
   fruits: Fruit[]
   nextId: number
   score: number
+  slicedScoreSum: number
   slicedCount: number
   totalCount: number
   playElapsedMs: number
   countdownEndsAt: number
   lastSpawnAt: number
   lastFrameTs: number
+  lastHandSeenAt: number
   prevPointer: { x: number; y: number } | null
   trail: { x: number; y: number }[]
   hand: HandScreen | null
@@ -101,12 +116,14 @@ function createEngine(now: number): Engine {
     fruits: [],
     nextId: 1,
     score: 0,
+    slicedScoreSum: 0,
     slicedCount: 0,
     totalCount: 0,
     playElapsedMs: 0,
     countdownEndsAt: 0,
     lastSpawnAt: now,
     lastFrameTs: now,
+    lastHandSeenAt: now,
     prevPointer: null,
     trail: [],
     hand: null,
@@ -181,12 +198,18 @@ export function useFruitGame(
   active: boolean,
   onEnd: (result: FruitGameResult) => void,
   onSlice?: () => void,
+  redesignateHand?: () => void,
+  cameraError?: boolean,
 ): FruitGameState {
   const engineRef = useRef<Engine | null>(null)
   const onEndRef = useRef(onEnd)
   onEndRef.current = onEnd
   const onSliceRef = useRef(onSlice)
   onSliceRef.current = onSlice
+  const redesignateRef = useRef(redesignateHand)
+  redesignateRef.current = redesignateHand
+  const cameraErrorRef = useRef(cameraError)
+  cameraErrorRef.current = cameraError
 
   const [snapshot, setSnapshot] = useState<{
     phase: GamePhase
@@ -206,7 +229,11 @@ export function useFruitGame(
 
   const pause = useCallback(() => {
     const engine = engineRef.current
-    if (engine && engine.phase === 'playing') {
+    // 진행 중이거나 손 사라짐 자동정지 상태에서 수동 일시정지 메뉴를 연다.
+    if (
+      engine &&
+      (engine.phase === 'playing' || engine.phase === 'interrupted')
+    ) {
       engine.phase = 'paused'
     }
   }, [])
@@ -214,10 +241,33 @@ export function useFruitGame(
   const resume = useCallback(() => {
     const engine = engineRef.current
     if (engine && engine.phase === 'paused') {
-      // 이어하기: 다시 손을 인식하고 3초 카운트다운 후 재개 (MGAME-28).
+      // 이어하기: 플레이 손을 다시 지정하고 3초 카운트다운 후 재개 (MGAME-28).
+      redesignateRef.current?.()
       engine.phase = 'countdown'
       engine.countdownEndsAt = performance.now() + CFG.countdownSec * 1000
     }
+  }, [])
+
+  const restart = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    // 다시 시작: 임시 점수·결과 폐기, 새 구성으로 처음부터 (MGAME-29).
+    redesignateRef.current?.()
+    const now = performance.now()
+    engine.phase = 'waiting-hand'
+    engine.fruits = []
+    engine.nextId = 1
+    engine.score = 0
+    engine.slicedScoreSum = 0
+    engine.slicedCount = 0
+    engine.totalCount = 0
+    engine.playElapsedMs = 0
+    engine.countdownEndsAt = 0
+    engine.lastSpawnAt = now
+    engine.lastHandSeenAt = now
+    engine.prevPointer = null
+    engine.trail = []
+    engine.ended = false
   }, [])
 
   useEffect(() => {
@@ -276,6 +326,7 @@ export function useFruitGame(
         blade: { ax, ay, bx, by },
         trail: [...engine.trail],
         fast,
+        distance: play.distance,
       }
     }
 
@@ -307,6 +358,7 @@ export function useFruitGame(
               180) /
             Math.PI
           engine.score += fruit.score
+          engine.slicedScoreSum += fruit.score
           engine.slicedCount++
           onSliceRef.current?.()
         }
@@ -346,6 +398,21 @@ export function useFruitGame(
 
       readHand(now)
 
+      // 카메라 오류: 게임 상태는 유지한 채 정지 (MGAME-30). 복구되면 손 재인식
+      // 후 카운트다운으로 재개 (MGAME-31). 수동 일시정지/종료 상태는 건드리지 않음.
+      if (cameraErrorRef.current) {
+        if (
+          engine.phase !== 'error' &&
+          engine.phase !== 'paused' &&
+          engine.phase !== 'ended'
+        ) {
+          engine.phase = 'error'
+          redesignateRef.current?.()
+        }
+      } else if (engine.phase === 'error') {
+        engine.phase = 'waiting-hand'
+      }
+
       switch (engine.phase) {
         case 'waiting-hand':
           if (engine.hand) {
@@ -355,14 +422,26 @@ export function useFruitGame(
           break
         case 'countdown':
           if (!engine.hand) {
-            // 카운트다운 중 손 인식 끊기면 초기화 (MGAME-26).
+            // 카운트다운 중 손 인식 끊기면 초기화하고 손 대기 안내로 돌아간다
+            // (MGAME-26). 손이 다시 보이면 카운트다운을 처음부터 진행한다.
             engine.phase = 'waiting-hand'
-          } else if (now >= engine.countdownEndsAt) {
-            engine.phase = 'playing'
-            engine.lastSpawnAt = now
+          } else {
+            engine.lastHandSeenAt = now
+            if (now >= engine.countdownEndsAt) {
+              engine.phase = 'playing'
+              engine.lastSpawnAt = now
+            }
           }
           break
         case 'playing':
+          if (engine.hand) {
+            engine.lastHandSeenAt = now
+          } else if (now - engine.lastHandSeenAt > CFG.handLostGraceMs) {
+            // 플레이 손이 사라지면 자동 일시정지 (MGAME-24). 복귀 시 재지정.
+            engine.phase = 'interrupted'
+            redesignateRef.current?.()
+            break
+          }
           engine.playElapsedMs += dt * 1000
           if (engine.playElapsedMs >= CFG.durationSec * 1000) {
             engine.playElapsedMs = CFG.durationSec * 1000
@@ -371,7 +450,15 @@ export function useFruitGame(
             step(dt, now)
           }
           break
+        case 'interrupted':
+          // 손이 다시 인식되면 3초 카운트다운 후 재개 (MGAME-25/26).
+          if (engine.hand) {
+            engine.phase = 'countdown'
+            engine.countdownEndsAt = now + CFG.countdownSec * 1000
+          }
+          break
         case 'paused':
+        case 'error':
         case 'ended':
           break
       }
@@ -413,12 +500,17 @@ export function useFruitGame(
       if (engine.phase === 'ended') {
         if (!engine.ended) {
           engine.ended = true
+          // 정합성 검증 (MGAME-21): 자른 수 ≤ 등장 수, 점수 = 과일별 점수 합
+          const valid =
+            engine.slicedCount <= engine.totalCount &&
+            engine.score === engine.slicedScoreSum
           onEndRef.current({
             score: engine.score,
             slicedFruitCount: engine.slicedCount,
             totalFruitCount: engine.totalCount,
             activePlaySec: Math.round(engine.playElapsedMs / 1000),
             ruleVersion: CFG.ruleVersion,
+            valid,
           })
         }
         return
@@ -444,5 +536,6 @@ export function useFruitGame(
     hand: snapshot.hand,
     pause,
     resume,
+    restart,
   }
 }

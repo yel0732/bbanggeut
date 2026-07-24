@@ -1,16 +1,32 @@
 import {
   FilesetResolver,
-  HandLandmarker,
-  type HandLandmarkerResult,
+  PoseLandmarker,
+  type PoseLandmarkerResult,
 } from '@mediapipe/tasks-vision'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 const TASKS_VISION_VERSION = '0.10.35'
 const WASM_PATH = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/wasm`
 const MODEL_PATH =
-  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task'
 
-/** 정규화(0..1) 손 영역. 영상 원본 좌표계 기준(미러링 전). */
+// BlazePose 랜드마크 인덱스
+const LM = {
+  leftElbow: 13,
+  rightElbow: 14,
+  leftWrist: 15,
+  rightWrist: 16,
+} as const
+
+const VISIBILITY_MIN = 0.4
+// 팔뚝 길이(정규화)로 카메라 거리 추정
+const ARM_NEAR = 0.5
+const ARM_FAR = 0.1
+// 손목에서 뻗는 검 길이 배율(팔뚝 길이 기준)
+const SWORD_REACH = 1.15
+
+export type DistanceHint = 'near' | 'ok' | 'far'
+
 export type HandBox = {
   minX: number
   minY: number
@@ -19,38 +35,33 @@ export type HandBox = {
 }
 
 export type PlayHand = {
-  /** 지정된 플레이 손 식별자: 'Left' | 'Right' */
-  handedness: string
-  /** 정규화 손 영역 */
+  /** 지정된 플레이 팔: 'left' | 'right' */
+  side: 'left' | 'right'
+  /** 정규화 팔/검 영역 */
   box: HandBox
-  /** 정규화 손 중심 포인터 */
+  /** 정규화 손목 포인터 */
   pointer: { x: number; y: number }
-  /** 손날(베는 날): 손목 -> 중지 끝 선분, 정규화 좌표 */
+  /** 손날(검): 손목 -> 손끝 방향 연장 선분, 정규화 좌표 */
   blade: { ax: number; ay: number; bx: number; by: number }
+  /** 카메라 거리 힌트 */
+  distance: DistanceHint
 }
 
 export type HandTrackingState = {
-  /** 모델 로드 완료 여부 */
   modelReady: boolean
-  /** 플레이 손이 한 번이라도 지정됐는지 */
   designated: boolean
-  /** 현재 프레임에서 추적된 플레이 손 (안 보이면 null) */
   playHand: PlayHand | null
-  /** 초기화 실패 메시지 */
   error: string | null
+  /** 플레이 팔 지정을 초기화해 다음에 든 팔을 다시 지정 (MGAME-25/28) */
+  redesignate: () => void
 }
 
-// 손바닥 중심 추정용 랜드마크(손목 + 각 손가락 MCP).
-const PALM_LANDMARKS = [0, 5, 9, 13, 17]
-
 /**
- * 플레이 손 추적 훅 (MGAME-03/05/06).
+ * 플레이 팔 추적 훅 (MGAME-03/05/06).
  *
- * - 먼저 정상 인식된 한 손을 플레이 손으로 지정하고 이후 그 손만 추적한다.
- * - 반대 손은 추적/표시 대상에서 제외한다.
- * - 플레이 손이 화면에서 사라지면 playHand가 null이 되어 안내를 띄울 수 있다.
- *
- * 좌표는 영상 원본(미러링 전) 정규화값이다. 표시할 때 영상과 같은 미러링을 적용한다.
+ * MediaPipe Pose로 팔꿈치~손목을 인식한다. 손만 보는 것보다 인식 범위가 넓어
+ * 아이가 카메라에서 멀리 떨어져도 동작한다. 먼저 든 한쪽 팔을 플레이 팔로
+ * 지정하고 그 팔의 손목~손끝 방향만 베기에 사용한다.
  */
 export function useHandTracking(
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -61,15 +72,21 @@ export function useHandTracking(
   const [playHand, setPlayHand] = useState<PlayHand | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // 지정된 플레이 손의 handedness. 한 번 정해지면 계속 유지한다.
-  const playHandednessRef = useRef<string | null>(null)
+  // 지정된 플레이 팔. 한 번 정해지면 계속 유지한다.
+  const playSideRef = useRef<'left' | 'right' | null>(null)
+
+  const redesignate = useCallback(() => {
+    playSideRef.current = null
+    setDesignated(false)
+    setPlayHand(null)
+  }, [])
 
   useEffect(() => {
     if (!enabled) {
       return
     }
 
-    let landmarker: HandLandmarker | null = null
+    let landmarker: PoseLandmarker | null = null
     let rafId = 0
     let cancelled = false
     let lastVideoTime = -1
@@ -94,66 +111,74 @@ export function useHandTracking(
       rafId = requestAnimationFrame(detectLoop)
     }
 
-    const handleResult = (result: HandLandmarkerResult) => {
-      const hands = result.landmarks
-      const handedness = result.handedness
-
-      if (!hands || hands.length === 0) {
+    const handleResult = (result: PoseLandmarkerResult) => {
+      const pose = result.landmarks?.[0]
+      if (!pose) {
         setPlayHand(null)
         return
       }
 
-      // 아직 미지정이면 먼저 인식된 손을 플레이 손으로 지정한다.
-      if (playHandednessRef.current === null) {
-        playHandednessRef.current = handedness[0]?.[0]?.categoryName ?? 'Right'
+      const lw = pose[LM.leftWrist]
+      const rw = pose[LM.rightWrist]
+      const le = pose[LM.leftElbow]
+      const re = pose[LM.rightElbow]
+
+      const leftOk =
+        (lw?.visibility ?? 0) > VISIBILITY_MIN &&
+        (le?.visibility ?? 0) > VISIBILITY_MIN
+      const rightOk =
+        (rw?.visibility ?? 0) > VISIBILITY_MIN &&
+        (re?.visibility ?? 0) > VISIBILITY_MIN
+
+      // 미지정이면 먼저 든(더 높이 올린) 팔을 플레이 팔로 지정한다.
+      if (playSideRef.current === null) {
+        if (leftOk && rightOk) {
+          playSideRef.current = lw.y < rw.y ? 'left' : 'right'
+        } else if (leftOk) {
+          playSideRef.current = 'left'
+        } else if (rightOk) {
+          playSideRef.current = 'right'
+        } else {
+          setPlayHand(null)
+          return
+        }
         setDesignated(true)
       }
 
-      const index = handedness.findIndex(
-        (categories) =>
-          categories[0]?.categoryName === playHandednessRef.current,
-      )
-      if (index === -1) {
-        // 지정된 손이 이번 프레임에 없음 → 안내를 위해 null.
+      const side = playSideRef.current
+      const ok = side === 'left' ? leftOk : rightOk
+      if (!ok) {
         setPlayHand(null)
         return
       }
+      const wrist = side === 'left' ? lw : rw
+      const elbow = side === 'left' ? le : re
 
-      const landmarks = hands[index]
-      let minX = 1
-      let minY = 1
-      let maxX = 0
-      let maxY = 0
-      for (const point of landmarks) {
-        if (point.x < minX) minX = point.x
-        if (point.y < minY) minY = point.y
-        if (point.x > maxX) maxX = point.x
-        if (point.y > maxY) maxY = point.y
-      }
+      // 팔뚝 방향으로 손목에서 손끝 너머까지 검을 뻗는다.
+      const dx = wrist.x - elbow.x
+      const dy = wrist.y - elbow.y
+      const forearm = Math.hypot(dx, dy) || 0.0001
+      const ux = dx / forearm
+      const uy = dy / forearm
+      const reach = forearm * SWORD_REACH
+      const tipX = wrist.x + ux * reach
+      const tipY = wrist.y + uy * reach
 
-      let sumX = 0
-      let sumY = 0
-      for (const i of PALM_LANDMARKS) {
-        sumX += landmarks[i].x
-        sumY += landmarks[i].y
-      }
-
-      const wrist = landmarks[0]
-      const middleTip = landmarks[12]
+      let distance: DistanceHint = 'ok'
+      if (forearm > ARM_NEAR) distance = 'near'
+      else if (forearm < ARM_FAR) distance = 'far'
 
       setPlayHand({
-        handedness: playHandednessRef.current,
-        box: { minX, minY, maxX, maxY },
-        pointer: {
-          x: sumX / PALM_LANDMARKS.length,
-          y: sumY / PALM_LANDMARKS.length,
+        side,
+        box: {
+          minX: Math.min(elbow.x, wrist.x, tipX),
+          minY: Math.min(elbow.y, wrist.y, tipY),
+          maxX: Math.max(elbow.x, wrist.x, tipX),
+          maxY: Math.max(elbow.y, wrist.y, tipY),
         },
-        blade: {
-          ax: wrist.x,
-          ay: wrist.y,
-          bx: middleTip.x,
-          by: middleTip.y,
-        },
+        pointer: { x: wrist.x, y: wrist.y },
+        blade: { ax: wrist.x, ay: wrist.y, bx: tipX, by: tipY },
+        distance,
       })
     }
 
@@ -163,9 +188,9 @@ export function useHandTracking(
         if (cancelled) {
           return
         }
-        landmarker = await HandLandmarker.createFromOptions(vision, {
+        landmarker = await PoseLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: MODEL_PATH, delegate: 'GPU' },
-          numHands: 2,
+          numPoses: 1,
           runningMode: 'VIDEO',
         })
         if (cancelled) {
@@ -177,7 +202,7 @@ export function useHandTracking(
         rafId = requestAnimationFrame(detectLoop)
       } catch {
         if (!cancelled) {
-          setError('손 인식을 준비하지 못했어요')
+          setError('동작 인식을 준비하지 못했어요')
         }
       }
     }
@@ -189,13 +214,12 @@ export function useHandTracking(
       cancelAnimationFrame(rafId)
       landmarker?.close()
       landmarker = null
-      // 재진입 시 새 손을 다시 지정하도록 초기화한다.
-      playHandednessRef.current = null
+      playSideRef.current = null
       setModelReady(false)
       setDesignated(false)
       setPlayHand(null)
     }
   }, [enabled, videoRef])
 
-  return { modelReady, designated, playHand, error }
+  return { modelReady, designated, playHand, error, redesignate }
 }

@@ -141,6 +141,8 @@ export const FRUIT_GAME_CONFIG = {
   spawnXMargin: 220,
   /** 베인 과일 조각이 화면에 남아 있는 시간(ms) */
   slicedLingerMs: 650,
+  /** 플레이 손이 사라진 뒤 자동 일시정지까지 유예(ms) (MGAME-24) */
+  handLostGraceMs: 700,
 } as const
 
 /** 표시 크기(가장 긴 변 = baseSize)에 맞춘 가로/세로 px. */

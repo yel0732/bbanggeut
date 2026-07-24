@@ -98,6 +98,24 @@
     min-height: 100vh;
     margin: 0;
     cursor: var(--cursor-game-default);
+    /* 마우스 드래그로 텍스트/이미지 선택되는 것 방지 */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* 입력 요소는 선택 허용 */
+  input,
+  textarea,
+  [contenteditable='true'] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* 이미지 드래그(고스트) 방지 */
+  img {
+    -webkit-user-drag: none;
+    user-select: none;
   }
 
   a,

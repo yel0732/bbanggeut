@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.auth.dto.request.SetPinRequest;
+import com.A501.backend.domain.auth.dto.request.VerifyPinRequest;
 import com.A501.backend.domain.auth.service.PinService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +29,14 @@ public class PinController {
     public ResponseEntity<Void> setPin(Authentication authentication, @Valid @RequestBody SetPinRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
         pinService.setPin(parentId, request.pin());
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "PIN 검증")
+    @PostMapping("/pin/verify")
+    public ResponseEntity<Void> verifyPin(Authentication authentication, @Valid @RequestBody VerifyPinRequest request) {
+        Long parentId = (Long) authentication.getPrincipal();
+        pinService.verifyPin(parentId, request.pin());
         return ResponseEntity.ok().build();
     }
 }

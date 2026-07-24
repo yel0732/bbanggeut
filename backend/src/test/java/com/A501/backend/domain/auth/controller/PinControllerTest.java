@@ -85,6 +85,64 @@ class PinControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void verifyPin_returnsUnauthorizedWithoutBearerToken() throws Exception {
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void verifyPin_returnsOkOnMatch() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void verifyPin_returnsForbiddenWhenPinNotSet() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_NOT_SET))
+                .when(pinService).verifyPin(1L, "1234");
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void verifyPin_returnsUnauthorizedOnMismatch() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH))
+                .when(pinService).verifyPin(1L, "0000");
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void verifyPin_returnsLockedWhenLockoutTriggered() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_LOCKED))
+                .when(pinService).verifyPin(1L, "0000");
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isLocked());
+    }
+
     private String generateAccessToken() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
         ReflectionTestUtils.setField(parent, "parentId", 1L);

@@ -4,26 +4,88 @@ import java.time.LocalDate;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.A501.backend.domain.report.dto.response.ReportDetailResponse;
+import com.A501.backend.domain.report.dto.response.ReportListResponse;
 import com.A501.backend.domain.report.dto.response.ReportRegenerationResponse;
+import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.service.ReportManualRegenerationService;
+import com.A501.backend.domain.report.service.ReportQueryService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "Reports")
+@Validated
 @RestController
 @RequestMapping("/api/children/{childId}/reports")
 @RequiredArgsConstructor
 public class ReportController {
 
     private final ReportManualRegenerationService regenerationService;
+    private final ReportQueryService queryService;
+
+    @Operation(summary = "Get daily reports for a child")
+    @GetMapping
+    public ResponseEntity<ReportListResponse> getReports(
+            @Positive @PathVariable Long childId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate startDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate endDate,
+            @RequestParam(required = false)
+            ReportGenerationStatus status,
+            @PositiveOrZero @RequestParam(defaultValue = "0") int page,
+            @Min(1) @Max(100)
+            @RequestParam(defaultValue = "20") int size,
+            @RequestHeader(
+                    value = "X-Parent-Access-Token",
+                    required = false)
+            String parentAccessToken
+    ) {
+        return ResponseEntity.ok(queryService.getReports(
+                childId,
+                startDate,
+                endDate,
+                status,
+                page,
+                size,
+                parentAccessToken));
+    }
+
+    @Operation(summary = "Get a daily report by date")
+    @GetMapping("/{reportDate}")
+    public ResponseEntity<ReportDetailResponse> getReport(
+            @Positive @PathVariable Long childId,
+            @PathVariable
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate reportDate,
+            @RequestHeader(
+                    value = "X-Parent-Access-Token",
+                    required = false)
+            String parentAccessToken
+    ) {
+        return ResponseEntity.ok(
+                queryService.getReport(
+                        childId,
+                        reportDate,
+                        parentAccessToken));
+    }
 
     @Operation(summary = "Regenerate a failed daily report")
     @PostMapping("/{reportDate}/regenerate")

@@ -17,9 +17,10 @@ dist-ssr/
 .env.*
 !.env.example
 
-# Oh My Codex (OMX)
+# AI agent tooling
 .omx/
 .codex/
+.claude/
 
 # Editors
 .idea/

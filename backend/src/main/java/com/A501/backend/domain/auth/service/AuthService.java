@@ -4,12 +4,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.util.Locale;
+import java.util.Optional;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
@@ -17,6 +19,8 @@ import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
+import com.A501.backend.domain.auth.security.GoogleTokenVerifier;
+import com.A501.backend.domain.auth.security.GoogleUserInfo;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.security.RefreshTokenProperties;
 import com.A501.backend.domain.auth.security.TokenHasher;
@@ -38,6 +42,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final RefreshTokenProperties refreshTokenProperties;
+    private final GoogleTokenVerifier googleTokenVerifier;
 
     public boolean isEmailAvailable(String email) {
         return parentRepository.findByEmail(normalizeEmail(email)).isEmpty();
@@ -97,6 +102,38 @@ public class AuthService {
         refreshTokenRepository.findByTokenHash(TokenHasher.hash(rawRefreshToken))
                 .filter(token -> token.getParent().getParentId().equals(authenticatedParentId))
                 .ifPresent(RefreshToken::revoke);
+    }
+
+    @Transactional
+    public GoogleAuthResult googleAuth(GoogleAuthRequest request) {
+        GoogleUserInfo googleUser = googleTokenVerifier.verify(request.idToken());
+
+        Optional<Parent> byProviderId = parentRepository.findByProviderId(googleUser.providerId());
+        if (byProviderId.isPresent()) {
+            return GoogleAuthResult.loginSuccess(issueTokens(byProviderId.get(), true));
+        }
+
+        Optional<Parent> byEmail = parentRepository.findByEmail(normalizeEmail(googleUser.email()));
+        if (byEmail.isPresent() && byEmail.get().hasPassword()) {
+            String linkToken = jwtProvider.generateLinkToken(byEmail.get().getParentId(), googleUser.providerId());
+            return GoogleAuthResult.linkRequired(linkToken);
+        }
+
+        LocalDate resolvedBirthDate = resolveGoogleBirthDate(googleUser);
+        if (resolvedBirthDate != null && !isUnderAge(resolvedBirthDate)) {
+            Parent parent = parentRepository.save(
+                    Parent.createGoogle(normalizeEmail(googleUser.email()), googleUser.providerId(), resolvedBirthDate));
+            return GoogleAuthResult.loginSuccess(issueTokens(parent, true));
+        }
+
+        String signupToken = jwtProvider.generateSignupToken(googleUser.providerId(), googleUser.email());
+        return GoogleAuthResult.signupRequired(signupToken, googleUser.email());
+    }
+
+    // 향후 People API로 생년월일을 자동 조회할 확장 지점. 지금은 항상 null을 반환해 SIGNUP_REQUIRED로만 분기한다.
+    // 자동 조회를 붙이더라도 클라이언트가 보낸 값이 아닌, 서버가 직접 확보한 값만 신뢰해야 한다(연령 검증 우회 방지).
+    private LocalDate resolveGoogleBirthDate(GoogleUserInfo googleUser) {
+        return null;
     }
 
     @Transactional

@@ -21,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
@@ -28,6 +29,8 @@ import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
+import com.A501.backend.domain.auth.security.GoogleTokenVerifier;
+import com.A501.backend.domain.auth.security.GoogleUserInfo;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.security.RefreshTokenProperties;
 import com.A501.backend.domain.auth.security.TokenHasher;
@@ -49,12 +52,15 @@ class AuthServiceTest {
     @Mock
     private JwtProvider jwtProvider;
 
+    @Mock
+    private GoogleTokenVerifier googleTokenVerifier;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(
-                parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider, REFRESH_TOKEN_PROPERTIES);
+        authService = new AuthService(parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider,
+                REFRESH_TOKEN_PROPERTIES, googleTokenVerifier);
     }
 
     @Test
@@ -358,5 +364,55 @@ class AuthServiceTest {
                 org.mockito.ArgumentCaptor.forClass(LocalDateTime.class);
         verify(refreshTokenRepository).deleteByExpiresAtBefore(cutoffCaptor.capture());
         assertThat(cutoffCaptor.getValue()).isBefore(LocalDateTime.now().minusDays(29));
+    }
+
+    @Test
+    void googleAuth_returnsLoginSuccessWhenProviderIdAlreadyRegistered() {
+        GoogleAuthRequest request = new GoogleAuthRequest("google-id-token");
+        Parent parent = Parent.createGoogle("google@example.com", "google-sub-1", LocalDate.of(1990, 1, 1));
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-1", "google@example.com"));
+        when(parentRepository.findByProviderId("google-sub-1")).thenReturn(Optional.of(parent));
+        when(jwtProvider.generateAccessToken(parent)).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenExpirySeconds()).thenReturn(1800L);
+
+        GoogleAuthResult result = authService.googleAuth(request);
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.LOGIN_SUCCESS);
+        assertThat(result.tokenIssueResult().refreshTokenMaxAgeSeconds()).isEqualTo(60 * 24 * 60 * 60L);
+        verify(refreshTokenRepository).save(any());
+    }
+
+    @Test
+    void googleAuth_returnsLinkRequiredWhenEmailMatchesExistingLocalAccount() {
+        GoogleAuthRequest request = new GoogleAuthRequest("google-id-token");
+        Parent existingLocal = Parent.createLocal("shared@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(existingLocal, "parentId", 9L);
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-2", "shared@example.com"));
+        when(parentRepository.findByProviderId("google-sub-2")).thenReturn(Optional.empty());
+        when(parentRepository.findByEmail("shared@example.com")).thenReturn(Optional.of(existingLocal));
+        when(jwtProvider.generateLinkToken(9L, "google-sub-2")).thenReturn("link-token");
+
+        GoogleAuthResult result = authService.googleAuth(request);
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.LINK_REQUIRED);
+        assertThat(result.linkToken()).isEqualTo("link-token");
+    }
+
+    @Test
+    void googleAuth_returnsSignupRequiredWhenNoAccountMatches() {
+        GoogleAuthRequest request = new GoogleAuthRequest("google-id-token");
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-3", "new-google@example.com"));
+        when(parentRepository.findByProviderId("google-sub-3")).thenReturn(Optional.empty());
+        when(parentRepository.findByEmail("new-google@example.com")).thenReturn(Optional.empty());
+        when(jwtProvider.generateSignupToken("google-sub-3", "new-google@example.com")).thenReturn("signup-token");
+
+        GoogleAuthResult result = authService.googleAuth(request);
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.SIGNUP_REQUIRED);
+        assertThat(result.signupToken()).isEqualTo("signup-token");
+        assertThat(result.email()).isEqualTo("new-google@example.com");
     }
 }

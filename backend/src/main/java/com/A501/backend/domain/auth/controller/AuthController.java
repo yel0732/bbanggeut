@@ -17,15 +17,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.auth.dto.request.EmailPatterns;
+import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.dto.response.AuthTokenResponse;
 import com.A501.backend.domain.auth.dto.response.EmailCheckResponse;
+import com.A501.backend.domain.auth.dto.response.GoogleAuthResponse;
 import com.A501.backend.domain.auth.dto.response.SignupResponse;
 import com.A501.backend.domain.auth.dto.response.TokenRefreshResponse;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.security.CookieProperties;
 import com.A501.backend.domain.auth.service.AuthService;
+import com.A501.backend.domain.auth.service.GoogleAuthResult;
 import com.A501.backend.domain.auth.service.TokenIssueResult;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -91,6 +94,17 @@ public class AuthController {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString())
                 .build();
+    }
+
+    @Operation(summary = "구글 로그인/가입 분기")
+    @PostMapping("/google")
+    public ResponseEntity<GoogleAuthResponse> googleAuth(@Valid @RequestBody GoogleAuthRequest request) {
+        GoogleAuthResult result = authService.googleAuth(request);
+        ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.ok();
+        if (result.outcome() == GoogleAuthResult.GoogleAuthOutcome.LOGIN_SUCCESS) {
+            responseBuilder.header(HttpHeaders.SET_COOKIE, buildRefreshTokenCookie(result.tokenIssueResult()).toString());
+        }
+        return responseBuilder.body(GoogleAuthResponse.from(result));
     }
 
     private ResponseCookie buildRefreshTokenCookie(TokenIssueResult result) {

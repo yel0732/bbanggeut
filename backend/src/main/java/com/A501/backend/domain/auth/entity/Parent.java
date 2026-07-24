@@ -1,5 +1,6 @@
 package com.A501.backend.domain.auth.entity;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -85,5 +86,39 @@ public class Parent extends BaseTimeEntity {
 
     public boolean isDeleted() {
         return deletedAt != null;
+    }
+
+    public boolean hasPin() {
+        return pinHash != null;
+    }
+
+    public boolean isPinLocked(LocalDateTime now) {
+        return pinLockedUntil != null && pinLockedUntil.isAfter(now);
+    }
+
+    public void setPin(String pinHash) {
+        this.pinHash = pinHash;
+        this.pinSetAt = LocalDateTime.now();
+        resetPinFailures();
+    }
+
+    // 잠금이 만료된 뒤 첫 검증 시도 전에 호출한다. 리셋하지 않으면 실패 횟수가 이미 임계치라
+    // 한 번만 틀려도 즉시 재잠금된다.
+    public void resetPinFailuresIfLockExpired(LocalDateTime now) {
+        if (pinLockedUntil != null && !pinLockedUntil.isAfter(now)) {
+            resetPinFailures();
+        }
+    }
+
+    public void registerPinFailure(LocalDateTime now, int maxFailedAttempts, Duration lockDuration) {
+        this.pinFailedAttempts++;
+        if (this.pinFailedAttempts >= maxFailedAttempts) {
+            this.pinLockedUntil = now.plus(lockDuration);
+        }
+    }
+
+    public void resetPinFailures() {
+        this.pinFailedAttempts = 0;
+        this.pinLockedUntil = null;
     }
 }

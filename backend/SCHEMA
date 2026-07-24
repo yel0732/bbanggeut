@@ -222,7 +222,9 @@ CREATE TABLE report_notification (
     message              VARCHAR(200) NOT NULL,
     created_at           DATETIME(6)  NOT NULL,
     updated_at           DATETIME(6)  NOT NULL,
-    PRIMARY KEY (notification_id)
+    PRIMARY KEY (notification_id),
+    CONSTRAINT uk_report_notification_report_type
+        UNIQUE (report_id, notification_type)
 );
 
 CREATE INDEX idx_report_notification_parent_created
@@ -235,8 +237,8 @@ CREATE INDEX idx_report_notification_report
 -- notification_status: UNREAD | READ
 -- The message contains no game result, conversation content, or internal
 -- generation failure reason.
--- Duplicate prevention by report_id and notification_type is added in
--- REPORT-10.
+-- REPORT-10 prevents duplicate creation with the report_id and
+-- notification_type unique constraint.
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportNotification.java
 
 

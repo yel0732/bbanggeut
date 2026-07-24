@@ -60,6 +60,10 @@ public class Parent extends BaseTimeEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    // 부모도 자녀와 동일하게 기본 제공 이미지 중 선택하는 프로필 사진을 설정할 수 있다(CHILD와 동일 방식).
+    @Column(name = "profile_image_num", nullable = false)
+    private int profileImageNum = 1;
+
     private Parent(String email, String passwordHash, LocalDate birthDate, AuthProvider provider, String providerId) {
         this.email = email;
         this.passwordHash = passwordHash;
@@ -120,5 +124,9 @@ public class Parent extends BaseTimeEntity {
     public void resetPinFailures() {
         this.pinFailedAttempts = 0;
         this.pinLockedUntil = null;
+    }
+
+    public void changeProfileImage(int profileImageNum) {
+        this.profileImageNum = profileImageNum;
     }
 }

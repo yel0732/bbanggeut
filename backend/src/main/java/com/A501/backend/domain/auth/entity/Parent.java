@@ -1,5 +1,6 @@
 package com.A501.backend.domain.auth.entity;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -59,6 +60,10 @@ public class Parent extends BaseTimeEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    // 부모도 자녀와 동일하게 기본 제공 이미지 중 선택하는 프로필 사진을 설정할 수 있다(CHILD와 동일 방식).
+    @Column(name = "profile_image_num", nullable = false)
+    private int profileImageNum = 1;
+
     private Parent(String email, String passwordHash, LocalDate birthDate, AuthProvider provider, String providerId) {
         this.email = email;
         this.passwordHash = passwordHash;
@@ -85,5 +90,43 @@ public class Parent extends BaseTimeEntity {
 
     public boolean isDeleted() {
         return deletedAt != null;
+    }
+
+    public boolean hasPin() {
+        return pinHash != null;
+    }
+
+    public boolean isPinLocked(LocalDateTime now) {
+        return pinLockedUntil != null && pinLockedUntil.isAfter(now);
+    }
+
+    public void setPin(String pinHash) {
+        this.pinHash = pinHash;
+        this.pinSetAt = LocalDateTime.now();
+        resetPinFailures();
+    }
+
+    // 잠금이 만료된 뒤 첫 검증 시도 전에 호출한다. 리셋하지 않으면 실패 횟수가 이미 임계치라
+    // 한 번만 틀려도 즉시 재잠금된다.
+    public void resetPinFailuresIfLockExpired(LocalDateTime now) {
+        if (pinLockedUntil != null && !pinLockedUntil.isAfter(now)) {
+            resetPinFailures();
+        }
+    }
+
+    public void registerPinFailure(LocalDateTime now, int maxFailedAttempts, Duration lockDuration) {
+        this.pinFailedAttempts++;
+        if (this.pinFailedAttempts >= maxFailedAttempts) {
+            this.pinLockedUntil = now.plus(lockDuration);
+        }
+    }
+
+    public void resetPinFailures() {
+        this.pinFailedAttempts = 0;
+        this.pinLockedUntil = null;
+    }
+
+    public void changeProfileImage(int profileImageNum) {
+        this.profileImageNum = profileImageNum;
     }
 }

@@ -31,6 +31,9 @@ app:
     default-expiry-days: 1
   cookie:
     secure: true
+  pin:
+    max-failed-attempts: 5
+    lock-duration: 5m
 
 ---
 # 로컬 개발용: H2 인메모리 DB

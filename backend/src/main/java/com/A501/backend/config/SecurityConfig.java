@@ -52,7 +52,16 @@ public class SecurityConfig {
                         // 순서 중요: logout을 먼저 authenticated()로 선언해야 아래 permit-all 패턴에 묻히지 않는다.
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         .requestMatchers(PERMIT_ALL_PATTERNS).permitAll()
-                        // TODO: 다른 도메인 컨트롤러가 추가되면 .authenticated()로 좁힐 것 — 지금은 AUTH 외 라우트가 없어 전체 허용
+                        // /api/children/**는 report 도메인의 /api/children/{childId}/reports/**와 경로가
+                        // 겹치므로 와일드카드 대신 이 도메인이 실제로 쓰는 경로만 정확히 지정한다.
+                        .requestMatchers("/api/profile/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/children/name/check").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/children").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/children").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/children/{childId}").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/children/{childId}").authenticated()
+                        // TODO: game/report/conversation 도메인이 실제 인증으로 전환되면 .authenticated()로 좁힐 것
+                        // — 지금은 mock 기반(LocalChildAccessVerifier 등)이라 전체를 좁히면 테스트가 깨짐
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

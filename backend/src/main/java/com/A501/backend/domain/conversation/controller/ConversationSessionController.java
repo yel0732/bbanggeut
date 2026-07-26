@@ -7,12 +7,11 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
 import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
 import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
@@ -42,9 +41,8 @@ public class ConversationSessionController {
     @Operation(summary = "대화 세션 생성")
     @PostMapping("/children/{childId}/conversations")
     public ResponseEntity<CreateConversationResponse> create(
-            @Positive @PathVariable Long childId,
-            @Valid @RequestBody CreateConversationRequest request) {
-        CreateConversationResponse response = conversationSessionService.create(childId, request);
+            @Positive @PathVariable Long childId) {
+        CreateConversationResponse response = conversationSessionService.create(childId);
 
         return ResponseEntity
                 .created(URI.create("/api/v1/conversations/" + response.conversationId()))

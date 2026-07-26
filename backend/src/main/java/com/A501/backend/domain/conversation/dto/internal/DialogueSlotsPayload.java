@@ -8,14 +8,13 @@ public record DialogueSlotsPayload(
         String place,
         String emotion,
         String emotionReason,
-        String memorableMoment,
-        String result) {
+        String memorableMoment) {
 
     public DialogueSlotsPayload {
         people = people == null ? List.of() : List.copyOf(people);
     }
 
     public static DialogueSlotsPayload empty() {
-        return new DialogueSlotsPayload(null, List.of(), null, null, null, null, null);
+        return new DialogueSlotsPayload(null, List.of(), null, null, null, null);
     }
 }

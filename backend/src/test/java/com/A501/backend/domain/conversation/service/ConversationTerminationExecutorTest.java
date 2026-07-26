@@ -23,10 +23,14 @@ import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
+import com.A501.backend.domain.conversation.entity.ConversationTopicState;
+import com.A501.backend.domain.conversation.entity.ConversationTopicStatus;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationTerminationExecutorTest {
@@ -37,17 +41,28 @@ class ConversationTerminationExecutorTest {
     @Mock
     private ConversationSessionRepository conversationSessionRepository;
 
+    @Mock
+    private ConversationTopicStateRepository topicStateRepository;
+
     private ConversationTerminationExecutor executor;
 
     @BeforeEach
     void setUp() {
-        executor = new ConversationTerminationExecutor(conversationSessionRepository, FIXED_CLOCK);
+        executor = new ConversationTerminationExecutor(
+                conversationSessionRepository,
+                topicStateRepository,
+                FIXED_CLOCK);
     }
 
     @Test
     void UTC_Clock으로_상태와_종료_정보를_함께_저장한다() {
         ConversationSession session = startedSession("conv_executor_001");
+        ConversationTopicState topic = dailyTopic("conv_executor_001");
+        topic.start(LocalDateTime.of(2026, 7, 22, 1, 0));
         when(conversationSessionRepository.findById("conv_executor_001")).thenReturn(Optional.of(session));
+        when(topicStateRepository.findByConversationIdAndTopicTypeForUpdate(
+                "conv_executor_001",
+                ConversationTopic.DAILY)).thenReturn(Optional.of(topic));
         when(conversationSessionRepository.saveAndFlush(session)).thenReturn(session);
 
         ConversationSession result = executor.terminate(
@@ -56,6 +71,8 @@ class ConversationTerminationExecutorTest {
         assertThat(result.getStatus()).isEqualTo(ConversationStatus.COMPLETED);
         assertThat(result.getCompletedAt()).isEqualTo(LocalDateTime.of(2026, 7, 22, 1, 8));
         assertThat(result.getTerminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
+        assertThat(topic.getStatus()).isEqualTo(ConversationTopicStatus.COMPLETED);
+        assertThat(topic.getCompletionReason()).isEqualTo(TerminationReason.USER_FINISHED);
         verify(conversationSessionRepository).saveAndFlush(session);
     }
 
@@ -92,5 +109,16 @@ class ConversationTerminationExecutorTest {
                 conversationId, 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
         session.start();
         return session;
+    }
+
+    private ConversationTopicState dailyTopic(String conversationId) {
+        return ConversationTopicState.create(
+                "topic_" + conversationId,
+                conversationId,
+                ConversationTopic.DAILY,
+                1,
+                6,
+                "{}",
+                "{\"topic\":\"DAILY\",\"games\":[]}");
     }
 }

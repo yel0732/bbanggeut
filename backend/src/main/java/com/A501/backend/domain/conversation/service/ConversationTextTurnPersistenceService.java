@@ -17,16 +17,17 @@ import com.A501.backend.domain.conversation.dto.internal.DialogueAiDecision;
 import com.A501.backend.domain.conversation.dto.internal.DialogueAiResponse;
 import com.A501.backend.domain.conversation.dto.internal.DialogueSlotsPayload;
 import com.A501.backend.domain.conversation.dto.response.TextTurnResponse;
-import com.A501.backend.domain.conversation.entity.ConversationDialogueState;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
+import com.A501.backend.domain.conversation.entity.ConversationTopicState;
 import com.A501.backend.domain.conversation.entity.ConversationTurn;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TurnStatus;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
-import com.A501.backend.domain.conversation.repository.ConversationDialogueStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -37,7 +38,7 @@ public class ConversationTextTurnPersistenceService {
 
     private final ConversationSessionRepository conversationSessionRepository;
     private final ConversationTurnRepository conversationTurnRepository;
-    private final ConversationDialogueStateRepository dialogueStateRepository;
+    private final ConversationTopicStateRepository topicStateRepository;
     private final ChildAccessVerifier childAccessVerifier;
     private final CurrentMemberProvider currentMemberProvider;
     private final ObjectMapper objectMapper;
@@ -46,14 +47,14 @@ public class ConversationTextTurnPersistenceService {
     public ConversationTextTurnPersistenceService(
             ConversationSessionRepository conversationSessionRepository,
             ConversationTurnRepository conversationTurnRepository,
-            ConversationDialogueStateRepository dialogueStateRepository,
+            ConversationTopicStateRepository topicStateRepository,
             ChildAccessVerifier childAccessVerifier,
             CurrentMemberProvider currentMemberProvider,
             ObjectMapper objectMapper,
             @Qualifier("utcClock") Clock utcClock) {
         this.conversationSessionRepository = conversationSessionRepository;
         this.conversationTurnRepository = conversationTurnRepository;
-        this.dialogueStateRepository = dialogueStateRepository;
+        this.topicStateRepository = topicStateRepository;
         this.childAccessVerifier = childAccessVerifier;
         this.currentMemberProvider = currentMemberProvider;
         this.objectMapper = objectMapper;
@@ -65,33 +66,48 @@ public class ConversationTextTurnPersistenceService {
         verifyConversationAccess(session);
         validateActive(session);
 
-        DialogueSlotsPayload slots = dialogueStateRepository.findById(conversationId)
-                .map(ConversationDialogueState::getSlotsJson)
-                .map(this::deserializeSlots)
-                .orElseGet(DialogueSlotsPayload::empty);
+        List<ConversationTopicState> topics =
+                topicStateRepository
+                        .findAllByConversationIdOrderByTopicOrderAsc(conversationId);
+        ConversationTopicState currentTopic = topics.stream()
+                .filter(topic -> topic.getTopicType() == session.getCurrentTopic())
+                .findFirst()
+                .orElseThrow(() -> new ConversationException(
+                        ConversationErrorCode.DIALOGUE_STATE_INVALID));
+        ConversationTopic nextTopic = topics.stream()
+                .filter(topic -> topic.getTopicOrder() > currentTopic.getTopicOrder())
+                .findFirst()
+                .map(ConversationTopicState::getTopicType)
+                .orElse(null);
+        DialogueSlotsPayload slots = deserializeSlots(currentTopic.getSlotsJson());
         List<ConversationTurn> recentAiTurns =
                 conversationTurnRepository
-                        .findTop5ByConversationIdAndSpeakerAndStatusOrderByTurnSeqDesc(
+                        .findTop5ByConversationIdAndTopicTypeAndSpeakerAndStatusOrderByTurnSeqDesc(
                                 conversationId,
+                                currentTopic.getTopicType(),
                                 Speaker.AI,
                                 TurnStatus.COMPLETED);
         String currentQuestion = recentAiTurns.isEmpty()
                 ? null
-                : recentAiTurns.get(0).getContent();
+                : resolveQuestionText(recentAiTurns.get(0));
         List<String> recentQuestions = new ArrayList<>(
                 recentAiTurns.stream()
-                        .map(ConversationTurn::getContent)
+                        .map(this::resolveQuestionText)
                         .toList());
         Collections.reverse(recentQuestions);
 
         return new PreparedTextTurn(
                 conversationId,
                 session.getVersion(),
+                currentTopic.getVersion(),
+                currentTopic.getTopicType(),
+                nextTopic,
                 slots,
+                deserializeContext(currentTopic.getContextJson()),
                 currentQuestion,
                 recentQuestions,
-                session.getQuestionCount(),
-                session.getMaxQuestionCount());
+                currentTopic.getQuestionCount(),
+                currentTopic.getMaxQuestionCount());
     }
 
     @Transactional
@@ -109,11 +125,26 @@ public class ConversationTextTurnPersistenceService {
             throw new ConversationException(
                     ConversationErrorCode.CONVERSATION_TURN_CONFLICT);
         }
+        ConversationTopicState currentTopic = topicStateRepository
+                .findByConversationIdAndTopicTypeForUpdate(
+                        prepared.conversationId(),
+                        prepared.currentTopic())
+                .orElseThrow(() -> new ConversationException(
+                        ConversationErrorCode.DIALOGUE_STATE_INVALID));
+        if (!Objects.equals(prepared.topicVersion(), currentTopic.getVersion())
+                || session.getCurrentTopic() != prepared.currentTopic()) {
+            throw new ConversationException(
+                    ConversationErrorCode.CONVERSATION_TURN_CONFLICT);
+        }
 
         LocalDateTime now = LocalDateTime.now(utcClock)
                 .truncatedTo(ChronoUnit.MICROS);
         if (session.getStatus() == ConversationStatus.READY) {
             session.start(now);
+        }
+        if (currentTopic.getStatus()
+                == com.A501.backend.domain.conversation.entity.ConversationTopicStatus.PENDING) {
+            currentTopic.start(now);
         }
 
         int childTurnSeq =
@@ -126,31 +157,56 @@ public class ConversationTextTurnPersistenceService {
                 childAnswer,
                 null,
                 now,
-                now);
+                now,
+                prepared.currentTopic());
         conversationTurnRepository.save(childTurn);
 
-        String slotsJson = serializeSlots(aiResponse.updatedSlots());
-        ConversationDialogueState dialogueState = dialogueStateRepository
-                .findById(session.getConversationId())
-                .orElseGet(() -> ConversationDialogueState.create(
-                        session.getConversationId(),
-                        slotsJson));
-        dialogueState.updateSlots(slotsJson);
-        dialogueStateRepository.save(dialogueState);
+        currentTopic.updateSlots(serializeSlots(aiResponse.updatedSlots()));
 
         ConversationTurn assistantTurn = null;
-        if (aiResponse.decision() == DialogueAiDecision.CONTINUE) {
+        if (aiResponse.decision() == DialogueAiDecision.CONTINUE_TOPIC) {
             assistantTurn = ConversationTurn.createAiGenerating(
                     generateId("turn_"),
                     session.getConversationId(),
                     childTurnSeq + 1,
+                    aiResponse.assistantMessage(),
                     aiResponse.assistantQuestion(),
                     generateId("resp_"),
-                    now);
+                    now,
+                    prepared.currentTopic());
             assistantTurn.complete(now);
             conversationTurnRepository.save(assistantTurn);
+            currentTopic.incrementQuestionCount();
+            session.incrementQuestionCount();
+        } else if (aiResponse.decision() == DialogueAiDecision.SWITCH_TOPIC) {
+            if (prepared.nextTopic() == null) {
+                throw new ConversationException(
+                        ConversationErrorCode.DIALOGUE_STATE_INVALID);
+            }
+            currentTopic.complete(now, aiResponse.terminationReason());
+            ConversationTopicState nextTopic = topicStateRepository
+                    .findByConversationIdAndTopicTypeForUpdate(
+                            prepared.conversationId(),
+                            prepared.nextTopic())
+                    .orElseThrow(() -> new ConversationException(
+                            ConversationErrorCode.DIALOGUE_STATE_INVALID));
+            nextTopic.start(now);
+            session.switchTopic(prepared.nextTopic());
+            assistantTurn = ConversationTurn.createAiGenerating(
+                    generateId("turn_"),
+                    session.getConversationId(),
+                    childTurnSeq + 1,
+                    aiResponse.assistantMessage(),
+                    aiResponse.assistantQuestion(),
+                    generateId("resp_"),
+                    now,
+                    prepared.nextTopic());
+            assistantTurn.complete(now);
+            conversationTurnRepository.save(assistantTurn);
+            nextTopic.incrementQuestionCount();
             session.incrementQuestionCount();
         } else {
+            currentTopic.complete(now, aiResponse.terminationReason());
             session.terminate(now, aiResponse.terminationReason());
         }
 
@@ -204,6 +260,18 @@ public class ConversationTextTurnPersistenceService {
         }
     }
 
+    private com.A501.backend.domain.conversation.dto.internal.DialogueTopicContextPayload
+            deserializeContext(String contextJson) {
+        try {
+            return objectMapper.readValue(
+                    contextJson,
+                    com.A501.backend.domain.conversation.dto.internal.DialogueTopicContextPayload.class);
+        } catch (JacksonException exception) {
+            throw new ConversationException(
+                    ConversationErrorCode.DIALOGUE_STATE_INVALID);
+        }
+    }
+
     private String serializeSlots(DialogueSlotsPayload slots) {
         try {
             return objectMapper.writeValueAsString(slots);
@@ -215,5 +283,12 @@ public class ConversationTextTurnPersistenceService {
 
     private String generateId(String prefix) {
         return prefix + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private String resolveQuestionText(ConversationTurn turn) {
+        String questionText = turn.getQuestionText();
+        return questionText == null || questionText.isBlank()
+                ? turn.getContent()
+                : questionText;
     }
 }

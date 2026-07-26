@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +19,7 @@ import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 
 import jakarta.persistence.EntityManager;
@@ -36,9 +36,11 @@ class ConversationSessionRepositoryTest {
 
     @Test
     void 세션을_저장하고_조회하면_모든_필드가_그대로_유지된다() {
-        UUID gameSessionId = UUID.randomUUID();
         ConversationSession session = ConversationSession.create(
-                "conv_test_001", 15L, gameSessionId, ContextType.GAME, ConversationGoal.DIARY, 6);
+                "conv_test_001",
+                15L,
+                ConversationTopic.GAME,
+                12);
 
         conversationSessionRepository.saveAndFlush(session);
 
@@ -46,28 +48,29 @@ class ConversationSessionRepositoryTest {
 
         assertThat(found).isPresent();
         assertThat(found.get().getChildId()).isEqualTo(15L);
-        assertThat(found.get().getGameSessionId()).isEqualTo(gameSessionId);
         assertThat(found.get().getStatus()).isEqualTo(ConversationStatus.READY);
-        assertThat(found.get().getContextType()).isEqualTo(ContextType.GAME);
-        assertThat(found.get().getConversationGoal()).isEqualTo(ConversationGoal.DIARY);
+        assertThat(found.get().getCurrentTopic()).isEqualTo(ConversationTopic.GAME);
         assertThat(found.get().getQuestionCount()).isZero();
-        assertThat(found.get().getMaxQuestionCount()).isEqualTo(6);
+        assertThat(found.get().getMaxQuestionCount()).isEqualTo(12);
         assertThat(found.get().getCurrentSessionEpoch()).isZero();
         assertThat(found.get().getCreatedAt()).isNotNull();
         assertThat(found.get().getUpdatedAt()).isNotNull();
     }
 
     @Test
-    void game_session_id가_없어도_저장된다() {
+    void DAILY_세션은_선택_주제와_종료_정보를_저장한다() {
         ConversationSession session = ConversationSession.create(
-                "conv_test_002", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+                "conv_test_002",
+                15L,
+                ConversationTopic.DAILY,
+                6);
 
         conversationSessionRepository.saveAndFlush(session);
 
         Optional<ConversationSession> found = conversationSessionRepository.findById("conv_test_002");
 
         assertThat(found).isPresent();
-        assertThat(found.get().getGameSessionId()).isNull();
+        assertThat(found.get().getCurrentTopic()).isEqualTo(ConversationTopic.DAILY);
         assertThat(found.get().getStartedAt()).isNull();
         assertThat(found.get().getCompletedAt()).isNull();
         assertThat(found.get().getTerminationReason()).isNull();

@@ -48,8 +48,15 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
     @Column(name = "speaker", nullable = false, length = 10)
     private Speaker speaker;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "topic_type", nullable = false, length = 20)
+    private ConversationTopic topicType;
+
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
+
+    @Column(name = "question_text", columnDefinition = "TEXT")
+    private String questionText;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -82,7 +89,9 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
             String conversationId,
             int turnSeq,
             Speaker speaker,
+            ConversationTopic topicType,
             String content,
+            String questionText,
             TurnStatus status,
             String responseId,
             BigDecimal sttConfidence,
@@ -95,7 +104,9 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
         this.conversationId = conversationId;
         this.turnSeq = turnSeq;
         this.speaker = speaker;
+        this.topicType = topicType;
         this.content = content;
+        this.questionText = questionText;
         this.status = status;
         this.responseId = responseId;
         this.sttConfidence = sttConfidence;
@@ -113,18 +124,65 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
             String content,
             String responseId,
             LocalDateTime startedAt) {
+        return createAiGenerating(
+                turnId,
+                conversationId,
+                turnSeq,
+                content,
+                content,
+                responseId,
+                startedAt,
+                ConversationTopic.DAILY);
+    }
+
+    public static ConversationTurn createAiGenerating(
+            String turnId,
+            String conversationId,
+            int turnSeq,
+            String content,
+            String questionText,
+            String responseId,
+            LocalDateTime startedAt) {
+        return createAiGenerating(
+                turnId,
+                conversationId,
+                turnSeq,
+                content,
+                questionText,
+                responseId,
+                startedAt,
+                ConversationTopic.DAILY);
+    }
+
+    public static ConversationTurn createAiGenerating(
+            String turnId,
+            String conversationId,
+            int turnSeq,
+            String content,
+            String questionText,
+            String responseId,
+            LocalDateTime startedAt,
+            ConversationTopic topicType) {
         if (responseId == null) {
             throw new IllegalArgumentException("AI 턴은 responseId가 필요합니다.");
         }
         if (startedAt == null) {
             throw new IllegalArgumentException("AI 턴은 startedAt이 필요합니다.");
         }
+        if (questionText == null || questionText.isBlank()) {
+            throw new IllegalArgumentException("AI 턴은 순수 질문이 필요합니다.");
+        }
+        if (topicType == null) {
+            throw new IllegalArgumentException("AI 턴은 대화 주제가 필요합니다.");
+        }
         return ConversationTurn.builder()
                 .turnId(turnId)
                 .conversationId(conversationId)
                 .turnSeq(turnSeq)
                 .speaker(Speaker.AI)
+                .topicType(topicType)
                 .content(content)
+                .questionText(questionText)
                 .status(TurnStatus.GENERATING)
                 .responseId(responseId)
                 .startedAt(startedAt)
@@ -139,12 +197,36 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
             BigDecimal sttConfidence,
             LocalDateTime startedAt,
             LocalDateTime completedAt) {
+        return createChildCompleted(
+                turnId,
+                conversationId,
+                turnSeq,
+                content,
+                sttConfidence,
+                startedAt,
+                completedAt,
+                ConversationTopic.DAILY);
+    }
+
+    public static ConversationTurn createChildCompleted(
+            String turnId,
+            String conversationId,
+            int turnSeq,
+            String content,
+            BigDecimal sttConfidence,
+            LocalDateTime startedAt,
+            LocalDateTime completedAt,
+            ConversationTopic topicType) {
         validateTerminalTime(startedAt, completedAt, "완료");
+        if (topicType == null) {
+            throw new IllegalArgumentException("아이 턴은 대화 주제가 필요합니다.");
+        }
         return ConversationTurn.builder()
                 .turnId(turnId)
                 .conversationId(conversationId)
                 .turnSeq(turnSeq)
                 .speaker(Speaker.CHILD)
+                .topicType(topicType)
                 .content(content)
                 .status(TurnStatus.COMPLETED)
                 .sttConfidence(sttConfidence)
@@ -172,6 +254,7 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
                 .conversationId(conversationId)
                 .turnSeq(turnSeq)
                 .speaker(Speaker.AI)
+                .topicType(ConversationTopic.DAILY)
                 .content(content)
                 .status(TurnStatus.INTERRUPTED)
                 .responseId(responseId)

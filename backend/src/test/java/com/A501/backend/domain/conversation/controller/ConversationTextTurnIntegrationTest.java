@@ -42,12 +42,15 @@ import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
+import com.A501.backend.domain.conversation.entity.ConversationTopicState;
+import com.A501.backend.domain.conversation.entity.ConversationTopicStatus;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
-import com.A501.backend.domain.conversation.repository.ConversationDialogueStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import com.A501.backend.domain.conversation.service.ChildAccessVerifier;
 import com.A501.backend.domain.conversation.service.ConversationTextTurnPersistenceService;
@@ -69,7 +72,7 @@ class ConversationTextTurnIntegrationTest {
     private ConversationTurnRepository turnRepository;
 
     @Autowired
-    private ConversationDialogueStateRepository stateRepository;
+    private ConversationTopicStateRepository topicRepository;
 
     @Autowired
     private ConversationTextTurnPersistenceService persistenceService;
@@ -83,7 +86,7 @@ class ConversationTextTurnIntegrationTest {
     @BeforeEach
     void setUp() {
         reset(dialogueAiClient, childAccessVerifier);
-        stateRepository.deleteAll();
+        topicRepository.deleteAll();
         turnRepository.deleteAll();
         sessionRepository.deleteAll();
     }
@@ -98,13 +101,13 @@ class ConversationTextTurnIntegrationTest {
                 null,
                 "신남",
                 null,
-                null,
                 null);
         when(dialogueAiClient.processTurn(any())).thenReturn(
                 new DialogueAiResponse(
                         updatedSlots,
                         DialogueAiDecision.CONTINUE,
                         null,
+                        "친구와 블록을 만들었구나! 왜 신나는 마음이 들었어?",
                         "왜 신나는 마음이 들었어?",
                         "generated",
                         "llm",
@@ -120,7 +123,7 @@ class ConversationTextTurnIntegrationTest {
                 .andExpect(jsonPath("$.childTurn.turnSeq").value(1))
                 .andExpect(jsonPath("$.assistantTurn.turnSeq").value(2))
                 .andExpect(jsonPath("$.assistantTurn.content")
-                        .value("왜 신나는 마음이 들었어?"))
+                        .value("친구와 블록을 만들었구나! 왜 신나는 마음이 들었어?"))
                 .andExpect(jsonPath("$.conversationState")
                         .value("IN_PROGRESS"));
 
@@ -138,7 +141,23 @@ class ConversationTextTurnIntegrationTest {
                 .getContent())
                 .extracting(turn -> turn.getSpeaker())
                 .containsExactly(Speaker.CHILD, Speaker.AI);
-        assertThat(stateRepository.findById("conv_text_continue"))
+        assertThat(turnRepository
+                .findTop5ByConversationIdAndSpeakerAndStatusOrderByTurnSeqDesc(
+                        "conv_text_continue",
+                        Speaker.AI,
+                        com.A501.backend.domain.conversation.entity.TurnStatus.COMPLETED)
+                .get(0)
+                .getQuestionText())
+                .isEqualTo("왜 신나는 마음이 들었어?");
+        PreparedTextTurn nextPrepared = persistenceService.prepare(
+                "conv_text_continue");
+        assertThat(nextPrepared.currentQuestion())
+                .isEqualTo("왜 신나는 마음이 들었어?");
+        assertThat(nextPrepared.recentQuestions())
+                .containsExactly("왜 신나는 마음이 들었어?");
+        assertThat(topicRepository.findByConversationIdAndTopicType(
+                        "conv_text_continue",
+                        ConversationTopic.DAILY))
                 .get()
                 .extracting(state -> state.getSlotsJson())
                 .asString()
@@ -149,7 +168,7 @@ class ConversationTextTurnIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.session.status")
                         .value("IN_PROGRESS"))
-                .andExpect(jsonPath("$.session.questionCount").value(1))
+                .andExpect(jsonPath("$.session.totalQuestionCount").value(1))
                 .andExpect(jsonPath("$.slots.event").value("블록 놀이"))
                 .andExpect(jsonPath("$.slots.people[0]").value("친구"));
     }
@@ -164,8 +183,7 @@ class ConversationTextTurnIntegrationTest {
                 null,
                 "기쁨",
                 "함께해서",
-                "완성 순간",
-                "정리함");
+                "완성 순간");
         when(dialogueAiClient.processTurn(any())).thenReturn(
                 new DialogueAiResponse(
                         completedSlots,
@@ -222,7 +240,7 @@ class ConversationTextTurnIntegrationTest {
         assertThat(session.getStatus()).isEqualTo(ConversationStatus.READY);
         assertThat(session.getQuestionCount()).isZero();
         assertThat(turnRepository.count()).isZero();
-        assertThat(stateRepository.count()).isZero();
+        assertThat(topicRepository.count()).isEqualTo(1);
     }
 
     @Test
@@ -266,16 +284,7 @@ class ConversationTextTurnIntegrationTest {
             throws Exception {
         saveReadySession("conv_harness_active");
 
-        mockMvc.perform(post("/harness/api/children/15/conversations")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "contextType": "DAILY",
-                                  "gameSessionId": null,
-                                  "conversationGoal": "DIARY",
-                                  "maxQuestionCount": 6
-                                }
-                                """))
+        mockMvc.perform(post("/harness/api/children/15/conversations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversationId")
                         .value("conv_harness_active"))
@@ -315,7 +324,47 @@ class ConversationTextTurnIntegrationTest {
                                 .isEqualTo(ConversationErrorCode
                                         .CONVERSATION_TURN_CONFLICT));
         assertThat(turnRepository.count()).isZero();
-        assertThat(stateRepository.count()).isZero();
+        assertThat(topicRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void GAME_주제가_끝나면_DAILY_질문_수를_0부터_새로_계산한다()
+            throws Exception {
+        saveGameAndDailySession("conv_topic_switch");
+        when(dialogueAiClient.processTurn(any())).thenReturn(
+                new DialogueAiResponse(
+                        DialogueSlotsPayload.empty(),
+                        DialogueAiDecision.SWITCH_TOPIC,
+                        TerminationReason.MAX_QUESTION_REACHED,
+                        "게임 이야기를 들려줘서 고마워! 이번에는 오늘 있었던 다른 일도 이야기해 줄래?",
+                        "이번에는 오늘 있었던 다른 일도 이야기해 줄래?",
+                        "fallback",
+                        "policy",
+                        null));
+
+        mockMvc.perform(post(
+                        "/api/v1/conversations/conv_topic_switch/text-turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"게임은 여기까지 이야기할래.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.childTurn.topicType").value("GAME"))
+                .andExpect(jsonPath("$.assistantTurn.topicType").value("DAILY"))
+                .andExpect(jsonPath("$.conversationState").value("IN_PROGRESS"));
+
+        ConversationSession session =
+                sessionRepository.findById("conv_topic_switch").orElseThrow();
+        assertThat(session.getCurrentTopic()).isEqualTo(ConversationTopic.DAILY);
+        assertThat(session.getQuestionCount()).isEqualTo(1);
+
+        List<ConversationTopicState> topics =
+                topicRepository.findAllByConversationIdOrderByTopicOrderAsc(
+                        "conv_topic_switch");
+        assertThat(topics.get(0).getStatus())
+                .isEqualTo(ConversationTopicStatus.COMPLETED);
+        assertThat(topics.get(0).getQuestionCount()).isZero();
+        assertThat(topics.get(1).getStatus())
+                .isEqualTo(ConversationTopicStatus.IN_PROGRESS);
+        assertThat(topics.get(1).getQuestionCount()).isEqualTo(1);
     }
 
     private void saveReadySession(String conversationId) {
@@ -327,6 +376,44 @@ class ConversationTextTurnIntegrationTest {
                         ContextType.DAILY,
                         ConversationGoal.DIARY,
                         6));
+        topicRepository.saveAndFlush(ConversationTopicState.create(
+                "topic_" + conversationId,
+                conversationId,
+                ConversationTopic.DAILY,
+                1,
+                6,
+                """
+                {"event":null,"people":[],"place":null,"emotion":null,
+                 "emotionReason":null,"memorableMoment":null}
+                """,
+                """
+                {"topic":"DAILY","games":[]}
+                """));
+    }
+
+    private void saveGameAndDailySession(String conversationId) {
+        sessionRepository.saveAndFlush(ConversationSession.create(
+                conversationId,
+                15L,
+                ConversationTopic.GAME,
+                12));
+        topicRepository.saveAllAndFlush(List.of(
+                ConversationTopicState.create(
+                        "topic_game_" + conversationId,
+                        conversationId,
+                        ConversationTopic.GAME,
+                        1,
+                        6,
+                        "{}",
+                        "{\"topic\":\"GAME\",\"games\":[]}"),
+                ConversationTopicState.create(
+                        "topic_daily_" + conversationId,
+                        conversationId,
+                        ConversationTopic.DAILY,
+                        2,
+                        6,
+                        "{}",
+                        "{\"topic\":\"DAILY\",\"games\":[]}")));
     }
 
     @TestConfiguration

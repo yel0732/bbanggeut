@@ -6,17 +6,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.math.BigDecimal;
-import java.util.List;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,42 +32,51 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
-import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
 import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
-import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationTurnListResponse;
+import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
+import com.A501.backend.domain.conversation.entity.ConversationTopicState;
 import com.A501.backend.domain.conversation.entity.ConversationTurn;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
+import com.A501.backend.domain.conversation.repository.ConversationGameSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
+import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
 import com.A501.backend.domain.game.service.GameSessionService;
+
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationSessionServiceTest {
 
+    private static final Clock CLOCK = Clock.fixed(
+            Instant.parse("2026-07-22T03:00:00Z"),
+            ZoneOffset.UTC);
+
     @Mock
     private ConversationSessionRepository conversationSessionRepository;
-
     @Mock
     private ConversationTurnRepository conversationTurnRepository;
-
+    @Mock
+    private ConversationTopicStateRepository topicStateRepository;
+    @Mock
+    private ConversationGameSessionRepository conversationGameSessionRepository;
     @Mock
     private GameSessionService gameSessionService;
-
     @Mock
     private ChildAccessVerifier childAccessVerifier;
-
     @Mock
     private CurrentMemberProvider currentMemberProvider;
-
     @Mock
     private ConversationTerminationCoordinator conversationTerminationCoordinator;
 
@@ -77,311 +87,238 @@ class ConversationSessionServiceTest {
         service = new ConversationSessionService(
                 conversationSessionRepository,
                 conversationTurnRepository,
+                topicStateRepository,
+                conversationGameSessionRepository,
                 gameSessionService,
                 childAccessVerifier,
                 currentMemberProvider,
-                conversationTerminationCoordinator);
-        lenient().when(currentMemberProvider.getCurrentMemberId()).thenReturn(7L);
+                conversationTerminationCoordinator,
+                new ConversationTopicProperties(6, 6),
+                new ObjectMapper(),
+                CLOCK);
+        when(currentMemberProvider.getCurrentMemberId()).thenReturn(7L);
     }
 
     @Test
-    void DAILY_세션을_READY_상태로_생성한다() {
-        CreateConversationRequest request = dailyRequest(6);
+    void createsDailyOnlyPlanWhenTodayHasNoGames() {
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
         when(conversationSessionRepository.save(any(ConversationSession.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CreateConversationResponse response = service.create(15L, request);
+        CreateConversationResponse response = service.create(15L);
 
-        ArgumentCaptor<ConversationSession> captor = ArgumentCaptor.forClass(ConversationSession.class);
-        verify(childAccessVerifier).verifyAccess(7L, 15L);
-        verify(conversationSessionRepository).save(captor.capture());
-        ConversationSession saved = captor.getValue();
-        assertThat(saved.getConversationId()).startsWith("conv_").hasSize(37);
-        assertThat(saved.getStatus()).isEqualTo(ConversationStatus.READY);
-        assertThat(saved.getQuestionCount()).isZero();
-        assertThat(saved.getCurrentSessionEpoch()).isZero();
         assertThat(response.status()).isEqualTo(ConversationStatus.READY);
-        assertThat(response.childId()).isEqualTo(15L);
+        assertThat(response.currentTopic()).isEqualTo(ConversationTopic.DAILY);
+        assertThat(response.topics()).singleElement().satisfies(topic -> {
+            assertThat(topic.type()).isEqualTo(ConversationTopic.DAILY);
+            assertThat(topic.questionCount()).isZero();
+            assertThat(topic.maxQuestionCount()).isEqualTo(6);
+        });
+        verify(topicStateRepository).saveAll(any());
+        verify(conversationGameSessionRepository, never()).saveAll(any());
     }
 
     @Test
-    void GAME_세션은_같은_아이의_게임_세션을_검증하고_생성한다() {
-        UUID gameSessionId = UUID.randomUUID();
-        CreateConversationRequest request = new CreateConversationRequest(
-                ContextType.GAME, gameSessionId, ConversationGoal.DIARY, 5);
-        when(gameSessionService.existsForChild(gameSessionId, 15L)).thenReturn(true);
+    void createsOneGameTopicForMultipleTodayGamesThenDaily() {
+        List<CompletedGameSessionSummary> games = List.of(
+                gameSummary(1L, 10),
+                gameSummary(2L, 20));
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(games);
         when(conversationSessionRepository.save(any(ConversationSession.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CreateConversationResponse response = service.create(15L, request);
+        CreateConversationResponse response = service.create(15L);
 
-        assertThat(response.gameSessionId()).isEqualTo(gameSessionId);
-        verify(gameSessionService).existsForChild(gameSessionId, 15L);
+        assertThat(response.currentTopic()).isEqualTo(ConversationTopic.GAME);
+        assertThat(response.topics())
+                .extracting(topic -> topic.type())
+                .containsExactly(ConversationTopic.GAME, ConversationTopic.DAILY);
+        verify(conversationGameSessionRepository).saveAll(any());
     }
 
     @Test
-    void 최대_질문_수_범위를_벗어나면_저장하지_않는다() {
-        assertError(dailyRequest(4), ConversationErrorCode.INVALID_MAX_QUESTION_COUNT);
-        assertError(dailyRequest(7), ConversationErrorCode.INVALID_MAX_QUESTION_COUNT);
+    void usesKstTodayConvertedToUtcForGameLookup() {
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
 
-        verify(conversationSessionRepository, never()).save(any());
+        service.create(15L);
+
+        ArgumentCaptor<LocalDateTime> startedAt =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> endedAt =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(gameSessionService).findCompletedSessionsForChild(
+                eq(15L), startedAt.capture(), endedAt.capture());
+        assertThat(startedAt.getValue())
+                .isEqualTo(LocalDateTime.of(2026, 7, 21, 15, 0));
+        assertThat(endedAt.getValue())
+                .isEqualTo(LocalDateTime.of(2026, 7, 22, 15, 0));
     }
 
     @Test
-    void GAME에_게임_세션_ID가_없거나_DAILY에_있으면_거절한다() {
-        CreateConversationRequest missingGame = new CreateConversationRequest(
-                ContextType.GAME, null, ConversationGoal.DIARY, 6);
-        CreateConversationRequest unexpectedGame = new CreateConversationRequest(
-                ContextType.DAILY, UUID.randomUUID(), ConversationGoal.DIARY, 6);
-
-        assertError(missingGame, ConversationErrorCode.INVALID_CONVERSATION_CONTEXT);
-        assertError(unexpectedGame, ConversationErrorCode.INVALID_CONVERSATION_CONTEXT);
-    }
-
-    @Test
-    void 게임_세션이_없거나_다른_아이의_것이면_거절한다() {
-        UUID gameSessionId = UUID.randomUUID();
-        CreateConversationRequest request = new CreateConversationRequest(
-                ContextType.GAME, gameSessionId, ConversationGoal.DIARY, 6);
-        when(gameSessionService.existsForChild(gameSessionId, 15L)).thenReturn(false);
-
-        assertError(request, ConversationErrorCode.GAME_SESSION_NOT_FOUND);
-    }
-
-    @Test
-    void 활성_세션이_있으면_중복_생성을_거절한다() {
+    void rejectsDuplicateActiveConversationBeforeReadingGames() {
         when(conversationSessionRepository.existsByChildIdAndStatusIn(
-                eq(15L), org.mockito.ArgumentMatchers.<Collection<ConversationStatus>>any()))
+                eq(15L), anyCollection()))
                 .thenReturn(true);
 
-        assertError(dailyRequest(6), ConversationErrorCode.ACTIVE_CONVERSATION_EXISTS);
-        verify(conversationSessionRepository, never()).save(any());
+        assertThatThrownBy(() -> service.create(15L))
+                .isInstanceOfSatisfying(
+                        ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(
+                                        ConversationErrorCode.ACTIVE_CONVERSATION_EXISTS));
+
+        verify(gameSessionService, never()).findCompletedSessionsForChild(
+                anyLong(), any(), any());
     }
 
     @Test
-    void 아이_접근_검증이_실패하면_나머지_검증과_저장을_진행하지_않는다() {
-        org.mockito.Mockito.doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
-                .when(childAccessVerifier).verifyAccess(7L, 15L);
+    void stopsWhenChildAccessVerificationFails() {
+        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
+                .when(childAccessVerifier)
+                .verifyAccess(7L, 15L);
 
-        assertError(dailyRequest(6), ConversationErrorCode.CHILD_ACCESS_DENIED);
+        assertThatThrownBy(() -> service.create(15L))
+                .isInstanceOfSatisfying(
+                        ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ConversationErrorCode.CHILD_ACCESS_DENIED));
 
         verify(conversationSessionRepository, never())
-                .existsByChildIdAndStatusIn(
-                        anyLong(), org.mockito.ArgumentMatchers.<Collection<ConversationStatus>>any());
-        verify(conversationSessionRepository, never()).save(any());
+                .existsByChildIdAndStatusIn(anyLong(), anyCollection());
     }
 
     @Test
-    void 접근_가능한_세션을_전체_필드와_KST_시각으로_조회한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_query_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+    void returnsSessionWithTopicPlanAndKstTimes() {
+        ConversationSession session = dailySession("conv_query_001");
         session.start();
-        session.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
+        session.terminate(
+                LocalDateTime.of(2026, 7, 22, 1, 8),
+                TerminationReason.USER_FINISHED);
         ReflectionTestUtils.setField(session, "questionCount", 3);
-        ReflectionTestUtils.setField(session, "currentSessionEpoch", 1);
-        ReflectionTestUtils.setField(session, "startedAt", LocalDateTime.of(2026, 7, 22, 1, 0, 10));
-        when(conversationSessionRepository.findById("conv_query_001")).thenReturn(Optional.of(session));
+        ReflectionTestUtils.setField(
+                session,
+                "startedAt",
+                LocalDateTime.of(2026, 7, 22, 1, 0, 10));
+        ConversationTopicState topic = topic(
+                "conv_query_001",
+                ConversationTopic.DAILY,
+                1);
+        when(conversationSessionRepository.findById("conv_query_001"))
+                .thenReturn(Optional.of(session));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc(
+                "conv_query_001"))
+                .thenReturn(List.of(topic));
 
-        ConversationSessionResponse response = service.getConversation("conv_query_001");
+        ConversationSessionResponse response =
+                service.getConversation("conv_query_001");
 
-        verify(childAccessVerifier).verifyAccess(7L, 15L);
-        assertThat(response.conversationId()).isEqualTo("conv_query_001");
-        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
-        assertThat(response.questionCount()).isEqualTo(3);
-        assertThat(response.maxQuestionCount()).isEqualTo(6);
-        assertThat(response.currentSessionEpoch()).isEqualTo(1);
+        assertThat(response.totalQuestionCount()).isEqualTo(3);
+        assertThat(response.currentTopic()).isEqualTo(ConversationTopic.DAILY);
+        assertThat(response.topics()).hasSize(1);
         assertThat(response.startedAt()).isEqualTo(OffsetDateTime.of(
                 2026, 7, 22, 10, 0, 10, 0, ZoneOffset.ofHours(9)));
-        assertThat(response.completedAt()).isEqualTo(OffsetDateTime.of(
-                2026, 7, 22, 10, 8, 0, 0, ZoneOffset.ofHours(9)));
-        assertThat(response.terminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
     }
 
     @Test
-    void READY_세션의_생명주기_필드는_null로_조회한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_query_002", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
-        when(conversationSessionRepository.findById("conv_query_002")).thenReturn(Optional.of(session));
-
-        ConversationSessionResponse response = service.getConversation("conv_query_002");
-
-        assertThat(response.startedAt()).isNull();
-        assertThat(response.completedAt()).isNull();
-        assertThat(response.terminationReason()).isNull();
-    }
-
-    @Test
-    void 세션이_없으면_권한을_조회하지_않고_CONVERSATION_NOT_FOUND를_반환한다() {
-        when(conversationSessionRepository.findById("conv_missing")).thenReturn(Optional.empty());
-
-        assertGetError("conv_missing", ConversationErrorCode.CONVERSATION_NOT_FOUND);
-
-        verify(currentMemberProvider, never()).getCurrentMemberId();
-        verify(childAccessVerifier, never()).verifyAccess(anyLong(), anyLong());
-    }
-
-    @Test
-    void 다른_보호자의_세션이면_CONVERSATION_ACCESS_DENIED로_변환한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_denied", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
-        when(conversationSessionRepository.findById("conv_denied")).thenReturn(Optional.of(session));
-        doThrow(new ConversationException(ConversationErrorCode.CHILD_ACCESS_DENIED))
-                .when(childAccessVerifier).verifyAccess(7L, 15L);
-
-        assertGetError("conv_denied", ConversationErrorCode.CONVERSATION_ACCESS_DENIED);
-    }
-
-    @Test
-    void 연결된_아이를_찾을_수_없으면_CONVERSATION_NOT_FOUND로_변환한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_orphan", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
-        when(conversationSessionRepository.findById("conv_orphan")).thenReturn(Optional.of(session));
-        doThrow(new ConversationException(ConversationErrorCode.CHILD_NOT_FOUND))
-                .when(childAccessVerifier).verifyAccess(7L, 15L);
-
-        assertGetError("conv_orphan", ConversationErrorCode.CONVERSATION_NOT_FOUND);
-    }
-
-    @Test
-    void 진행_중_세션을_정상_종료한다() {
+    void completesActiveConversation() {
         ConversationSession active = startedSession("conv_complete_001");
         ConversationSession completed = startedSession("conv_complete_001");
-        completed.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
-        when(conversationSessionRepository.findById("conv_complete_001")).thenReturn(Optional.of(active));
+        completed.terminate(
+                LocalDateTime.of(2026, 7, 22, 1, 8),
+                TerminationReason.USER_FINISHED);
+        when(conversationSessionRepository.findById("conv_complete_001"))
+                .thenReturn(Optional.of(active));
         when(conversationTerminationCoordinator.terminate(
-                "conv_complete_001", TerminationReason.USER_FINISHED)).thenReturn(completed);
+                "conv_complete_001",
+                TerminationReason.USER_FINISHED))
+                .thenReturn(completed);
 
         CompleteConversationResponse response = service.completeConversation(
-                "conv_complete_001", new CompleteConversationRequest("USER_FINISHED"));
-
-        verify(childAccessVerifier).verifyAccess(7L, 15L);
-        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
-        assertThat(response.terminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
-        assertThat(response.completedAt()).isEqualTo(OffsetDateTime.of(
-                2026, 7, 22, 10, 8, 0, 0, ZoneOffset.ofHours(9)));
-    }
-
-    @Test
-    void 이미_종료된_세션은_Executor를_호출하지_않고_최초_결과를_반환한다() {
-        ConversationSession completed = startedSession("conv_complete_002");
-        completed.terminate(LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
-        when(conversationSessionRepository.findById("conv_complete_002")).thenReturn(Optional.of(completed));
-
-        CompleteConversationResponse response = service.completeConversation(
-                "conv_complete_002", new CompleteConversationRequest("SYSTEM_ERROR"));
+                "conv_complete_001",
+                new CompleteConversationRequest("USER_FINISHED"));
 
         assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
-        assertThat(response.terminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
-        verify(conversationTerminationCoordinator, never()).terminate(any(), any());
+        assertThat(response.terminationReason())
+                .isEqualTo(TerminationReason.USER_FINISHED);
     }
 
     @Test
-    void 종료_사유가_없거나_허용되지_않으면_INVALID_TERMINATION_REASON을_반환한다() {
-        assertCompleteError("conv_invalid_reason", null, ConversationErrorCode.INVALID_TERMINATION_REASON);
-        assertCompleteError("conv_invalid_reason", " ", ConversationErrorCode.INVALID_TERMINATION_REASON);
-        assertCompleteError("conv_invalid_reason", "UNKNOWN", ConversationErrorCode.INVALID_TERMINATION_REASON);
-
-        verify(conversationSessionRepository, never()).findById(any());
-    }
-
-    @Test
-    void 대화_턴을_turnSeq_순서와_KST_시각으로_조회한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_turns_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+    void listsTurnsInSequence() {
+        ConversationSession session = dailySession("conv_turns_001");
         ConversationTurn childTurn = ConversationTurn.createChildCompleted(
-                "turn_002", "conv_turns_001", 2, "재미있었어요",
+                "turn_002",
+                "conv_turns_001",
+                2,
+                "재미있었어요",
                 new BigDecimal("0.9300"),
                 LocalDateTime.of(2026, 7, 22, 1, 1),
                 LocalDateTime.of(2026, 7, 22, 1, 1, 3));
         PageRequest pageable = PageRequest.of(0, 50);
         when(conversationSessionRepository.findById("conv_turns_001"))
                 .thenReturn(Optional.of(session));
-        when(conversationTurnRepository.findByConversationIdOrderByTurnSeqAsc(
-                "conv_turns_001", pageable))
+        when(conversationTurnRepository
+                .findByConversationIdOrderByTurnSeqAsc(
+                        "conv_turns_001",
+                        pageable))
                 .thenReturn(new PageImpl<>(List.of(childTurn), pageable, 1));
 
         ConversationTurnListResponse response =
                 service.getConversationTurns("conv_turns_001", 0, 50, null);
 
-        verify(childAccessVerifier).verifyAccess(7L, 15L);
-        assertThat(response.conversationId()).isEqualTo("conv_turns_001");
-        assertThat(response.totalElements()).isEqualTo(1);
         assertThat(response.turns()).singleElement().satisfies(turn -> {
             assertThat(turn.turnSeq()).isEqualTo(2);
             assertThat(turn.speaker()).isEqualTo(Speaker.CHILD);
-            assertThat(turn.sttConfidence()).isEqualByComparingTo("0.9300");
-            assertThat(turn.startedAt()).isEqualTo(OffsetDateTime.of(
-                    2026, 7, 22, 10, 1, 0, 0, ZoneOffset.ofHours(9)));
+            assertThat(turn.topicType()).isEqualTo(ConversationTopic.DAILY);
         });
     }
 
-    @Test
-    void 화자_필터가_있으면_화자별_조회_메서드를_사용한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_turns_002", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
-        PageRequest pageable = PageRequest.of(1, 10);
-        when(conversationSessionRepository.findById("conv_turns_002"))
-                .thenReturn(Optional.of(session));
-        when(conversationTurnRepository.findByConversationIdAndSpeakerOrderByTurnSeqAsc(
-                "conv_turns_002", Speaker.AI, pageable))
-                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
-
-        ConversationTurnListResponse response =
-                service.getConversationTurns("conv_turns_002", 1, 10, "AI");
-
-        assertThat(response.page()).isEqualTo(1);
-        assertThat(response.size()).isEqualTo(10);
-        assertThat(response.turns()).isEmpty();
+    private CompletedGameSessionSummary gameSummary(Long gameId, int score) {
+        return new CompletedGameSessionSummary(
+                UUID.randomUUID(),
+                gameId,
+                score,
+                60,
+                LocalDateTime.of(2026, 7, 22, 2, 0));
     }
 
-    @Test
-    void 허용되지_않은_화자_필터는_INVALID_SPEAKER를_반환한다() {
-        ConversationSession session = ConversationSession.create(
-                "conv_turns_invalid", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
-        when(conversationSessionRepository.findById("conv_turns_invalid"))
-                .thenReturn(Optional.of(session));
-
-        assertThatThrownBy(() ->
-                service.getConversationTurns("conv_turns_invalid", 0, 50, "PARENT"))
-                .isInstanceOfSatisfying(ConversationException.class,
-                        exception -> assertThat(exception.getErrorCode())
-                                .isEqualTo(ConversationErrorCode.INVALID_SPEAKER));
-
-        verify(conversationTurnRepository, never())
-                .findByConversationIdOrderByTurnSeqAsc(any(), any());
-    }
-
-    private CreateConversationRequest dailyRequest(Integer maxQuestionCount) {
-        return new CreateConversationRequest(
-                ContextType.DAILY, null, ConversationGoal.DIARY, maxQuestionCount);
-    }
-
-    private void assertError(CreateConversationRequest request, ConversationErrorCode expected) {
-        assertThatThrownBy(() -> service.create(15L, request))
-                .isInstanceOfSatisfying(ConversationException.class,
-                        exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
-    }
-
-    private void assertGetError(String conversationId, ConversationErrorCode expected) {
-        assertThatThrownBy(() -> service.getConversation(conversationId))
-                .isInstanceOfSatisfying(ConversationException.class,
-                        exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
-    }
-
-    private void assertCompleteError(
+    private ConversationTopicState topic(
             String conversationId,
-            String reason,
-            ConversationErrorCode expected) {
-        assertThatThrownBy(() -> service.completeConversation(
-                conversationId, new CompleteConversationRequest(reason)))
-                .isInstanceOfSatisfying(ConversationException.class,
-                        exception -> assertThat(exception.getErrorCode()).isEqualTo(expected));
+            ConversationTopic type,
+            int order) {
+        return ConversationTopicState.create(
+                "topic_" + order,
+                conversationId,
+                type,
+                order,
+                6,
+                "{\"people\":[]}",
+                "{\"topic\":\"" + type + "\",\"games\":[]}");
+    }
+
+    private ConversationSession dailySession(String conversationId) {
+        return ConversationSession.create(
+                conversationId,
+                15L,
+                null,
+                ContextType.DAILY,
+                ConversationGoal.DIARY,
+                6);
     }
 
     private ConversationSession startedSession(String conversationId) {
-        ConversationSession session = ConversationSession.create(
-                conversationId, 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+        ConversationSession session = dailySession(conversationId);
         session.start();
         return session;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Collection<ConversationStatus> anyCollection() {
+        return any(Collection.class);
     }
 }

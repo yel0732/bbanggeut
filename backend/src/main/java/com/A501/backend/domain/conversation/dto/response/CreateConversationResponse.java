@@ -1,35 +1,43 @@
 package com.A501.backend.domain.conversation.dto.response;
 
 import java.time.OffsetDateTime;
-import java.util.UUID;
+import java.util.List;
 
 import com.A501.backend.common.util.ApiDateTimeMapper;
-import com.A501.backend.domain.conversation.entity.ContextType;
-import com.A501.backend.domain.conversation.entity.ConversationGoal;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
+import com.A501.backend.domain.conversation.entity.ConversationTopicState;
 
 public record CreateConversationResponse(
         String conversationId,
         Long childId,
-        UUID gameSessionId,
         ConversationStatus status,
-        ContextType contextType,
-        ConversationGoal conversationGoal,
-        int questionCount,
-        int maxQuestionCount,
+        ConversationTopic currentTopic,
+        int totalQuestionCount,
+        List<ConversationTopicResponse> topics,
         OffsetDateTime createdAt) {
 
-    public static CreateConversationResponse from(ConversationSession session) {
+    public CreateConversationResponse {
+        topics = List.copyOf(topics);
+    }
+
+    public static CreateConversationResponse from(
+            ConversationSession session,
+            List<ConversationTopicState> topics) {
         return new CreateConversationResponse(
                 session.getConversationId(),
                 session.getChildId(),
-                session.getGameSessionId(),
                 session.getStatus(),
-                session.getContextType(),
-                session.getConversationGoal(),
+                session.getCurrentTopic(),
                 session.getQuestionCount(),
-                session.getMaxQuestionCount(),
+                topics.stream()
+                        .map(ConversationTopicResponse::from)
+                        .toList(),
                 ApiDateTimeMapper.utcToKst(session.getCreatedAt()));
+    }
+
+    public static CreateConversationResponse from(ConversationSession session) {
+        return from(session, List.of());
     }
 }

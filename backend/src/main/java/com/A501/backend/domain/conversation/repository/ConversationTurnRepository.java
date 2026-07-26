@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.A501.backend.domain.conversation.entity.ConversationTurn;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TurnStatus;
 
@@ -27,6 +28,13 @@ public interface ConversationTurnRepository extends JpaRepository<ConversationTu
             String conversationId,
             Speaker speaker,
             TurnStatus status);
+
+    List<ConversationTurn>
+            findTop5ByConversationIdAndTopicTypeAndSpeakerAndStatusOrderByTurnSeqDesc(
+                    String conversationId,
+                    ConversationTopic topicType,
+                    Speaker speaker,
+                    TurnStatus status);
 
     @Query("""
             select coalesce(max(turn.turnSeq), 0)

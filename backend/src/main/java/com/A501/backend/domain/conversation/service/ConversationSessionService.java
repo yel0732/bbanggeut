@@ -1,9 +1,16 @@
 package com.A501.backend.domain.conversation.service;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Propagation;
@@ -11,58 +18,115 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
-import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
+import com.A501.backend.domain.conversation.dto.internal.DialogueGameContextPayload;
+import com.A501.backend.domain.conversation.dto.internal.DialogueSlotsPayload;
+import com.A501.backend.domain.conversation.dto.internal.DialogueTopicContextPayload;
 import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationSessionResponse;
 import com.A501.backend.domain.conversation.dto.response.ConversationTurnListResponse;
-import com.A501.backend.domain.conversation.entity.ContextType;
+import com.A501.backend.domain.conversation.entity.ConversationGameSession;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
+import com.A501.backend.domain.conversation.entity.ConversationTopicState;
 import com.A501.backend.domain.conversation.entity.ConversationTurn;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
+import com.A501.backend.domain.conversation.repository.ConversationGameSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
+import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
 import com.A501.backend.domain.game.service.GameSessionService;
 
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ConversationSessionService {
 
-    static final int MIN_QUESTION_COUNT = 5;
-    static final int MAX_QUESTION_COUNT = 6;
-
     private static final Set<ConversationStatus> ACTIVE_STATUSES =
             EnumSet.of(ConversationStatus.READY, ConversationStatus.IN_PROGRESS);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private final ConversationSessionRepository conversationSessionRepository;
     private final ConversationTurnRepository conversationTurnRepository;
+    private final ConversationTopicStateRepository topicStateRepository;
+    private final ConversationGameSessionRepository conversationGameSessionRepository;
     private final GameSessionService gameSessionService;
     private final ChildAccessVerifier childAccessVerifier;
     private final CurrentMemberProvider currentMemberProvider;
     private final ConversationTerminationCoordinator conversationTerminationCoordinator;
+    private final ConversationTopicProperties topicProperties;
+    private final ObjectMapper objectMapper;
+    @Qualifier("utcClock")
+    private final Clock utcClock;
 
     @Transactional
-    public CreateConversationResponse create(Long childId, CreateConversationRequest request) {
+    public CreateConversationResponse create(Long childId) {
         childAccessVerifier.verifyAccess(currentMemberProvider.getCurrentMemberId(), childId);
-        validateMaxQuestionCount(request.maxQuestionCount());
-        validateContext(childId, request);
         validateNoActiveConversation(childId);
 
+        List<CompletedGameSessionSummary> games = findTodayGames(childId);
+        boolean hasGames = !games.isEmpty();
+        ConversationTopic firstTopic = hasGames
+                ? ConversationTopic.GAME
+                : ConversationTopic.DAILY;
+        int totalMaxQuestionCount = topicProperties.dailyMaxQuestionCount()
+                + (hasGames ? topicProperties.gameMaxQuestionCount() : 0);
+        String conversationId = generateConversationId();
         ConversationSession session = ConversationSession.create(
-                generateConversationId(),
+                conversationId,
                 childId,
-                request.gameSessionId(),
-                request.contextType(),
-                request.conversationGoal(),
-                request.maxQuestionCount());
+                firstTopic,
+                totalMaxQuestionCount);
+        conversationSessionRepository.save(session);
 
-        return CreateConversationResponse.from(conversationSessionRepository.save(session));
+        List<ConversationTopicState> topics = hasGames
+                ? List.of(
+                        createTopic(
+                                conversationId,
+                                ConversationTopic.GAME,
+                                1,
+                                topicProperties.gameMaxQuestionCount(),
+                                new DialogueTopicContextPayload(
+                                        ConversationTopic.GAME,
+                                        games.stream()
+                                                .map(DialogueGameContextPayload::from)
+                                                .toList())),
+                        createTopic(
+                                conversationId,
+                                ConversationTopic.DAILY,
+                                2,
+                                topicProperties.dailyMaxQuestionCount(),
+                                DialogueTopicContextPayload.empty(
+                                        ConversationTopic.DAILY)))
+                : List.of(
+                        createTopic(
+                                conversationId,
+                                ConversationTopic.DAILY,
+                                1,
+                                topicProperties.dailyMaxQuestionCount(),
+                                DialogueTopicContextPayload.empty(
+                                        ConversationTopic.DAILY)));
+        topicStateRepository.saveAll(topics);
+        if (hasGames) {
+            conversationGameSessionRepository.saveAll(
+                    java.util.stream.IntStream.range(0, games.size())
+                            .mapToObj(index -> ConversationGameSession.create(
+                                    generateId("conv_game_"),
+                                    conversationId,
+                                    games.get(index).gameSessionId(),
+                                    index + 1))
+                            .toList());
+        }
+
+        return CreateConversationResponse.from(session, topics);
     }
 
     public ConversationSessionResponse getConversation(String conversationId) {
@@ -70,7 +134,10 @@ public class ConversationSessionService {
                 .orElseThrow(() -> new ConversationException(ConversationErrorCode.CONVERSATION_NOT_FOUND));
 
         verifyConversationAccess(session);
-        return ConversationSessionResponse.from(session);
+        return ConversationSessionResponse.from(
+                session,
+                topicStateRepository
+                        .findAllByConversationIdOrderByTopicOrderAsc(conversationId));
     }
 
     public ConversationTurnListResponse getConversationTurns(
@@ -146,34 +213,6 @@ public class ConversationSessionService {
         }
     }
 
-    private void validateMaxQuestionCount(Integer maxQuestionCount) {
-        if (maxQuestionCount == null
-                || maxQuestionCount < MIN_QUESTION_COUNT
-                || maxQuestionCount > MAX_QUESTION_COUNT) {
-            throw new ConversationException(ConversationErrorCode.INVALID_MAX_QUESTION_COUNT);
-        }
-    }
-
-    private void validateContext(Long childId, CreateConversationRequest request) {
-        if (request.contextType() == null || request.conversationGoal() == null) {
-            throw new ConversationException(ConversationErrorCode.INVALID_CONVERSATION_CONTEXT);
-        }
-
-        if (request.contextType() == ContextType.GAME) {
-            if (request.gameSessionId() == null) {
-                throw new ConversationException(ConversationErrorCode.INVALID_CONVERSATION_CONTEXT);
-            }
-            if (!gameSessionService.existsForChild(request.gameSessionId(), childId)) {
-                throw new ConversationException(ConversationErrorCode.GAME_SESSION_NOT_FOUND);
-            }
-            return;
-        }
-
-        if (request.gameSessionId() != null) {
-            throw new ConversationException(ConversationErrorCode.INVALID_CONVERSATION_CONTEXT);
-        }
-    }
-
     private void validateNoActiveConversation(Long childId) {
         if (conversationSessionRepository.existsByChildIdAndStatusIn(childId, ACTIVE_STATUSES)) {
             throw new ConversationException(ConversationErrorCode.ACTIVE_CONVERSATION_EXISTS);
@@ -182,5 +221,49 @@ public class ConversationSessionService {
 
     private String generateConversationId() {
         return "conv_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private String generateId(String prefix) {
+        return prefix + UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private List<CompletedGameSessionSummary> findTodayGames(Long childId) {
+        LocalDate today = LocalDate.now(utcClock.withZone(KST));
+        LocalDateTime startedAt = today.atStartOfDay(KST)
+                .withZoneSameInstant(ZoneOffset.UTC)
+                .toLocalDateTime();
+        LocalDateTime endedAt = today.plusDays(1)
+                .atStartOfDay(KST)
+                .withZoneSameInstant(ZoneOffset.UTC)
+                .toLocalDateTime();
+        return gameSessionService.findCompletedSessionsForChild(
+                childId,
+                startedAt,
+                endedAt);
+    }
+
+    private ConversationTopicState createTopic(
+            String conversationId,
+            ConversationTopic topic,
+            int order,
+            int maxQuestionCount,
+            DialogueTopicContextPayload context) {
+        return ConversationTopicState.create(
+                generateId("topic_"),
+                conversationId,
+                topic,
+                order,
+                maxQuestionCount,
+                serialize(DialogueSlotsPayload.empty()),
+                serialize(context));
+    }
+
+    private String serialize(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JacksonException exception) {
+            throw new ConversationException(
+                    ConversationErrorCode.DIALOGUE_STATE_INVALID);
+        }
     }
 }

@@ -28,11 +28,13 @@ public class ConversationTextTurnService {
                         conversationId,
                         request.text(),
                         prepared.currentQuestion(),
-                        prepared.currentSlots(),
+                        prepared.currentTopic(),
+                        prepared.nextTopic(),
+                        prepared.currentTopicSlots(),
                         prepared.recentQuestions(),
-                        null,
-                        prepared.questionCount(),
-                        prepared.maxQuestionCount()));
+                        prepared.topicContext(),
+                        prepared.topicQuestionCount(),
+                        prepared.topicMaxQuestionCount()));
         return persistenceService.finalizeTurn(
                 prepared,
                 request.text(),

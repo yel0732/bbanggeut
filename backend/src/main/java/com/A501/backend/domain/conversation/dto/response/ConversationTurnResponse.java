@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 
 import com.A501.backend.common.util.ApiDateTimeMapper;
 import com.A501.backend.domain.conversation.entity.ConversationTurn;
+import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TurnStatus;
 
@@ -12,6 +13,7 @@ public record ConversationTurnResponse(
         String turnId,
         int turnSeq,
         Speaker speaker,
+        ConversationTopic topicType,
         String content,
         TurnStatus status,
         String responseId,
@@ -24,6 +26,7 @@ public record ConversationTurnResponse(
                 turn.getTurnId(),
                 turn.getTurnSeq(),
                 turn.getSpeaker(),
+                turn.getTopicType(),
                 turn.getContent(),
                 turn.getStatus(),
                 turn.getResponseId(),

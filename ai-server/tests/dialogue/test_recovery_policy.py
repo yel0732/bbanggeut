@@ -145,13 +145,12 @@ def test_skip_terminates_when_no_question_target_remains() -> None:
                 event="played",
                 emotion="happy",
                 emotion_reason="won",
-                memorable_moment="last round",
             ),
             previous_no_responses=3,
-            current_target=QuestionTarget.RESULT,
+            current_target=QuestionTarget.MEMORABLE_MOMENT,
         ),
         DialogueTerminationPolicy(
-            required_targets=frozenset({QuestionTarget.RESULT})
+            required_targets=frozenset({QuestionTarget.MEMORABLE_MOMENT})
         ),
     )
 
@@ -159,7 +158,9 @@ def test_skip_terminates_when_no_question_target_remains() -> None:
         decision.termination_reason
         is DialogueTerminationReason.INACTIVITY_TIMEOUT
     )
-    assert decision.skipped_targets == frozenset({QuestionTarget.RESULT})
+    assert decision.skipped_targets == frozenset(
+        {QuestionTarget.MEMORABLE_MOMENT}
+    )
 
 
 def test_answer_resets_no_response_count_and_selects_next_target() -> None:
@@ -168,7 +169,7 @@ def test_answer_resets_no_response_count_and_selects_next_target() -> None:
         turn_signal=ChildTurnSignal.ANSWERED,
         previous_no_responses=3,
         current_target=None,
-        skipped_targets=frozenset({QuestionTarget.RESULT}),
+        skipped_targets=frozenset({QuestionTarget.MEMORABLE_MOMENT}),
     )
 
     decision = evaluate_dialogue_policy(request, TERMINATION_POLICY)
@@ -176,7 +177,9 @@ def test_answer_resets_no_response_count_and_selects_next_target() -> None:
     assert decision.consecutive_no_responses == 0
     assert decision.recovery_action is NoResponseRecoveryAction.NONE
     assert decision.next_target is QuestionTarget.EMOTION
-    assert decision.skipped_targets == frozenset({QuestionTarget.RESULT})
+    assert decision.skipped_targets == frozenset(
+        {QuestionTarget.MEMORABLE_MOMENT}
+    )
 
 
 def test_stop_signal_returns_terminal_decision() -> None:
@@ -281,7 +284,7 @@ def test_decision_is_frozen_and_rejects_inconsistent_state() -> None:
     decision = evaluate_dialogue_policy(_request(), TERMINATION_POLICY)
 
     with pytest.raises(FrozenInstanceError):
-        decision.next_target = QuestionTarget.RESULT  # type: ignore[misc]
+        decision.next_target = QuestionTarget.EMOTION  # type: ignore[misc]
     with pytest.raises(ValueError, match="terminal decisions"):
         DialoguePolicyDecision(
             termination_reason=DialogueTerminationReason.INACTIVITY_TIMEOUT,

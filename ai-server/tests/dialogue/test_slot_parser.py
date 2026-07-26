@@ -18,8 +18,7 @@ def test_parses_valid_json_output() -> None:
       "place": null,
       "emotion": "신났다",
       "emotionReason": null,
-      "memorableMoment": null,
-      "result": null
+      "memorableMoment": null
     }
     """
 
@@ -54,7 +53,6 @@ def test_partial_output_keeps_unknown_defaults() -> None:
         "emotion": "즐거웠어",
         "emotionReason": None,
         "memorableMoment": None,
-        "result": None,
     }
 
 

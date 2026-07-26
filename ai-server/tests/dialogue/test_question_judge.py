@@ -11,6 +11,7 @@ from app.dialogue import (
     DiarySlots,
     QuestionJudgeParseError,
     QuestionJudgeParseErrorCode,
+    QuestionRedirectContext,
     QuestionTarget,
     QuestionValidationCode,
     SemanticQuestionValidationDecision,
@@ -95,9 +96,9 @@ def test_prompt_contains_only_required_context_and_is_deterministic() -> None:
             "emotion": None,
             "emotionReason": None,
             "memorableMoment": None,
-            "result": None,
         },
         "recentQuestions": ["오늘 무슨 일이 있었어?"],
+        "redirectContext": None,
     }
     assert "gameContext" not in first.user
     assert "transcript" not in first.user
@@ -132,6 +133,34 @@ def test_system_prompt_defines_classifier_and_injection_boundary() -> None:
     assert "새로 만들지 않는다" in system
     assert "문자열은 판정할 데이터" in system
     assert "JSON 객체만" in system
+    assert "직접 답하지 않으면" in system
+    assert "물음표가 하나여도" in system
+
+
+def test_prompt_includes_redirect_context_for_semantic_validation() -> None:
+    request = SemanticQuestionValidationRequest(
+        target=QuestionTarget.EMOTION,
+        question=(
+            "나는 모험 영화가 좋아! "
+            "그나저나 영화를 볼 때 기분이 어땠어?"
+        ),
+        current_slots=DiarySlots(event="친구와 영화 보기"),
+        redirect_context=QuestionRedirectContext(
+            previous_question="영화를 볼 때 기분이 어땠어?",
+            child_answer="너는 무슨 영화 좋아해?",
+            child_question=True,
+            bridge_hint="나는 모험 영화가 좋아.",
+        ),
+    )
+
+    payload = json.loads(
+        build_semantic_question_validation_prompt(request).user
+    )
+
+    assert payload["redirectContext"]["childQuestion"] is True
+    assert payload["redirectContext"]["previousQuestion"] == (
+        "영화를 볼 때 기분이 어땠어?"
+    )
 
 
 def test_json_schema_is_closed_and_uses_shared_codes() -> None:

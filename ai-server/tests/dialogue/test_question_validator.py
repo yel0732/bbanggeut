@@ -40,6 +40,18 @@ def test_accepts_valid_question_and_strips_outer_whitespace() -> None:
     assert result.issues == ()
 
 
+def test_accepts_one_leading_reply_for_natural_redirect() -> None:
+    result = _validate(
+        "나는 모험 영화가 좋아! 그나저나 영화를 볼 때 기분이 어땠어?",
+        policy=QuestionRuleValidationPolicy(
+            max_characters=80,
+            allow_leading_statement=True,
+        ),
+    )
+
+    assert result.is_valid
+
+
 def test_accepts_camel_case_request_and_normalizes_recent_questions() -> None:
     request = QuestionRuleValidationRequest.model_validate(
         {

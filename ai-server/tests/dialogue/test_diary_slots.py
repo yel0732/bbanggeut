@@ -13,7 +13,6 @@ SLOT_FIELDS = {
     "emotion",
     "emotionReason",
     "memorableMoment",
-    "result",
 }
 
 
@@ -27,7 +26,6 @@ def test_default_slots_are_unknown() -> None:
         "emotion": None,
         "emotionReason": None,
         "memorableMoment": None,
-        "result": None,
     }
 
 
@@ -39,7 +37,6 @@ def test_validates_complete_camel_case_payload() -> None:
         "emotion": "신났다",
         "emotionReason": "성을 완성해서",
         "memorableMoment": "마지막 블록을 올린 순간",
-        "result": "큰 성을 완성했다",
     }
 
     slots = DiarySlots.model_validate(payload)
@@ -56,7 +53,6 @@ def test_preserves_unknown_values_for_partial_input() -> None:
     assert slots.emotion is None
     assert slots.emotion_reason is None
     assert slots.memorable_moment is None
-    assert slots.result is None
 
 
 def test_accepts_python_field_names() -> None:
@@ -72,7 +68,6 @@ def test_accepts_python_field_names() -> None:
         "emotion": None,
         "emotionReason": "그림을 완성해서",
         "memorableMoment": "가족에게 그림을 보여 준 순간",
-        "result": None,
     }
 
 
@@ -110,7 +105,6 @@ def test_rejects_invalid_assignment_after_validation() -> None:
         ("emotion", ["신남"]),
         ("emotionReason", {"reason": "완성해서"}),
         ("memorableMoment", ["완성한 순간"]),
-        ("result", {"summary": "완성했다"}),
     ],
 )
 def test_rejects_invalid_slot_types(field: str, invalid_value: object) -> None:

@@ -20,7 +20,7 @@ def test_missing_extraction_values_do_not_erase_current_slots() -> None:
     assert merged is not current
 
 
-def test_confirmed_scalar_updates_existing_value() -> None:
+def test_extracted_scalar_does_not_overwrite_existing_value() -> None:
     current = DiarySlots(event="놀이를 했다", emotion="즐거웠다")
     extracted = DiarySlots(
         event="친구와 블록 성을 만들었다",
@@ -29,7 +29,7 @@ def test_confirmed_scalar_updates_existing_value() -> None:
 
     merged = merge_diary_slots(current, extracted)
 
-    assert merged.event == "친구와 블록 성을 만들었다"
+    assert merged.event == "놀이를 했다"
     assert merged.emotion == "즐거웠다"
     assert merged.emotion_reason == "성을 완성해서"
 

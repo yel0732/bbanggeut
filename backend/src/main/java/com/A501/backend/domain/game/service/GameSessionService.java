@@ -1,5 +1,6 @@
 package com.A501.backend.domain.game.service;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +24,7 @@ import com.A501.backend.domain.game.metric.DobbleResultCalculator;
 import com.A501.backend.domain.game.metric.DobbleResultMetrics;
 import com.A501.backend.domain.game.metric.GameMetricType;
 import com.A501.backend.domain.game.metric.FruitNinjaCalculationResult;
+import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,24 @@ public class GameSessionService {
         return gameSessionRepository.findById(gameSessionId)
                 .filter(gameSession -> gameSession.getChildId().equals(childId))
                 .isPresent();
+    }
+
+    public List<CompletedGameSessionSummary> findCompletedSessionsForChild(
+            Long childId,
+            LocalDateTime startedAt,
+            LocalDateTime endedAt) {
+        if (childId == null || startedAt == null || endedAt == null
+                || !startedAt.isBefore(endedAt)) {
+            throw new IllegalArgumentException("게임 세션 조회 범위가 올바르지 않습니다.");
+        }
+        return gameSessionRepository
+                .findAllByChildIdAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAsc(
+                        childId,
+                        startedAt,
+                        endedAt)
+                .stream()
+                .map(CompletedGameSessionSummary::from)
+                .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

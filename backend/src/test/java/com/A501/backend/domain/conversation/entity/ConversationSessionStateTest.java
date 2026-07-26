@@ -34,6 +34,7 @@ class ConversationSessionStateTest {
         assertTermination(TerminationReason.USER_FINISHED, ConversationStatus.COMPLETED);
         assertTermination(TerminationReason.MAX_QUESTION_REACHED, ConversationStatus.COMPLETED);
         assertTermination(TerminationReason.CHILD_REQUESTED_STOP, ConversationStatus.COMPLETED);
+        assertTermination(TerminationReason.REQUIRED_SLOTS_FILLED, ConversationStatus.COMPLETED);
         assertTermination(TerminationReason.INACTIVITY_TIMEOUT, ConversationStatus.EXPIRED);
         assertTermination(TerminationReason.CONNECTION_LOST, ConversationStatus.ABORTED);
         assertTermination(TerminationReason.PAGE_CLOSED, ConversationStatus.ABORTED);
@@ -103,6 +104,18 @@ class ConversationSessionStateTest {
         assertThat(ConversationStatus.ABORTED.isTerminal()).isTrue();
         assertThat(ConversationStatus.EXPIRED.isTerminal()).isTrue();
         assertThat(ConversationStatus.FAILED.isTerminal()).isTrue();
+    }
+
+    @Test
+    void 시작_시각과_전달된_질문_수만_명시적으로_기록한다() {
+        ConversationSession session = createSession("conv_state_question");
+        LocalDateTime startedAt = LocalDateTime.of(2026, 7, 22, 1, 0);
+
+        session.start(startedAt);
+        session.incrementQuestionCount();
+
+        assertThat(session.getStartedAt()).isEqualTo(startedAt);
+        assertThat(session.getQuestionCount()).isEqualTo(1);
     }
 
     private void assertTermination(TerminationReason reason, ConversationStatus expectedStatus) {

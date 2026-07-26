@@ -1,12 +1,12 @@
 """Dialogue manager package."""
 
-from app.dialogue.parser import (
+from app.dialogue.analysis.parser import (
     SlotParseError,
     SlotParseErrorCode,
     SlotValidationIssue,
     parse_diary_slots,
 )
-from app.dialogue.question_judge import (
+from app.dialogue.question.judge import (
     SEMANTIC_QUESTION_VALIDATION_CODES,
     QuestionJudgeParseError,
     QuestionJudgeParseErrorCode,
@@ -17,7 +17,7 @@ from app.dialogue.question_judge import (
     parse_semantic_question_decision,
     semantic_question_validation_json_schema,
 )
-from app.dialogue.question_fallback import (
+from app.dialogue.question.fallback import (
     FallbackQuestion,
     QuestionGenerationExecutionPolicy,
     QuestionGenerationExecutionResult,
@@ -27,20 +27,21 @@ from app.dialogue.question_fallback import (
     QuestionGenerationStatus,
     build_fallback_question,
 )
-from app.dialogue.question_generation import generate_question_with_fallback
-from app.dialogue.question_prompts import (
+from app.dialogue.question.generation import generate_question_with_fallback
+from app.dialogue.question.prompts import (
     QUESTION_TARGET_GUIDANCE,
     DiaryQuestionGenerationRequest,
     QuestionGenerationPrompt,
+    QuestionRedirectContext,
     build_question_generation_prompt,
 )
-from app.dialogue.question_provider import (
+from app.dialogue.question.provider import (
     GeneratedQuestionValidator,
     QuestionGenerationProvider,
     QuestionProviderError,
     QuestionProviderErrorCode,
 )
-from app.dialogue.question_validator import (
+from app.dialogue.question.validator import (
     DEFAULT_QUESTION_RULE_VALIDATION_POLICY,
     HARD_BANNED_QUESTION_EXPRESSIONS,
     QuestionRuleValidationPolicy,
@@ -52,7 +53,7 @@ from app.dialogue.question_validator import (
     combine_question_validation_results,
     validate_question_rules,
 )
-from app.dialogue.recovery_policy import (
+from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
     CHOICE_QUESTION_BY_TARGET,
     DEFAULT_NO_RESPONSE_RECOVERY_POLICY,
@@ -64,25 +65,28 @@ from app.dialogue.recovery_policy import (
     build_no_response_recovery_prompt,
     evaluate_dialogue_policy,
 )
-from app.dialogue.prompts import (
+from app.dialogue.analysis.prompts import (
     SlotExtractionPrompt,
     build_slot_extraction_prompt,
     build_slot_repair_instruction,
     diary_slots_json_schema,
 )
 from app.dialogue.schemas import (
+    DialogueTopic,
+    DialogueTopicContext,
     DiaryAnswerAnalysisRequest,
     DiarySlots,
     GameContext,
+    GameSessionContext,
 )
-from app.dialogue.slot_merger import merge_diary_slots
-from app.dialogue.target_selector import (
+from app.dialogue.analysis.merger import merge_diary_slots
+from app.dialogue.policy.target import (
     QUESTION_TARGET_PRIORITY,
     QUESTION_TARGET_SLOT_FIELDS,
     QuestionTarget,
     select_next_question_target,
 )
-from app.dialogue.termination_policy import (
+from app.dialogue.policy.termination import (
     ChildTurnSignal,
     DialoguePolicyRequest,
     DialogueSlotSnapshot,
@@ -110,16 +114,20 @@ __all__ = [
     "DialogueSlotSnapshot",
     "DialogueTerminationPolicy",
     "DialogueTerminationReason",
+    "DialogueTopic",
+    "DialogueTopicContext",
     "DiaryAnswerAnalysisRequest",
     "DiaryQuestionGenerationRequest",
     "DiarySlots",
     "FallbackQuestion",
     "GameContext",
+    "GameSessionContext",
     "GeneratedQuestionValidator",
     "NoResponseRecoveryAction",
     "NoResponseRecoveryPolicy",
     "NoResponseRecoveryPrompt",
     "QuestionGenerationPrompt",
+    "QuestionRedirectContext",
     "QuestionGenerationExecutionPolicy",
     "QuestionGenerationExecutionResult",
     "QuestionGenerationFailureCode",

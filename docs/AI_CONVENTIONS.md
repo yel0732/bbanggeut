@@ -50,14 +50,23 @@ ai-server/
 
 ## 3. 시스템 책임
 
-FastAPI AI Realtime 서버의 책임:
+현재 DIARY-1 FastAPI 책임:
+
+- 상태 비저장 Text Dialogue 내부 API
+- 일기 슬롯 분석과 기존 슬롯 병합
+- 답변 관련성·아이 질문 판정
+- 규칙 기반 다음 목표·일반 질문·종료 판단
+- 아이 질문에 대한 짧은 LLM 응답
+- Timeout·제한적 재시도와 오류 매핑
+
+DIARY-2 이후 FastAPI AI Realtime 서버의 책임:
 
 - Realtime Ticket 검증과 원자적 일회용 소비
 - WebSocket Signaling
 - 세션별 PeerConnection과 Audio Track 관리
 - Streaming STT, VAD, Turn Detection
 - 일기 슬롯 분석과 Dialogue Manager
-- LLM 질문 생성과 규칙 기반 Fallback
+- 검증된 질문 생성 정책과 규칙 기반 Fallback
 - Streaming TTS와 AI Audio Queue
 - Barge-in 검증과 진행 중 Response 취소
 - DataChannel 이벤트 송수신
@@ -259,19 +268,25 @@ Cleanup 상태
 
 ## 9. Dialogue Manager와 LLM
 
-LLM은 정책 결정자가 아니라, 결정된 목표를 자연스러운 한 문장으로 표현하는 구성요소입니다.
+LLM은 정책 결정자가 아닙니다. 현재 Text MVP의 일반 질문은 결정된 목표에 대응하는
+검증된 규칙 기반 템플릿으로 표현합니다. LLM은 슬롯 분석, 답변 관련성 판정,
+아이가 AI에게 한 질문의 짧은 응답에 사용합니다.
 
 처리 순서:
 
 ```text
-Final STT
-→ 슬롯 추출 결과 검증
+아이 Text 또는 Final STT
+→ LLM 슬롯 추출 결과 검증
 → 기존 슬롯과 명시적으로 확인된 값만 병합
+→ 현재 질문 답변 관련성 판정
 → 규칙 기반 다음 목표 선택
-→ LLM 질문 생성
-→ 질문 Validator
-→ 실패 시 제한적 재시도 또는 규칙 기반 Fallback
+→ 규칙 기반 일반 질문 템플릿 선택
+→ 아이가 AI에게 질문한 경우에만 짧은 LLM 응답 후 기존 질문 복귀
 ```
+
+질문 생성 Prompt, Semantic Validator, Timeout·Fallback 모듈은 재사용 가능한
+컴포넌트와 단위 테스트로 유지합니다. 일반 LLM 질문 생성 경로를 다시 연결할 때는
+대화 품질 회귀 테스트를 먼저 통과해야 합니다.
 
 ### 슬롯
 
@@ -495,4 +510,3 @@ Codex와 Claude는 다음 규칙을 공통으로 따릅니다.
 [ ] Cleanup 후 Task·Queue·Connection이 남지 않는다.
 [ ] 변경 파일과 남은 위험을 보고했다.
 ```
-

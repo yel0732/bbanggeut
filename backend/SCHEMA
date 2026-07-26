@@ -12,10 +12,8 @@ DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는�
 CREATE TABLE conversation_session (
     conversation_id        VARCHAR(40)  NOT NULL,
     child_id               BIGINT       NOT NULL,
-    game_session_id        BINARY(16)   NULL,
     status                 VARCHAR(20)  NOT NULL,
-    context_type           VARCHAR(20)  NOT NULL,
-    conversation_goal      VARCHAR(20)  NOT NULL,
+    current_topic          VARCHAR(20)  NOT NULL,
     question_count         INT          NOT NULL,
     max_question_count     INT          NOT NULL,
     current_session_epoch  INT          NOT NULL,
@@ -29,17 +27,63 @@ CREATE TABLE conversation_session (
 );
 
 CREATE INDEX idx_conversation_session_child_status ON conversation_session (child_id, status);
-CREATE INDEX idx_conversation_session_game_session ON conversation_session (game_session_id);
 CREATE INDEX idx_conversation_session_status_updated ON conversation_session (status, updated_at);
 
 -- status: READY | IN_PROGRESS | COMPLETED | ABORTED | EXPIRED | FAILED
--- context_type: GAME | DAILY
--- conversation_goal: DIARY
 -- termination_reason:
--- USER_FINISHED | MAX_QUESTION_REACHED | CHILD_REQUESTED_STOP
+-- USER_FINISHED | MAX_QUESTION_REACHED | CHILD_REQUESTED_STOP | REQUIRED_SLOTS_FILLED
 -- INACTIVITY_TIMEOUT | CONNECTION_LOST | PAGE_CLOSED | SYSTEM_ERROR
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationSession.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+
+
+-- DIARY-1-T15: conversation topics and game snapshot links ----------------
+
+CREATE TABLE conversation_topic_state (
+    conversation_topic_id VARCHAR(50)  NOT NULL,
+    conversation_id       VARCHAR(40)  NOT NULL,
+    topic_type            VARCHAR(20)  NOT NULL,
+    topic_order           INT          NOT NULL,
+    status                VARCHAR(20)  NOT NULL,
+    question_count        INT          NOT NULL,
+    max_question_count    INT          NOT NULL,
+    slots_json            TEXT         NOT NULL,
+    context_json          TEXT         NOT NULL,
+    completion_reason     VARCHAR(40)  NULL,
+    started_at            DATETIME(6)  NULL,
+    completed_at          DATETIME(6)  NULL,
+    version               BIGINT       NOT NULL DEFAULT 0,
+    created_at            DATETIME(6)  NOT NULL,
+    updated_at            DATETIME(6)  NOT NULL,
+    PRIMARY KEY (conversation_topic_id),
+    CONSTRAINT uk_conversation_topic_type
+        UNIQUE (conversation_id, topic_type),
+    CONSTRAINT uk_conversation_topic_order
+        UNIQUE (conversation_id, topic_order)
+);
+
+CREATE INDEX idx_conversation_topic_status
+    ON conversation_topic_state (conversation_id, status);
+
+CREATE TABLE conversation_game_session (
+    conversation_game_session_id VARCHAR(80) NOT NULL,
+    conversation_id              VARCHAR(40) NOT NULL,
+    game_session_id              BINARY(16)  NOT NULL,
+    game_order                   INT         NOT NULL,
+    created_at                   DATETIME(6) NOT NULL,
+    updated_at                   DATETIME(6) NOT NULL,
+    PRIMARY KEY (conversation_game_session_id),
+    CONSTRAINT uk_conversation_game_session
+        UNIQUE (conversation_id, game_session_id)
+);
+
+CREATE INDEX idx_conversation_game_order
+    ON conversation_game_session (conversation_id, game_order);
+
+-- topic_type: GAME | DAILY
+-- status: PENDING | IN_PROGRESS | COMPLETED
+-- question_count and max_question_count are scoped to one topic.
+-- Multiple completed games from the same KST day are linked to one GAME topic.
 
 
 -- GAME-01: game_session -----------------------------------------------------
@@ -99,7 +143,9 @@ CREATE TABLE conversation_turn (
     conversation_id        VARCHAR(40)   NOT NULL,
     turn_seq               INT           NOT NULL,
     speaker                VARCHAR(10)   NOT NULL,
+    topic_type             VARCHAR(20)   NOT NULL,
     content                TEXT          NOT NULL,
+    question_text          TEXT          NULL,
     status                 VARCHAR(20)   NOT NULL,
     response_id            VARCHAR(40)   NULL,
     stt_confidence         DECIMAL(5,4)  NULL,
@@ -119,6 +165,7 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 
 -- speaker: AI | CHILD
 -- status: GENERATING | COMPLETED | INTERRUPTED | FAILED
+-- question_text: AI 표시 문장과 분리된 다음 턴 판정용 순수 질문. CHILD 턴은 NULL.
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.

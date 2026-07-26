@@ -19,7 +19,11 @@ public enum ConversationErrorCode {
     INVALID_CONVERSATION_CONTEXT(HttpStatus.BAD_REQUEST, "대화 맥락과 게임 세션 정보가 올바르지 않습니다."),
     INVALID_TERMINATION_REASON(HttpStatus.BAD_REQUEST, "종료 사유가 올바르지 않습니다."),
     INVALID_SPEAKER(HttpStatus.BAD_REQUEST, "화자 필터가 올바르지 않습니다."),
-    INVALID_SESSION_STATE(HttpStatus.CONFLICT, "현재 대화 세션 상태에서는 요청을 처리할 수 없습니다.");
+    INVALID_SESSION_STATE(HttpStatus.CONFLICT, "현재 대화 세션 상태에서는 요청을 처리할 수 없습니다."),
+    CONVERSATION_TURN_CONFLICT(HttpStatus.CONFLICT, "다른 대화 턴이 먼저 처리되었습니다."),
+    AI_DIALOGUE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 대화 서비스를 사용할 수 없습니다."),
+    AI_DIALOGUE_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI 대화 응답이 올바르지 않습니다."),
+    DIALOGUE_STATE_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "대화 상태를 읽을 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String message;

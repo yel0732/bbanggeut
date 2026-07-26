@@ -585,10 +585,6 @@
               Child ID
               <input id="childIdInput" type="number" min="1" value="15">
             </label>
-            <label>
-              최대 질문 수
-              <input id="maxQuestionsInput" type="number" min="1" max="20" value="6">
-            </label>
           </div>
           <button id="createButton" class="primary-button" type="button">
             새 대화 시작 / 이어가기
@@ -663,8 +659,7 @@
       place: "장소",
       emotion: "감정",
       emotionReason: "감정 이유",
-      memorableMoment: "기억 장면",
-      result: "결과"
+      memorableMoment: "기억 장면"
     };
 
     const state = {
@@ -685,7 +680,6 @@
       load: document.querySelector("#loadButton"),
       complete: document.querySelector("#completeButton"),
       childId: document.querySelector("#childIdInput"),
-      maxQuestions: document.querySelector("#maxQuestionsInput"),
       conversationIdInput: document.querySelector("#conversationIdInput"),
       conversationIdLabel: document.querySelector("#conversationIdLabel"),
       status: document.querySelector("#statusValue"),
@@ -809,8 +803,11 @@
       elements.conversationIdLabel.textContent =
         state.conversationId || "세션을 만들어 주세요";
       elements.status.textContent = session?.status || "—";
-      elements.questions.textContent = session
-        ? `${session.questionCount} / ${session.maxQuestionCount}`
+      const currentTopic = session?.topics?.find(
+        topic => topic.type === session.currentTopic
+      );
+      elements.questions.textContent = currentTopic
+        ? `${session.currentTopic} ${currentTopic.questionCount} / ${currentTopic.maxQuestionCount}`
         : "0 / 0";
       elements.termination.textContent = session?.terminationReason || "—";
       setBusy(state.busy);
@@ -832,28 +829,16 @@
 
     async function createConversation({focusInput = true} = {}) {
       const childId = Number(elements.childId.value);
-      const maxQuestionCount = Number(elements.maxQuestions.value);
       if (!Number.isInteger(childId) || childId < 1) {
         showToast("Child ID를 확인해 주세요.");
         return false;
       }
-      if (!Number.isInteger(maxQuestionCount) || maxQuestionCount < 1) {
-        showToast("최대 질문 수를 확인해 주세요.");
-        return false;
-      }
-
       setBusy(true);
       try {
         const created = await requestJson(
           `/harness/api/children/${childId}/conversations`,
           {
-            method: "POST",
-            body: JSON.stringify({
-              contextType: "DAILY",
-              gameSessionId: null,
-              conversationGoal: "DIARY",
-              maxQuestionCount
-            })
+            method: "POST"
           }
         );
         state.conversationId = created.conversationId;

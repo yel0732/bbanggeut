@@ -9,16 +9,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.A501.backend.domain.conversation.dto.request.CreateConversationRequest;
 import com.A501.backend.domain.conversation.dto.response.ConversationHarnessStateResponse;
 import com.A501.backend.domain.conversation.dto.response.CreateConversationResponse;
 import com.A501.backend.domain.conversation.service.ConversationHarnessService;
 
 import io.swagger.v3.oas.annotations.Hidden;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @Hidden
@@ -53,13 +50,10 @@ public class ConversationHarnessController {
 
     @PostMapping("/harness/api/children/{childId}/conversations")
     public ResponseEntity<CreateConversationResponse> createOrResume(
-            @PathVariable Long childId,
-            @Valid @RequestBody CreateConversationRequest request) {
+            @PathVariable Long childId) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(conversationHarnessService.createOrResume(
-                        childId,
-                        request));
+                .body(conversationHarnessService.createOrResume(childId));
     }
 
     @GetMapping("/harness/api/conversations/{conversationId}/state")

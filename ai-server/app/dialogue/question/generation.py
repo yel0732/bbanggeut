@@ -1,9 +1,9 @@
-"""Timeout, retry, validation, and fallback question execution."""
+"""Run timeout, retry, validation, and fallback question generation."""
 
 import asyncio
 import logging
 
-from app.dialogue.question_fallback import (
+from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
     QuestionGenerationExecutionResult,
     QuestionGenerationFailureCode,
@@ -12,16 +12,16 @@ from app.dialogue.question_fallback import (
     QuestionGenerationStatus,
     build_fallback_question,
 )
-from app.dialogue.question_prompts import (
+from app.dialogue.question.prompts import (
     DiaryQuestionGenerationRequest,
     build_question_generation_prompt,
 )
-from app.dialogue.question_provider import (
+from app.dialogue.question.provider import (
     GeneratedQuestionValidator,
     QuestionGenerationProvider,
     QuestionProviderError,
 )
-from app.dialogue.question_validator import (
+from app.dialogue.question.validator import (
     QuestionRuleValidationRequest,
     QuestionValidationResult,
     validate_question_rules,

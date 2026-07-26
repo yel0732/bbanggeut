@@ -71,20 +71,21 @@ def test_request_accepts_external_camel_case_contract() -> None:
             "turnSignal": "noResponse",
             "previousConsecutiveNoResponses": 1,
             "currentTarget": "emotion",
-            "skippedTargets": ["result"],
+            "skippedTargets": ["memorableMoment"],
         }
     )
 
     assert request.question_count == 2
     assert request.turn_signal is ChildTurnSignal.NO_RESPONSE
     assert request.current_target is QuestionTarget.EMOTION
-    assert request.skipped_targets == frozenset({QuestionTarget.RESULT})
+    assert request.skipped_targets == frozenset(
+        {QuestionTarget.MEMORABLE_MOMENT}
+    )
     assert request.slots.model_dump(mode="json", by_alias=True) == {
         "event": "played blocks",
         "emotion": None,
         "emotionReason": None,
         "memorableMoment": None,
-        "result": None,
     }
 
 
@@ -171,7 +172,7 @@ def test_termination_policy_is_explicit_strict_and_frozen() -> None:
         )
     with pytest.raises(FrozenInstanceError):
         TERMINATION_POLICY.required_targets = frozenset(  # type: ignore[misc]
-            {QuestionTarget.RESULT}
+            {QuestionTarget.MEMORABLE_MOMENT}
         )
 
 
@@ -180,7 +181,7 @@ def test_target_slot_mapping_is_complete_and_immutable() -> None:
 
     with pytest.raises(TypeError):
         QUESTION_TARGET_SLOT_FIELDS[QuestionTarget.EVENT] = (  # type: ignore[index]
-            "result"
+            "emotion"
         )
 
 
@@ -199,7 +200,7 @@ def test_required_targets_are_driven_by_injected_policy() -> None:
     assert are_required_targets_filled(slots, REQUIRED_TARGETS)
     assert not are_required_targets_filled(
         slots,
-        frozenset({QuestionTarget.RESULT}),
+        frozenset({QuestionTarget.EMOTION_REASON}),
     )
 
 
@@ -251,7 +252,7 @@ def test_inactivity_has_priority_over_slot_and_question_limits() -> None:
         question_count=5,
         turn_signal=ChildTurnSignal.NO_RESPONSE,
         previous_no_responses=4,
-        current_target=QuestionTarget.RESULT,
+        current_target=QuestionTarget.MEMORABLE_MOMENT,
     )
 
     assert _evaluate(request) is DialogueTerminationReason.INACTIVITY_TIMEOUT

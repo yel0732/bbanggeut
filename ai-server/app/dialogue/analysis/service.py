@@ -1,22 +1,22 @@
-"""Timeout, retry, repair, and merge execution for T09 slot extraction."""
+"""Run timeout, retry, repair, and merge for diary slot extraction."""
 
 import asyncio
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.dialogue.gms_adapters import GmsCompletionClient
-from app.dialogue.parser import SlotParseError, parse_diary_slots
-from app.dialogue.prompts import (
+from app.dialogue.integration.gms import GmsCompletionClient
+from app.dialogue.analysis.parser import SlotParseError, parse_diary_slots
+from app.dialogue.analysis.prompts import (
     build_slot_extraction_prompt,
     build_slot_repair_instruction,
 )
-from app.dialogue.question_fallback import (
+from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
 )
-from app.dialogue.question_provider import QuestionProviderError
+from app.dialogue.question.provider import QuestionProviderError
 from app.dialogue.schemas import DiaryAnswerAnalysisRequest, DiarySlots
-from app.dialogue.slot_merger import merge_diary_slots
+from app.dialogue.analysis.merger import merge_diary_slots
 from app.providers.gms_chat import GmsChatMessage
 
 
@@ -132,7 +132,10 @@ def _log_slot_failure(
     failure_code: SlotAnalysisFailureCode,
 ) -> None:
     logger.warning(
-        "dialogue slot analysis attempt failed",
+        "dialogue slot analysis attempt failed: code=%s attempt=%d/%d",
+        failure_code.value,
+        attempt,
+        max_attempts,
         extra={
             "conversation_id": context.conversation_id,
             "request_id": context.request_id,

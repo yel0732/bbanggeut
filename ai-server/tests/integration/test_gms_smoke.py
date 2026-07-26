@@ -23,7 +23,7 @@ async def test_real_gms_chat_completion() -> None:
         client = GmsChatClient(
             http_client,
             api_key=settings.gms_key,
-            model=settings.gms_model,
+            model=settings.gms_analysis_model,
         )
         result = await client.complete(
             (

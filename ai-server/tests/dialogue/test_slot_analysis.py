@@ -6,10 +6,10 @@ from collections import deque
 import pytest
 
 from app.dialogue import DiaryAnswerAnalysisRequest, DiarySlots
-from app.dialogue.question_fallback import (
+from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
 )
-from app.dialogue.slot_analysis import (
+from app.dialogue.analysis.service import (
     SlotAnalysisError,
     SlotAnalysisLogContext,
     analyze_answer_with_retry,
@@ -44,7 +44,7 @@ async def test_merges_valid_extracted_slots() -> None:
             (
                 '{"event":null,"people":["친구"],"place":null,'
                 '"emotion":"신남","emotionReason":null,'
-                '"memorableMoment":null,"result":null}'
+                '"memorableMoment":null}'
             )
         ]
     )
@@ -70,7 +70,7 @@ async def test_retries_parse_failure_with_repair_instruction() -> None:
             (
                 '{"event":null,"people":[],"place":null,'
                 '"emotion":"기쁨","emotionReason":null,'
-                '"memorableMoment":null,"result":null}'
+                '"memorableMoment":null}'
             ),
         ]
     )

@@ -4,7 +4,10 @@ import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlparse
+
+from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
@@ -15,7 +18,8 @@ class AppSettings:
     gms_base_url: str = (
         "https://gms.ssafy.io/gmsapi/api.openai.com/v1"
     )
-    gms_model: str = "gpt-5.4-nano"
+    gms_analysis_model: str = "gpt-5.4-nano"
+    gms_response_model: str = "gpt-5.4-mini"
     gms_timeout_seconds: float = 10.0
     gms_max_attempts: int = 2
 
@@ -28,8 +32,12 @@ class AppSettings:
             or not parsed_url.netloc
         ):
             raise ValueError("GMS_BASE_URL must be an absolute HTTP URL")
-        if not isinstance(self.gms_model, str) or not self.gms_model.strip():
-            raise ValueError("GMS_MODEL must contain non-whitespace text")
+        for name, model in (
+            ("GMS_ANALYSIS_MODEL", self.gms_analysis_model),
+            ("GMS_RESPONSE_MODEL", self.gms_response_model),
+        ):
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError(f"{name} must contain non-whitespace text")
         if (
             isinstance(self.gms_timeout_seconds, bool)
             or not isinstance(self.gms_timeout_seconds, (int, float))
@@ -53,14 +61,25 @@ class AppSettings:
     ) -> "AppSettings":
         """Read environment variables only when application startup asks."""
 
-        values = os.environ if environment is None else environment
+        if environment is None:
+            load_dotenv(Path.cwd() / ".env", override=False)
+            values = os.environ
+        else:
+            values = environment
         return cls(
             gms_key=values.get("GMS_KEY", ""),
             gms_base_url=values.get(
                 "GMS_BASE_URL",
                 "https://gms.ssafy.io/gmsapi/api.openai.com/v1",
             ).rstrip("/"),
-            gms_model=values.get("GMS_MODEL", "gpt-5.4-nano"),
+            gms_analysis_model=values.get(
+                "GMS_ANALYSIS_MODEL",
+                values.get("GMS_MODEL", "gpt-5.4-nano"),
+            ),
+            gms_response_model=values.get(
+                "GMS_RESPONSE_MODEL",
+                "gpt-5.4-mini",
+            ),
             gms_timeout_seconds=_parse_float(
                 values.get("GMS_TIMEOUT_SECONDS", "10"),
                 "GMS_TIMEOUT_SECONDS",

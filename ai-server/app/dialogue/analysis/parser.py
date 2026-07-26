@@ -1,4 +1,4 @@
-"""Strict parsing for diary slot extraction output."""
+"""Strictly parse diary slot extraction output."""
 
 import json
 from collections.abc import Mapping

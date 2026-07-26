@@ -1,5 +1,9 @@
 """Data models shared by dialogue manager components."""
 
+from datetime import datetime
+from enum import StrEnum
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -39,12 +43,6 @@ class DiarySlots(BaseModel):
         alias="memorableMoment",
         description="Memorable moment explicitly mentioned by the child.",
     )
-    result: str | None = Field(
-        default=None,
-        description="Result of the event explicitly mentioned by the child.",
-    )
-
-
 class GameContext(BaseModel):
     """Minimal game summary that may help interpret a child's answer."""
 
@@ -60,6 +58,44 @@ class GameContext(BaseModel):
     score: int | None = None
     accuracy: float | None = None
     notable_events: list[str] = Field(default_factory=list, alias="notableEvents")
+
+
+class DialogueTopic(StrEnum):
+    """A server-owned major topic in one diary conversation."""
+
+    GAME = "GAME"
+    DAILY = "DAILY"
+
+
+class GameSessionContext(BaseModel):
+    """Immutable summary of one completed game included in a conversation."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        hide_input_in_errors=True,
+        populate_by_name=True,
+        frozen=True,
+    )
+
+    game_session_id: UUID = Field(alias="gameSessionId")
+    game_id: int = Field(alias="gameId")
+    score: int
+    play_duration_seconds: int = Field(alias="playDurationSeconds", ge=0)
+    completed_at: datetime = Field(alias="completedAt")
+
+
+class DialogueTopicContext(BaseModel):
+    """Snapshot supplied by Spring for the active dialogue topic."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        hide_input_in_errors=True,
+        populate_by_name=True,
+        frozen=True,
+    )
+
+    topic: DialogueTopic
+    games: tuple[GameSessionContext, ...] = ()
 
 
 class DiaryAnswerAnalysisRequest(BaseModel):
@@ -80,7 +116,7 @@ class DiaryAnswerAnalysisRequest(BaseModel):
     )
     child_answer: str = Field(alias="childAnswer", repr=False)
     current_slots: DiarySlots = Field(alias="currentSlots", repr=False)
-    game_context: GameContext | None = Field(
+    game_context: GameContext | DialogueTopicContext | None = Field(
         default=None,
         alias="gameContext",
         repr=False,

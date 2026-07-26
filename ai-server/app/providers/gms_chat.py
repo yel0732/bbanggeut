@@ -6,7 +6,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from app.dialogue.question_provider import (
+from app.dialogue.question.provider import (
     QuestionProviderError,
     QuestionProviderErrorCode,
 )

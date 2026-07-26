@@ -1,4 +1,4 @@
-"""Hard rules and shared outcomes for generated-question validation."""
+"""Validate generated questions with hard rules and shared outcomes."""
 
 import unicodedata
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 if TYPE_CHECKING:
-    from app.dialogue.question_judge import SemanticQuestionValidationDecision
+    from app.dialogue.question.judge import SemanticQuestionValidationDecision
 
 
 # Only expressions whose meaning does not depend on conversational context belong
@@ -59,6 +59,7 @@ class QuestionRuleValidationPolicy:
     """Limits that can be decided without interpreting question meaning."""
 
     max_characters: int = 50
+    allow_leading_statement: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -67,6 +68,8 @@ class QuestionRuleValidationPolicy:
             or self.max_characters < 1
         ):
             raise ValueError("max_characters must be a positive integer")
+        if not isinstance(self.allow_leading_statement, bool):
+            raise ValueError("allow_leading_statement must be a boolean")
 
 
 DEFAULT_QUESTION_RULE_VALIDATION_POLICY = QuestionRuleValidationPolicy()
@@ -134,7 +137,10 @@ def validate_question_rules(
         )
 
     issues: list[QuestionValidationIssue] = []
-    if not _has_exactly_one_question(question):
+    if not _has_exactly_one_question(
+        question,
+        allow_leading_statement=policy.allow_leading_statement,
+    ):
         issues.append(
             QuestionValidationIssue(
                 QuestionValidationCode.INVALID_QUESTION_COUNT,
@@ -195,12 +201,18 @@ def combine_question_validation_results(
     )
 
 
-def _has_exactly_one_question(question: str) -> bool:
+def _has_exactly_one_question(
+    question: str,
+    *,
+    allow_leading_statement: bool,
+) -> bool:
     normalized = unicodedata.normalize("NFKC", question)
     if "\n" in normalized or "\r" in normalized:
         return False
     if normalized.count("?") != 1 or not normalized.endswith("?"):
         return False
+    if allow_leading_statement:
+        return True
     return not any(mark in normalized[:-1] for mark in (".", "!", "?", "。"))
 
 

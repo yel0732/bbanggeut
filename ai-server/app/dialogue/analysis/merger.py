@@ -1,4 +1,4 @@
-"""Validated merge policy for diary slots."""
+"""Merge validated diary slots."""
 
 from app.dialogue.schemas import DiarySlots
 
@@ -25,7 +25,6 @@ def merge_diary_slots(
             current.memorable_moment,
             extracted.memorable_moment,
         ),
-        "result": _merge_scalar(current.result, extracted.result),
     }
     return DiarySlots.model_validate(merged)
 
@@ -39,11 +38,13 @@ def _revalidate(slots: DiarySlots) -> DiarySlots:
 
 
 def _merge_scalar(current: str | None, extracted: str | None) -> str | None:
+    if current is not None and current.strip():
+        return current.strip()
     if extracted is None:
-        return current
+        return None
 
     normalized = extracted.strip()
-    return normalized or current
+    return normalized or None
 
 
 def _merge_people(current: list[str], extracted: list[str]) -> list[str]:

@@ -1,11 +1,11 @@
-"""Execution policy, safe outcomes, and trusted fallback questions."""
+"""Define execution policy, safe outcomes, and trusted fallback questions."""
 
 import math
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.dialogue.recovery_policy import SIMPLIFIED_QUESTION_BY_TARGET
-from app.dialogue.target_selector import QuestionTarget
+from app.dialogue.policy.recovery import SIMPLIFIED_QUESTION_BY_TARGET
+from app.dialogue.policy.target import QuestionTarget
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,7 @@ class QuestionGenerationStatus(StrEnum):
     """Final state of one question-generation execution."""
 
     GENERATED = "generated"
+    TEMPLATE_USED = "templateUsed"
     FALLBACK_USED = "fallbackUsed"
     FAILED = "failed"
 
@@ -68,6 +69,7 @@ class QuestionGenerationSource(StrEnum):
     """Origin of a usable question."""
 
     LLM = "llm"
+    RULE_BASED_TEMPLATE = "ruleBasedTemplate"
     RULE_BASED_FALLBACK = "ruleBasedFallback"
 
 
@@ -126,6 +128,15 @@ class QuestionGenerationExecutionResult:
                 or self.failure_code is not None
             ):
                 raise ValueError("generated result fields are inconsistent")
+            return
+        if self.status is QuestionGenerationStatus.TEMPLATE_USED:
+            if (
+                self.source
+                is not QuestionGenerationSource.RULE_BASED_TEMPLATE
+                or not has_question
+                or self.failure_code is not None
+            ):
+                raise ValueError("template result fields are inconsistent")
             return
         if self.status is QuestionGenerationStatus.FALLBACK_USED:
             if (

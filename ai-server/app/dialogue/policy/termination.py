@@ -1,4 +1,4 @@
-"""Deterministic conversation termination policy."""
+"""Define deterministic conversation termination policy."""
 
 from dataclasses import dataclass
 from enum import StrEnum
@@ -13,7 +13,7 @@ from pydantic import (
 )
 
 from app.dialogue.schemas import DiarySlots
-from app.dialogue.target_selector import (
+from app.dialogue.policy.target import (
     QUESTION_TARGET_SLOT_FIELDS,
     QuestionTarget,
     QuestionTargetSlotValues,
@@ -60,7 +60,6 @@ class DialogueSlotSnapshot(BaseModel):
         alias="memorableMoment",
         repr=False,
     )
-    result: str | None = Field(default=None, repr=False)
 
     @classmethod
     def from_diary_slots(
@@ -72,7 +71,6 @@ class DialogueSlotSnapshot(BaseModel):
             emotion=slots.emotion,
             emotion_reason=slots.emotion_reason,
             memorable_moment=slots.memorable_moment,
-            result=slots.result,
         )
 
 

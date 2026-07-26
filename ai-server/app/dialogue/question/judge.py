@@ -1,4 +1,4 @@
-"""Provider-independent semantic judge contract for diary questions."""
+"""Define the provider-independent semantic judge contract."""
 
 import json
 from collections.abc import Mapping
@@ -15,9 +15,10 @@ from pydantic import (
     field_validator,
 )
 
-from app.dialogue.question_validator import QuestionValidationCode
+from app.dialogue.question.validator import QuestionValidationCode
+from app.dialogue.question.prompts import QuestionRedirectContext
 from app.dialogue.schemas import DiarySlots
-from app.dialogue.target_selector import QuestionTarget
+from app.dialogue.policy.target import QuestionTarget
 
 
 class _DuplicateJsonKeyError(ValueError):
@@ -43,6 +44,9 @@ SEMANTIC_QUESTION_VALIDATION_SYSTEM_PROMPT = """\
 - 질문이 target에 맞지 않으면 targetMismatch
 - 압박, 평가, 유도, 진단, 성격 단정 또는 감정 단정이면 bannedExpression
 - recentQuestions와 의미상 같은 질문이면 tooSimilar
+- redirectContext가 있을 때 target 질문이나 요청을 두 번 표현하면 물음표가 하나여도 invalidQuestionCount
+- redirectContext.childQuestion이 true인데 아이의 질문에 먼저 직접 답하지 않으면 targetMismatch
+- redirectContext.previousQuestion은 참고용이며 응답 앞부분에서 다시 질문하면 invalidQuestionCount
 하나 이상의 문제가 있으면 valid는 false이고 해당하는 모든 issues를 반환한다.
 문제가 없으면 valid는 true이고 issues는 빈 배열이다.
 currentSlots에는 아이가 명시적으로 확인한 내용만 있다고 가정한다.
@@ -68,6 +72,11 @@ class SemanticQuestionValidationRequest(BaseModel):
     recent_questions: tuple[str, ...] = Field(
         default_factory=tuple,
         alias="recentQuestions",
+        repr=False,
+    )
+    redirect_context: QuestionRedirectContext | None = Field(
+        default=None,
+        alias="redirectContext",
         repr=False,
     )
 
@@ -182,6 +191,7 @@ def build_semantic_question_validation_prompt(
         "question": request_payload["question"],
         "currentSlots": request_payload["currentSlots"],
         "recentQuestions": request_payload["recentQuestions"],
+        "redirectContext": request_payload["redirectContext"],
     }
     return SemanticQuestionValidationPrompt(
         system=SEMANTIC_QUESTION_VALIDATION_SYSTEM_PROMPT,

@@ -1,14 +1,14 @@
-"""Provider-neutral contracts for asynchronous question generation."""
+"""Define provider-neutral asynchronous question-generation contracts."""
 
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from app.dialogue.question_prompts import (
+from app.dialogue.question.prompts import (
     DiaryQuestionGenerationRequest,
     QuestionGenerationPrompt,
 )
-from app.dialogue.question_validator import QuestionValidationResult
+from app.dialogue.question.validator import QuestionValidationResult
 
 
 class QuestionGenerationProvider(Protocol):

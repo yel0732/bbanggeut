@@ -1,4 +1,4 @@
-"""Deterministic policy for selecting the next diary question target."""
+"""Select the next diary question target deterministically."""
 
 from collections.abc import Collection
 from enum import StrEnum
@@ -13,7 +13,6 @@ class QuestionTargetSlotValues(Protocol):
     emotion: str | None
     emotion_reason: str | None
     memorable_moment: str | None
-    result: str | None
 
 
 class QuestionTarget(StrEnum):
@@ -23,7 +22,6 @@ class QuestionTarget(StrEnum):
     EMOTION = "emotion"
     EMOTION_REASON = "emotionReason"
     MEMORABLE_MOMENT = "memorableMoment"
-    RESULT = "result"
 
 
 QUESTION_TARGET_SLOT_FIELDS: Mapping[QuestionTarget, str] = MappingProxyType(
@@ -32,7 +30,6 @@ QUESTION_TARGET_SLOT_FIELDS: Mapping[QuestionTarget, str] = MappingProxyType(
         QuestionTarget.EMOTION: "emotion",
         QuestionTarget.EMOTION_REASON: "emotion_reason",
         QuestionTarget.MEMORABLE_MOMENT: "memorable_moment",
-        QuestionTarget.RESULT: "result",
     }
 )
 

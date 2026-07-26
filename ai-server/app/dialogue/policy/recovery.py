@@ -1,15 +1,15 @@
-"""Deterministic no-response recovery policy and trusted prompts."""
+"""Define deterministic no-response recovery and trusted prompts."""
 
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
 
-from app.dialogue.target_selector import (
+from app.dialogue.policy.target import (
     QuestionTarget,
     select_next_question_target,
 )
-from app.dialogue.termination_policy import (
+from app.dialogue.policy.termination import (
     ChildTurnSignal,
     DialoguePolicyRequest,
     DialogueTerminationPolicy,
@@ -35,7 +35,6 @@ SIMPLIFIED_QUESTION_BY_TARGET: Mapping[QuestionTarget, str] = MappingProxyType(
         QuestionTarget.EMOTION: "그때 마음이 어땠는지 말해 줄래?",
         QuestionTarget.EMOTION_REASON: "왜 그런 마음이 들었는지 말해 줄래?",
         QuestionTarget.MEMORABLE_MOMENT: "가장 기억나는 순간을 말해 줄래?",
-        QuestionTarget.RESULT: "마지막에 어떻게 됐는지 말해 줄래?",
     }
 )
 
@@ -45,7 +44,6 @@ CHOICE_QUESTION_BY_TARGET: Mapping[QuestionTarget, str] = MappingProxyType(
         QuestionTarget.EMOTION: "좋은 마음, 속상한 마음, 다른 마음 중에 골라 줄래?",
         QuestionTarget.EMOTION_REASON: "사람 때문인지, 일 때문인지, 다른 이유인지 골라 줄래?",
         QuestionTarget.MEMORABLE_MOMENT: "처음, 가운데, 마지막 중 기억나는 때를 골라 줄래?",
-        QuestionTarget.RESULT: "끝났는지, 계속됐는지, 다른 일이 생겼는지 골라 줄래?",
     }
 )
 

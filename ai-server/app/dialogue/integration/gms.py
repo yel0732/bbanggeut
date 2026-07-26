@@ -1,21 +1,24 @@
-"""GMS adapters for T09, T11, and T12 dialogue contracts."""
+"""Adapt GMS completions to dialogue-domain contracts."""
 
 from typing import Protocol
 
-from app.dialogue.question_judge import (
+from app.dialogue.question.judge import (
     QuestionJudgeParseError,
     SemanticQuestionValidationRequest,
     build_semantic_question_validation_prompt,
     parse_semantic_question_decision,
 )
-from app.dialogue.question_prompts import (
+from app.dialogue.question.prompts import (
     DiaryQuestionGenerationRequest,
     QuestionGenerationPrompt,
 )
-from app.dialogue.question_provider import QuestionProviderError
-from app.dialogue.question_provider import QuestionProviderErrorCode
-from app.dialogue.question_validator import (
+from app.dialogue.question.provider import QuestionProviderError
+from app.dialogue.question.provider import QuestionProviderErrorCode
+from app.dialogue.question.validator import (
     QuestionRuleValidationRequest,
+    QuestionRuleValidationPolicy,
+    QuestionValidationCode,
+    QuestionValidationIssue,
     QuestionValidationResult,
     combine_question_validation_results,
     validate_question_rules,
@@ -66,10 +69,31 @@ class GmsGeneratedQuestionValidator:
             QuestionRuleValidationRequest(
                 question=question,
                 recent_questions=request.recent_questions,
-            )
+            ),
+            QuestionRuleValidationPolicy(
+                max_characters=(
+                    80 if request.redirect_context is not None else 50
+                ),
+                allow_leading_statement=(
+                    request.redirect_context is not None
+                ),
+            ),
         )
         if not rule_result.is_valid:
             return combine_question_validation_results(rule_result, None)
+        if (
+            request.redirect_context is not None
+            and request.redirect_context.child_question
+            and not rule_result.normalized_question.startswith("나는")
+        ):
+            return QuestionValidationResult(
+                normalized_question=rule_result.normalized_question,
+                issues=(
+                    QuestionValidationIssue(
+                        QuestionValidationCode.TARGET_MISMATCH
+                    ),
+                ),
+            )
 
         semantic_prompt = build_semantic_question_validation_prompt(
             SemanticQuestionValidationRequest(
@@ -77,6 +101,7 @@ class GmsGeneratedQuestionValidator:
                 question=rule_result.normalized_question,
                 current_slots=request.current_slots,
                 recent_questions=request.recent_questions,
+                redirect_context=request.redirect_context,
             )
         )
         raw_decision = await self._client.complete(

@@ -12,11 +12,11 @@ from fastapi.responses import JSONResponse
 from app.api.dialogue import router as dialogue_router
 from app.config import AppSettings
 from app.dialogue.pipeline import DialogueTurnPipeline
-from app.dialogue.question_fallback import (
+from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
 )
-from app.dialogue.target_selector import QuestionTarget
-from app.dialogue.termination_policy import DialogueTerminationPolicy
+from app.dialogue.policy.target import QuestionTarget
+from app.dialogue.policy.termination import DialogueTerminationPolicy
 from app.providers.gms_chat import GmsChatClient
 
 
@@ -39,13 +39,19 @@ def create_app(
             timeout=None,
             transport=transport,
         )
-        gms_client = GmsChatClient(
+        analysis_client = GmsChatClient(
             http_client,
             api_key=resolved_settings.gms_key,
-            model=resolved_settings.gms_model,
+            model=resolved_settings.gms_analysis_model,
+        )
+        response_client = GmsChatClient(
+            http_client,
+            api_key=resolved_settings.gms_key,
+            model=resolved_settings.gms_response_model,
         )
         app.state.dialogue_pipeline = DialogueTurnPipeline(
-            client=gms_client,
+            analysis_client=analysis_client,
+            response_client=response_client,
             execution_policy=QuestionGenerationExecutionPolicy(
                 timeout_seconds=resolved_settings.gms_timeout_seconds,
                 max_attempts=resolved_settings.gms_max_attempts,

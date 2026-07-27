@@ -12,6 +12,7 @@ def test_reads_gms_settings_without_exposing_key() -> None:
             "GMS_ANALYSIS_MODEL": "gpt-5.4-nano",
             "GMS_RESPONSE_MODEL": "gpt-5.4-mini",
             "GMS_REPORT_MODEL": "gpt-5.4-mini",
+            "GMS_CHILD_DIARY_MODEL": "gpt-5.4-mini",
             "GMS_TIMEOUT_SECONDS": "3.5",
             "GMS_MAX_ATTEMPTS": "2",
         }
@@ -22,6 +23,7 @@ def test_reads_gms_settings_without_exposing_key() -> None:
     assert settings.gms_analysis_model == "gpt-5.4-nano"
     assert settings.gms_response_model == "gpt-5.4-mini"
     assert settings.gms_report_model == "gpt-5.4-mini"
+    assert settings.gms_child_diary_model == "gpt-5.4-mini"
     assert "PRIVATE_GMS_KEY" not in repr(settings)
 
 
@@ -113,6 +115,7 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "REALTIME_HEARTBEAT_INTERVAL_SECONDS": "0"},
         {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
         {"GMS_KEY": "key", "GMS_REPORT_MODEL": " "},
+        {"GMS_KEY": "key", "GMS_CHILD_DIARY_MODEL": " "},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

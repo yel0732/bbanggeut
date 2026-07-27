@@ -14,9 +14,9 @@ from app.report.schemas import DailyReportSummaryRequest
 @pytest.mark.gms
 @pytest.mark.asyncio
 async def test_real_gms_daily_report_generation() -> None:
-    settings = AppSettings.from_environment()
     if os.getenv("RUN_GMS_INTEGRATION") != "1":
         pytest.skip("RUN_GMS_INTEGRATION=1 is required")
+    settings = AppSettings.from_environment()
 
     async with httpx.AsyncClient(
         base_url=settings.gms_base_url,

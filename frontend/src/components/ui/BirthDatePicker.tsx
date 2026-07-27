@@ -8,8 +8,11 @@ const YEAR_PAGE_SIZE = 12
 type PickerView = 'calendar' | 'month' | 'year'
 
 type BirthDatePickerProps = {
+  dialogLabel?: string
+  headerLabel?: string
   maxDate: Date
   onChange: (value: string) => void
+  placeholder?: string
   value: string
 }
 
@@ -40,8 +43,11 @@ function getYearPageStart(year: number, maxYear: number, minYear: number) {
 }
 
 export function BirthDatePicker({
+  dialogLabel = '보호자 생년월일 선택',
+  headerLabel = '보호자 생년월일',
   maxDate,
   onChange,
+  placeholder = '연도 / 월 / 일',
   value,
 }: BirthDatePickerProps) {
   const selectedDate = useMemo(() => fromDateValue(value), [value])
@@ -129,7 +135,7 @@ export function BirthDatePicker({
         <span className={selectedDate ? '' : 'text-[#9db089]'}>
           {selectedDate
             ? `${selectedDate.getFullYear()}년 ${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일`
-            : '연도 / 월 / 일'}
+            : placeholder}
         </span>
         <CalendarIcon />
       </button>
@@ -143,14 +149,14 @@ export function BirthDatePicker({
               }}
             >
               <section
-                aria-label="보호자 생년월일 선택"
+                aria-label={dialogLabel}
                 aria-modal="true"
                 className="w-full max-w-[390px] overflow-hidden rounded-[30px] border-[5px] border-[#79552d] bg-[#fff8dc] shadow-[0_24px_70px_rgba(7,24,12,0.45),inset_0_0_0_3px_#e8c879]"
                 role="dialog"
               >
                 <header className="relative bg-[linear-gradient(135deg,#6fa844,#4f8132)] px-6 pt-5 pb-4 text-white">
                   <div className="pointer-events-none absolute -top-5 -right-3 size-20 rounded-full bg-[#a9d66f]/35" />
-                  <p className="text-sm text-[#eaffd7]">보호자 생년월일</p>
+                  <p className="text-sm text-[#eaffd7]">{headerLabel}</p>
                   <div className="mt-1 flex items-center gap-2 text-2xl">
                     <button
                       className="rounded-xl px-2 py-1 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white"

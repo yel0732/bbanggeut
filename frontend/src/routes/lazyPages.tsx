@@ -83,3 +83,13 @@ export const ParentModePage = lazy(() =>
     default: ParentModePage,
   })),
 )
+export const ReportListPage = lazy(() =>
+  import('@/pages/ReportListPage').then(({ ReportListPage }) => ({
+    default: ReportListPage,
+  })),
+)
+export const ReportDetailPage = lazy(() =>
+  import('@/pages/ReportDetailPage').then(({ ReportDetailPage }) => ({
+    default: ReportDetailPage,
+  })),
+)

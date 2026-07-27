@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import type { FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
+import { loginWithEmail, storeLoginSession } from '@/api/auth'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import loginBoardUrl from '@/assets/images/auth/login-board.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
@@ -16,11 +18,38 @@ const boardSize = {
 } as const
 
 export function EmailLoginPage() {
+  const navigate = useNavigate()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (isSubmitting) return
+    setError('')
+    setIsSubmitting(true)
+    try {
+      const response = await loginWithEmail({
+        autoLogin: remember,
+        email: email.trim(),
+        password,
+      })
+      storeLoginSession(response, remember)
+      navigate('/profiles', { replace: true })
+    } catch (loginError) {
+      setError(
+        loginError instanceof Error
+          ? loginError.message
+          : '로그인에 실패했어요.',
+      )
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)] p-4 text-white">
@@ -77,7 +106,11 @@ export function EmailLoginPage() {
         />
       </button>
 
-      <div className="relative z-20" style={boardSize}>
+      <form
+        className="relative z-20"
+        onSubmit={(event) => void handleSubmit(event)}
+        style={boardSize}
+      >
         <div className="absolute top-[12%] left-[10%] h-[76%] w-[80%] rounded-[40px] bg-[#f5df9f] shadow-[0_20px_48px_rgba(24,45,20,0.34),inset_0_0_0_5px_rgba(117,92,42,0.22)]" />
         <img
           alt=""
@@ -103,6 +136,7 @@ export function EmailLoginPage() {
           className="absolute top-[40%] left-[19%] z-20 h-[7.4%] w-[62%] border-none bg-transparent px-[4%] text-[clamp(14px,4vw,20px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:outline-none"
           onChange={(event) => setEmail(event.target.value)}
           placeholder="이메일"
+          required
           style={jua}
           type="email"
           value={email}
@@ -112,6 +146,7 @@ export function EmailLoginPage() {
           className="absolute top-[51.2%] left-[19%] z-20 h-[7.4%] w-[54%] border-none bg-transparent px-[4%] text-[clamp(14px,4vw,20px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:outline-none"
           onChange={(event) => setPassword(event.target.value)}
           placeholder="비밀번호"
+          required
           style={jua}
           type={showPassword ? 'text' : 'password'}
           value={password}
@@ -150,17 +185,27 @@ export function EmailLoginPage() {
           비밀번호 찾기
         </a>
 
-        <Link
-          className="absolute top-[69.3%] left-[17%] z-20 flex h-[9%] w-[66%] items-center justify-center rounded-full text-[clamp(20px,6vw,27px)] text-white transition active:translate-y-0.5"
+        {error ? (
+          <p
+            className="absolute top-[66.1%] right-[18%] left-[18%] z-20 truncate text-center text-[clamp(11px,2.8vw,14px)] text-[#b64b35]"
+            style={jua}
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <button
+          className="absolute top-[69.3%] left-[17%] z-20 flex h-[9%] w-[66%] items-center justify-center rounded-full text-[clamp(20px,6vw,27px)] text-white transition active:translate-y-0.5 disabled:cursor-wait disabled:opacity-70"
+          disabled={isSubmitting}
           style={{
             ...jua,
             paintOrder: 'stroke fill',
             WebkitTextStroke: '4px #4a7d1e',
           }}
-          to="/profiles"
+          type="submit"
         >
-          들어가기
-        </Link>
+          {isSubmitting ? '들어가는 중...' : '들어가기'}
+        </button>
 
         <div
           className="absolute top-[80.5%] right-0 left-0 z-20 text-center text-[clamp(12px,3.2vw,15px)] text-[#7a693e]"
@@ -171,7 +216,7 @@ export function EmailLoginPage() {
             이메일로 등록하기
           </Link>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

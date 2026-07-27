@@ -8,6 +8,7 @@ import {
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import cutSoundUrl from '@/assets/audio/fruit-game/cut-fruit.mp3'
+import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import leafSwordUrl from '@/assets/images/fruit-game/leaf-sword.webp'
 import playFrameUrl from '@/assets/images/fruit-game/play-frame.webp'
 import {
@@ -26,6 +27,7 @@ import {
 } from '@/features/games/fruit/useFruitGame'
 import { getGameById } from '@/features/games/games'
 import { useCameraStream } from '@/hooks/useCameraStream'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useHandTracking } from '@/hooks/useHandTracking'
 
@@ -43,6 +45,7 @@ export function GamePlayPage() {
   const navigate = useNavigate()
   const { gameId } = useParams()
   const canvasRef = useFitScale<HTMLDivElement>()
+  const { audioRef } = useBgmPlayer({ volume: 0.35 })
   const { videoRef, status, requestCamera } = useCameraStream()
   const hand = useHandTracking(videoRef, status === 'granted')
 
@@ -104,6 +107,31 @@ export function GamePlayPage() {
     status === 'error',
   )
 
+  const lastCountdownRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (fruitGame.phase !== 'countdown') {
+      lastCountdownRef.current = null
+      return
+    }
+    if (lastCountdownRef.current === fruitGame.countdown) return
+    lastCountdownRef.current = fruitGame.countdown
+
+    const AudioContextClass = window.AudioContext
+    const context = new AudioContextClass()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = fruitGame.countdown === 1 ? 880 : 660
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.22, context.currentTime + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.16)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.17)
+    oscillator.addEventListener('ended', () => void context.close())
+  }, [fruitGame.countdown, fruitGame.phase])
+
   // MGAME-02: 게임 화면 진입 시 카메라를 시작한다. (종료는 훅 언마운트에서 처리)
   useEffect(() => {
     if (game?.playable) {
@@ -126,6 +154,7 @@ export function GamePlayPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
       >
+        <audio autoPlay loop preload="auto" ref={audioRef} src={fruitBgmUrl} />
         <div className="absolute inset-0 bg-[radial-gradient(110%_90%_at_50%_38%,#cfe6a0_0%,#a9d47f_46%,#77b458_78%,#4f8f43_100%)]" />
 
         {/* 자기 모습 미리보기 (구석, 위치 확인용) — 동작 인식도 이 영상에서 수행 */}

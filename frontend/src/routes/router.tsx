@@ -18,6 +18,8 @@ import {
   ParentModePage,
   ParentProfilePage,
   ProfileSelectPage,
+  ReportListPage,
+  ReportDetailPage,
   StartPage,
 } from '@/routes/lazyPages'
 
@@ -103,12 +105,10 @@ export const router = createBrowserRouter([
   },
   {
     path: '/reports',
-    element: (
-      <PlaceholderPage
-        eyebrow="Report"
-        title="성장 리포트"
-        description="게임 결과와 일기를 종합한 부모 리포트 화면을 연결할 자리입니다."
-      />
-    ),
+    element: <ReportListPage />,
+  },
+  {
+    path: '/reports/:reportDate',
+    element: <ReportDetailPage />,
   },
 ])

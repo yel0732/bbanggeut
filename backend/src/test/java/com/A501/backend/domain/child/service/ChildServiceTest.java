@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -111,5 +112,62 @@ class ChildServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
         verify(childRepository, never()).save(any());
+    }
+
+    @Test
+    void updateChild_renamesAndChangesImageWhenOwnedAndNameAvailable() {
+        Child child = Child.create(1L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "banjjak")).thenReturn(false);
+
+        Child updated = childService.updateChild(1L, 10L, "banjjak", 5);
+
+        assertThat(updated.getName()).isEqualTo("banjjak");
+        assertThat(updated.getProfileImageNum()).isEqualTo(5);
+    }
+
+    @Test
+    void updateChild_allowsKeepingSameNameWithoutDuplicateCheck() {
+        Child child = Child.create(1L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+
+        Child updated = childService.updateChild(1L, 10L, "chorong", 5);
+
+        assertThat(updated.getProfileImageNum()).isEqualTo(5);
+        verify(childRepository, never()).existsByParentIdAndNameAndDeletedAtIsNull(any(), any());
+    }
+
+    @Test
+    void updateChild_throwsWhenChildNotFound() {
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", 5))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
+    }
+
+    @Test
+    void updateChild_throwsNotFoundWhenChildBelongsToAnotherParent() {
+        Child child = Child.create(2L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", 5))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
+    }
+
+    @Test
+    void updateChild_throwsWhenNewNameAlreadyUsedByAnotherChild() {
+        Child child = Child.create(1L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "banjjak")).thenReturn(true);
+
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", 5))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
+        assertThat(child.getName()).isEqualTo("chorong");
     }
 }

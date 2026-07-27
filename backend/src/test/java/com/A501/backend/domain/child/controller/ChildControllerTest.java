@@ -3,6 +3,7 @@ package com.A501.backend.domain.child.controller;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -186,6 +187,66 @@ class ChildControllerTest {
         mockMvc.perform(get("/api/children").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(content().json("[]"));
+    }
+
+    @Test
+    void update_returnsUnauthorizedWithoutBearerToken() throws Exception {
+        mockMvc.perform(patch("/api/children/10")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"banjjak\",\"profileImageNum\":2}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void update_returnsOkWithUpdatedChildResponse() throws Exception {
+        String accessToken = generateAccessToken();
+        Child child = Child.create(1L, "banjjak", 2);
+        ReflectionTestUtils.setField(child, "childId", 10L);
+        when(childService.updateChild(1L, 10L, "banjjak", 2)).thenReturn(child);
+
+        mockMvc.perform(patch("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"banjjak\",\"profileImageNum\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"childId\":10,\"name\":\"banjjak\",\"profileImageNum\":2}"));
+    }
+
+    @Test
+    void update_returnsBadRequestForBlankName() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(patch("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\",\"profileImageNum\":2}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void update_returnsNotFoundWhenChildNotOwnedOrMissing() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(ChildErrorCode.CHILD_NOT_FOUND))
+                .when(childService).updateChild(1L, 10L, "banjjak", 2);
+
+        mockMvc.perform(patch("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"banjjak\",\"profileImageNum\":2}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void update_returnsConflictWhenNewNameAlreadyExists() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS))
+                .when(childService).updateChild(1L, 10L, "banjjak", 2);
+
+        mockMvc.perform(patch("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"banjjak\",\"profileImageNum\":2}"))
+                .andExpect(status().isConflict());
     }
 
     private String generateAccessToken() {

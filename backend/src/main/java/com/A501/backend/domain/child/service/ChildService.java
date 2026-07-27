@@ -45,4 +45,27 @@ public class ChildService {
         }
         return childRepository.save(Child.create(parentId, name, profileImageNum));
     }
+
+    @Transactional
+    public Child updateChild(Long parentId, Long childId, String name, int profileImageNum) {
+        Child child = findOwnedChild(parentId, childId);
+        if (!child.getName().equals(name) && childRepository.existsByParentIdAndNameAndDeletedAtIsNull(parentId, name)) {
+            throw new BusinessException(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS);
+        }
+        child.rename(name);
+        child.changeProfileImage(profileImageNum);
+        return child;
+    }
+
+    // childId 경로 변수를 받는 모든 엔드포인트가 공유하는 소유권 검증. 존재하지 않거나 다른
+    // 부모 소유면 둘 다 404로 통일한다 — 403을 쓰면 "리소스는 있는데 네 것이 아니다"가 드러나
+    // 리소스 존재 자체가 노출된다.
+    private Child findOwnedChild(Long parentId, Long childId) {
+        Child child = childRepository.findByChildIdAndDeletedAtIsNull(childId)
+                .orElseThrow(() -> new BusinessException(ChildErrorCode.CHILD_NOT_FOUND));
+        if (!child.isOwnedBy(parentId)) {
+            throw new BusinessException(ChildErrorCode.CHILD_NOT_FOUND);
+        }
+        return child;
+    }
 }

@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.child.dto.request.CreateChildRequest;
+import com.A501.backend.domain.child.dto.request.UpdateChildRequest;
 import com.A501.backend.domain.child.dto.response.ChildNameCheckResponse;
 import com.A501.backend.domain.child.dto.response.ChildResponse;
 import com.A501.backend.domain.child.entity.Child;
@@ -60,5 +63,16 @@ public class ChildController {
                 .map(ChildResponse::from)
                 .toList();
         return ResponseEntity.ok(children);
+    }
+
+    @Operation(summary = "자녀 프로필 수정")
+    @PatchMapping("/{childId}")
+    public ResponseEntity<ChildResponse> update(
+            Authentication authentication,
+            @PathVariable Long childId,
+            @Valid @RequestBody UpdateChildRequest request) {
+        Long parentId = (Long) authentication.getPrincipal();
+        Child child = childService.updateChild(parentId, childId, request.name(), request.profileImageNum());
+        return ResponseEntity.ok(ChildResponse.from(child));
     }
 }

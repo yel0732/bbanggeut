@@ -838,14 +838,26 @@
       });
 
       pc.addEventListener("track", event => {
+        logEvent("system", "remote track received", event.track.kind);
         elements.remoteAudio.srcObject = event.streams[0];
+        // 일부 브라우저는 JS로 srcObject를 설정한 뒤 autoplay 속성만으로는
+        // 재생을 시작하지 않는 경우가 있다 — 명시적으로 play()를 호출하고
+        // 실패(NotAllowedError 등)를 이벤트 로그에 남긴다.
+        elements.remoteAudio.play().catch(error => {
+          logEvent("error", "REMOTE_AUDIO_PLAY_FAILED", error.message);
+        });
       });
 
       pc.addEventListener("connectionstatechange", () => {
         elements.iceStateValue.textContent = pc.iceConnectionState;
+        logEvent("system", "pc.connectionState", pc.connectionState);
         if (pc.connectionState === "failed" || pc.connectionState === "closed") {
           setBadge(elements.pcBadge, "error", pc.connectionState);
         }
+      });
+
+      pc.addEventListener("iceconnectionstatechange", () => {
+        logEvent("system", "pc.iceConnectionState", pc.iceConnectionState);
       });
 
       setupDataChannel(pc.createDataChannel("conversation-events", {ordered: true}));

@@ -118,6 +118,37 @@ class ConversationSessionStateTest {
         assertThat(session.getQuestionCount()).isEqualTo(1);
     }
 
+    @Test
+    void Realtime_Session_발급마다_currentSessionEpoch를_증가시킨다() {
+        ConversationSession session = createSession("conv_state_realtime_epoch");
+
+        int firstEpoch = session.startRealtimeSession();
+        int secondEpoch = session.startRealtimeSession();
+
+        assertThat(firstEpoch).isEqualTo(1);
+        assertThat(secondEpoch).isEqualTo(2);
+        assertThat(session.getCurrentSessionEpoch()).isEqualTo(2);
+    }
+
+    @Test
+    void READY_상태에서도_Realtime_Session을_발급할_수_있다() {
+        ConversationSession session = createSession("conv_state_realtime_ready");
+
+        int epoch = session.startRealtimeSession();
+
+        assertThat(epoch).isEqualTo(1);
+        assertThat(session.getStatus()).isEqualTo(ConversationStatus.READY);
+    }
+
+    @Test
+    void 종료된_세션에는_Realtime_Session을_발급할_수_없다() {
+        ConversationSession session = startedSession("conv_state_realtime_terminal");
+        session.terminate(COMPLETED_AT, TerminationReason.USER_FINISHED);
+
+        assertThatThrownBy(session::startRealtimeSession)
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     private void assertTermination(TerminationReason reason, ConversationStatus expectedStatus) {
         ConversationSession session = startedSession("conv_state_" + reason.name());
 

@@ -35,6 +35,14 @@ conversation:
   realtime:
     context:
       ttl: ${CONVERSATION_REALTIME_CONTEXT_TTL:PT30M}
+    session:
+      signaling-url: ${REALTIME_SIGNALING_URL:ws://localhost:8000/realtime/signaling}
+      ice-servers: []
+      lease-ttl: ${REALTIME_SESSION_LEASE_TTL:PT15S}
+    ticket:
+      issuer: ${REALTIME_TICKET_ISSUER:spring-backend}
+      audience: ${REALTIME_TICKET_AUDIENCE:ai-realtime}
+      ttl: ${REALTIME_TICKET_TTL:PT5M}
 
 app:
   jwt:
@@ -123,6 +131,12 @@ app:
     client-id: ${GOOGLE_CLIENT_ID}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+conversation:
+  realtime:
+    ticket:
+      private-key-pem: ${REALTIME_TICKET_PRIVATE_KEY_PEM}
+      public-key-pem: ${REALTIME_TICKET_PUBLIC_KEY_PEM}
 
 management:
   endpoints:

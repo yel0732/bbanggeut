@@ -178,3 +178,57 @@ async def test_real_webrtc_silence_does_not_open_a_turn_with_the_real_vad() -> N
         await asyncio.wait_for(pipeline.aclose(), timeout=10.0)
         await asyncio.wait_for(client.close(), timeout=10.0)
         await asyncio.wait_for(server.close(), timeout=10.0)
+
+
+@pytest.mark.asyncio
+async def test_ai_voice_reaches_the_client_over_the_speaker_track() -> None:
+    """Real aiortc: audio queued on the server's SpeakerHandle is received as
+    non-silent frames on the client's remote track (the echo replacement)."""
+
+    from av import AudioFrame
+
+    from app.speech.tts_client import TTS_OUTPUT_FORMAT
+
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    server = AiortcPeerConnectionFactory().create()
+    received: list = []
+
+    @client.on("track")
+    def on_track(track) -> None:
+        asyncio.ensure_future(_collect(track, received))
+
+    async def _collect(track, sink: list) -> None:
+        try:
+            while len(sink) < 40:  # gather enough to see past initial silence
+                sink.append(await track.recv())
+        except Exception:  # noqa: BLE001 - track ending is fine
+            pass
+
+    try:
+        client.addTrack(AudioStreamTrack())
+        offer = await client.createOffer()
+        await client.setLocalDescription(offer)
+        answer_sdp = await server.accept_offer(client.localDescription.sdp)
+        await client.setRemoteDescription(
+            RTCSessionDescription(sdp=answer_sdp, type="answer")
+        )
+
+        assert server.speaker is not None
+        queue = server.speaker.begin_response("resp_1")
+        for _ in range(20):  # ~0.4s of audible audio
+            frame = AudioFrame(format="s16", layout="mono", samples=480)
+            frame.sample_rate = TTS_OUTPUT_FORMAT.sample_rate
+            frame.planes[0].update(b"\x20\x30" * 480)
+            await queue.put(frame)
+
+        await _wait_until(
+            lambda: any(_is_audible(f) for f in received), timeout=10.0
+        )
+        assert any(_is_audible(f) for f in received)
+    finally:
+        await asyncio.wait_for(client.close(), timeout=10.0)
+        await asyncio.wait_for(server.close(), timeout=10.0)
+
+
+def _is_audible(frame) -> bool:
+    return any(bytes(frame.planes[0]))

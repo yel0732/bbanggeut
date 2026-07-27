@@ -72,6 +72,9 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.stt_trailing_silence_seconds == 3.0
     assert settings.stt_preroll_ms == 300
     assert settings.stt_no_speech_timeout_seconds == 10.0
+    assert settings.tts_model == "gpt-4o-mini-tts"
+    assert settings.tts_voice == "alloy"
+    assert settings.tts_timeout_seconds == 10.0
 
 
 def test_reads_realtime_settings_from_environment() -> None:
@@ -97,6 +100,9 @@ def test_reads_realtime_settings_from_environment() -> None:
             "STT_TRAILING_SILENCE_SECONDS": "2.5",
             "STT_PREROLL_MS": "200",
             "STT_NO_SPEECH_TIMEOUT_SECONDS": "8",
+            "TTS_MODEL": "tts-x",
+            "TTS_VOICE": "verse",
+            "TTS_TIMEOUT_SECONDS": "7",
         }
     )
 
@@ -124,6 +130,9 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.stt_trailing_silence_seconds == 2.5
     assert settings.stt_preroll_ms == 200
     assert settings.stt_no_speech_timeout_seconds == 8.0
+    assert settings.tts_model == "tts-x"
+    assert settings.tts_voice == "verse"
+    assert settings.tts_timeout_seconds == 7.0
 
 
 def test_supports_legacy_model_for_analysis_only() -> None:
@@ -173,6 +182,9 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "STT_TRAILING_SILENCE_SECONDS": "0"},
         {"GMS_KEY": "key", "STT_PREROLL_MS": "-1"},
         {"GMS_KEY": "key", "STT_NO_SPEECH_TIMEOUT_SECONDS": "0"},
+        {"GMS_KEY": "key", "TTS_MODEL": " "},
+        {"GMS_KEY": "key", "TTS_VOICE": " "},
+        {"GMS_KEY": "key", "TTS_TIMEOUT_SECONDS": "0"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

@@ -49,6 +49,10 @@ class AppSettings:
     stt_trailing_silence_seconds: float = 3.0  # 종료 판정 침묵(권고 2.5~3의 상단)
     stt_preroll_ms: int = 300  # 발화 확정 전 보존할 선행 오디오
     stt_no_speech_timeout_seconds: float = 10.0  # 무응답 신호(정책 연결은 W03)
+    # Streaming TTS(W04). 기본값 근거는 jira/plan/DIARY-3-W04.md §4.
+    tts_model: str = "gpt-4o-mini-tts"  # GMS의 유일한 TTS 모델
+    tts_voice: str = "alloy"  # §11-B: 캐릭터 목소리는 제품 결정 — 임시 기본값
+    tts_timeout_seconds: float = 10.0  # 첫 바이트까지(실측 TTFB 1.89s의 5배 여유)
 
     def __post_init__(self) -> None:
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
@@ -126,9 +130,18 @@ class AppSettings:
         for name, text in (
             ("STT_MODEL", self.stt_model),
             ("STT_LANGUAGE", self.stt_language),
+            ("TTS_MODEL", self.tts_model),
+            ("TTS_VOICE", self.tts_voice),
         ):
             if not isinstance(text, str) or not text.strip():
                 raise ValueError(f"{name} must contain non-whitespace text")
+        if (
+            isinstance(self.tts_timeout_seconds, bool)
+            or not isinstance(self.tts_timeout_seconds, (int, float))
+            or not math.isfinite(self.tts_timeout_seconds)
+            or self.tts_timeout_seconds <= 0
+        ):
+            raise ValueError("TTS_TIMEOUT_SECONDS must be a positive finite number")
         for name, value in (
             ("STT_TIMEOUT_SECONDS", self.stt_timeout_seconds),
             ("STT_MAX_UTTERANCE_SECONDS", self.stt_max_utterance_seconds),
@@ -294,6 +307,12 @@ class AppSettings:
             stt_no_speech_timeout_seconds=_parse_float(
                 values.get("STT_NO_SPEECH_TIMEOUT_SECONDS", "10"),
                 "STT_NO_SPEECH_TIMEOUT_SECONDS",
+            ),
+            tts_model=values.get("TTS_MODEL", "gpt-4o-mini-tts"),
+            tts_voice=values.get("TTS_VOICE", "alloy"),
+            tts_timeout_seconds=_parse_float(
+                values.get("TTS_TIMEOUT_SECONDS", "10"),
+                "TTS_TIMEOUT_SECONDS",
             ),
         )
 

@@ -1,12 +1,9 @@
-"""Per-session inbound Audio Frame consumer, Echo Track, and STT fan-out.
+"""Per-session inbound Audio Frame consumer and STT fan-out.
 
-W04 built this to prove the Audio Track pipe works end to end (child mic Track
--> FastAPI -> Echo Track back). DIARY-3-W01 adds the real consumer: an optional
-``AudioSink`` that receives every inbound Frame alongside the echo queue.
-
-The echo path stays. W06's Harness verifies real microphone round-trip through
-it, so removing it here would break that check; the outbound track is replaced
-for real when TTS arrives in DIARY-3-W04 (jira/plan/DIARY-3-W01.md §3-4).
+Originally (DIARY-2-W04) this also echoed inbound audio back on a test track to
+prove the WebRTC audio pipe worked. DIARY-3-W04 replaced that outbound path with
+the real AI voice (``app/speech/speaker.py``), so this class now only consumes
+the child's inbound audio and fans each frame out to the STT ``AudioSink``.
 """
 
 from __future__ import annotations
@@ -14,13 +11,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from fractions import Fraction
 from typing import Protocol
 
 from aiortc.mediastreams import MediaStreamError, MediaStreamTrack
 from av import AudioFrame
-
-_DEFAULT_MAX_QUEUE_SIZE = 50  # ~1s at 20ms/frame — backpressure bound (§3-2)
 
 
 class AudioSink(Protocol):
@@ -35,33 +29,8 @@ class AudioSink(Protocol):
         ...
 
 
-class EchoAudioTrack(MediaStreamTrack):
-    """Re-emits Frames pulled from a SessionAudioBridge's queue.
-
-    Each Frame is re-timestamped onto this track's own outbound timeline —
-    the original inbound pts sequence is not reused, since this track starts
-    its own independent RTP timeline once added via ``addTrack()``.
-    """
-
-    kind = "audio"
-
-    def __init__(self, queue: "asyncio.Queue[AudioFrame]") -> None:
-        super().__init__()
-        self._queue = queue
-        self._next_pts = 0
-
-    async def recv(self) -> AudioFrame:
-        if self.readyState != "live":
-            raise MediaStreamError("track is not live")
-        frame = await self._queue.get()
-        frame.pts = self._next_pts
-        frame.time_base = Fraction(1, frame.sample_rate)
-        self._next_pts += frame.samples
-        return frame
-
-
 class SessionAudioBridge:
-    """Owns one session's inbound Audio Consumer Task and Echo Queue.
+    """Owns one session's inbound Audio Consumer Task.
 
     One instance per Signaling connection — never shared across sessions
     (AI_CONVENTIONS.md §8 session isolation), mirroring the "one instance per
@@ -71,11 +40,9 @@ class SessionAudioBridge:
     def __init__(
         self,
         logger: logging.Logger,
-        max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
         sink: AudioSink | None = None,
     ) -> None:
         self._logger = logger
-        self._queue: asyncio.Queue[AudioFrame] = asyncio.Queue(maxsize=max_queue_size)
         self._consume_task: asyncio.Task | None = None
         self._sink = sink
 
@@ -93,9 +60,9 @@ class SessionAudioBridge:
         Required by the real event order: aiortc raises ``track`` during
         ``setRemoteDescription()``, but the ``conversation-events`` DataChannel
         only arrives once SCTP finishes — and the sink needs that channel to
-        publish ``stt.final``. Frames received before this point are echoed but
-        not transcribed, which is harmless because the client only starts
-        speaking after ``client.ready`` (REALTIME_EVENT_CONTRACT.md §6.1).
+        publish ``stt.final``. Frames received before this point are dropped,
+        which is harmless because the client only starts speaking after
+        ``client.ready`` (REALTIME_EVENT_CONTRACT.md §6.1).
         """
 
         if self._sink is not None:
@@ -107,17 +74,11 @@ class SessionAudioBridge:
             raise RuntimeError("audio bridge already started")
         self._consume_task = asyncio.create_task(self._consume(inbound_track))
 
-    def create_outbound_track(self) -> EchoAudioTrack:
-        return EchoAudioTrack(self._queue)
-
     async def _consume(self, inbound_track: MediaStreamTrack) -> None:
         try:
             while True:
                 frame = await inbound_track.recv()
                 self._feed_sink(frame)
-                if self._queue.full():
-                    self._queue.get_nowait()  # drop-oldest backpressure(§3-2)
-                self._queue.put_nowait(frame)
         except asyncio.CancelledError:
             raise
         except MediaStreamError:

@@ -19,13 +19,27 @@ from app.dialogue.question.fallback import (
 from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.policy.termination import DialogueTerminationPolicy
 from app.providers.gms_chat import GmsChatClient
+from app.realtime.jwks_cache import RealtimeJwksCache
+from app.realtime.redis_client import create_redis_client
+from app.realtime.session_epoch_registry import SessionEpochRegistry
+from app.realtime.session_lease_heartbeat import SessionLeaseHeartbeat
+from app.realtime.ticket_verification import (
+    RealtimeTicketVerifier,
+    RedisSessionLeaseReader,
+    RedisTicketConsumptionStore,
+)
 from app.report.generator import DailyReportGenerator
+from app.session.realtime_connection_registry import RealtimeConnectionRegistry
+from app.signaling.error_mapping import map_ticket_failure_code
+from app.signaling.router import router as signaling_router
+from app.webrtc.peer_connection import AiortcPeerConnectionFactory
 
 
 def create_app(
     settings: AppSettings | None = None,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    realtime_http_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """Create an application without reading secrets at module import time."""
 
@@ -73,9 +87,39 @@ def create_app(
             timeout_seconds=resolved_settings.gms_timeout_seconds,
             max_attempts=resolved_settings.gms_max_attempts,
         )
+
+        redis_client = create_redis_client(
+            resolved_settings.realtime_redis_host, resolved_settings.realtime_redis_port
+        )
+        # 별도 httpx.AsyncClient: GMS용 http_client는 gms_base_url·GMS 전용 transport를
+        # 갖고 있어 절대 URL 요청(JWKS)에는 base_url이 영향을 주지 않지만, transport
+        # override까지 공유하면 테스트에서 GMS Mock이 JWKS 요청까지 가로채게 된다.
+        realtime_http_client = httpx.AsyncClient(timeout=None, transport=realtime_http_transport)
+        jwks_cache = RealtimeJwksCache(realtime_http_client, resolved_settings.realtime_jwks_url)
+        app.state.ticket_verifier = RealtimeTicketVerifier(
+            jwks_cache,
+            RedisTicketConsumptionStore(redis_client),
+            RedisSessionLeaseReader(redis_client),
+            SessionEpochRegistry(),
+            resolved_settings.realtime_ticket_issuer,
+            resolved_settings.realtime_ticket_audience,
+            logging.getLogger("app.realtime.ticket_verification"),
+        )
+        app.state.peer_connection_factory = AiortcPeerConnectionFactory()
+        app.state.realtime_connection_registry = RealtimeConnectionRegistry()
+        app.state.realtime_heartbeat_factory = lambda: SessionLeaseHeartbeat(
+            redis_client,
+            resolved_settings.realtime_heartbeat_interval_seconds,
+            resolved_settings.realtime_lease_ttl_seconds,
+            logging.getLogger("app.realtime.session_lease_heartbeat"),
+        )
+        app.state.map_ticket_failure_code = map_ticket_failure_code
+
         try:
             yield
         finally:
+            await redis_client.aclose()
+            await realtime_http_client.aclose()
             await http_client.aclose()
 
     app = FastAPI(
@@ -85,6 +129,7 @@ def create_app(
     )
     app.include_router(dialogue_router)
     app.include_router(report_router)
+    app.include_router(signaling_router)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

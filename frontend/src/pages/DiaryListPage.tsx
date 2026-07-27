@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dateCircleUrl from '@/assets/images/diary-list/date-circle.webp'
 import dateRectUrl from '@/assets/images/diary-list/date-rect.webp'
 import diaryBookUrl from '@/assets/images/diary-list/diary-open-book.webp'
@@ -12,6 +13,8 @@ import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
 import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
+import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 type DiaryEntry = {
@@ -139,6 +142,7 @@ function formatDiaryDate(date: string) {
 
 export function DiaryListPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
+  const { audioRef } = useBgmPlayer({ volume: 0.22 })
   const [year, setYear] = useState(2026)
   const [month, setMonth] = useState(7)
   const [page, setPage] = useState(0)
@@ -176,16 +180,25 @@ export function DiaryListPage() {
         className="relative h-[720px] w-[1280px] shrink-0 origin-top overflow-hidden"
         ref={canvasRef}
       >
+        <audio
+          aria-label="대화방 배경 음악"
+          autoPlay
+          loop
+          preload="auto"
+          ref={audioRef}
+          src={conversationBgmUrl}
+        />
+
         <img
           alt=""
-          className="absolute inset-0 size-full object-cover"
+          className="absolute -top-[40px] left-0 h-[760px] w-full object-cover"
           fetchPriority="high"
           src={diaryBookUrl}
         />
 
         <Link
           aria-label="대화 화면으로 돌아가기"
-          className="absolute top-[25px] left-[25px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
+          className="absolute top-[25px] left-[25px] z-30 size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
           state={{ skipGuide: true }}
           to="/conversation"
         >
@@ -196,7 +209,9 @@ export function DiaryListPage() {
           />
         </Link>
 
-        <section className="absolute top-[110px] left-[178px] flex w-[375px] flex-col items-center">
+        <ChildProfileSwitchButton />
+
+        <section className="absolute top-[70px] left-[165px] flex w-[375px] flex-col items-center">
           <h1 className="text-[38px] text-[#7a5220]" style={jua}>
             나의 일기장
           </h1>
@@ -301,7 +316,7 @@ export function DiaryListPage() {
 
           <nav
             aria-label="일기 목록 페이지"
-            className="-mt-3 flex items-center justify-center gap-[7px]"
+            className="mt-2 flex items-center justify-center gap-[7px]"
           >
             <button
               aria-label="이전 페이지"
@@ -358,7 +373,7 @@ export function DiaryListPage() {
           </nav>
         </section>
 
-        <section className="absolute top-[130px] right-[152px] w-[600px] rotate-[-1.2deg] [animation:diary-note-in_.4s_ease_both]">
+        <section className="absolute top-[90px] right-[145px] w-[600px] rotate-[-1.2deg] [animation:diary-note-in_.4s_ease_both]">
           <img
             alt=""
             className="block w-full drop-shadow-[0_12px_22px_rgba(0,0,0,.25)]"

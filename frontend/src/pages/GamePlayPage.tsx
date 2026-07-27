@@ -1,15 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import cutSoundUrl from '@/assets/audio/fruit-game/cut-fruit.mp3'
 import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
-import leafSwordUrl from '@/assets/images/fruit-game/leaf-sword.webp'
 import playFrameUrl from '@/assets/images/fruit-game/play-frame.webp'
 import {
   CameraErrorOverlay,
@@ -18,12 +11,11 @@ import {
   PauseOverlay,
   QuitButton,
 } from '@/components/game/PlayOverlays'
+import { FRUIT_GAME_CONFIG } from '@/features/games/fruit/fruitGameConfig'
 import {
   useFruitGame,
   type FruitGameResult,
   type FruitGameState,
-  type HandScreen,
-  type RenderFruit,
 } from '@/features/games/fruit/useFruitGame'
 import { getGameById } from '@/features/games/games'
 import { useCameraStream } from '@/hooks/useCameraStream'
@@ -34,6 +26,8 @@ import { useHandTracking } from '@/hooks/useHandTracking'
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
 const PRAISES = ['멋져요!', '최고예요!', '슝!', '좋아요!', '와아!', '나이스!']
+/** 콤보가 이어질수록 더 크게 칭찬한다. */
+const COMBO_PRAISES = ['좋아요!', '연속으로!', '대단해요!', '엄청나요!']
 
 function formatTime(totalSec: number): string {
   const min = Math.floor(totalSec / 60)
@@ -48,10 +42,6 @@ export function GamePlayPage() {
   const { audioRef } = useBgmPlayer({ volume: 0.35 })
   const { videoRef, status, requestCamera } = useCameraStream()
   const hand = useHandTracking(videoRef, status === 'granted')
-
-  // 엔진이 매 프레임 최신 손 데이터를 읽도록 ref로 전달한다.
-  const handRef = useRef(hand.playHand)
-  handRef.current = hand.playHand
 
   const game = getGameById(gameId)
 
@@ -85,21 +75,29 @@ export function GamePlayPage() {
   const praiseTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(praiseTimerRef.current), [])
 
-  const handleSlice = useCallback(() => {
+  const handleSlice = useCallback((combo: number) => {
     const pool = cutPoolRef.current
     if (pool.length > 0) {
       const audio = pool[cutIndexRef.current % pool.length]
       cutIndexRef.current += 1
       audio.currentTime = 0
+      // 콤보가 이어질수록 음을 조금씩 높여 신나게 들리도록 한다.
+      audio.playbackRate = Math.min(1.35, 1 + (combo - 1) * 0.06)
       void audio.play().catch(() => {})
     }
-    setPraise(PRAISES[Math.floor(Math.random() * PRAISES.length)])
+    // 콤보 중에는 콤보 전용 문구를 써서 이어 베고 있다는 게 드러나게 한다.
+    const words = combo >= 2 ? COMBO_PRAISES : PRAISES
+    const index =
+      combo >= 2
+        ? Math.min(COMBO_PRAISES.length - 1, combo - 2)
+        : Math.floor(Math.random() * PRAISES.length)
+    setPraise(words[index])
     clearTimeout(praiseTimerRef.current)
     praiseTimerRef.current = setTimeout(() => setPraise(null), 750)
   }, [])
 
   const fruitGame = useFruitGame(
-    handRef,
+    hand.playHandRef,
     status === 'granted' || status === 'error',
     handleEnd,
     handleSlice,
@@ -235,24 +233,72 @@ function PlayField({
   handModelReady: boolean
   praise: string | null
 }) {
-  const { phase, fruits, hand, countdown } = game
+  const { phase, distance, countdown, combo, comboMultiplier, fever } = game
 
   // 카메라 거리 안내 (MGAME 친화적 안내)
+  // 거리는 어깨너비로 잰다. 손이 아니라 몸을 움직이라고 안내해야 맞다.
   let distanceHint: string | null = null
-  if (hand && hand.distance === 'near')
-    distanceHint = '손을 조금 뒤로 빼 볼까요?'
-  else if (hand && hand.distance === 'far')
-    distanceHint = '손을 조금 앞으로 내밀어 볼까요?'
+  if (distance === 'near') distanceHint = '한 걸음만 뒤로 물러나 볼까요?'
+  else if (distance === 'far') distanceHint = '한 걸음만 앞으로 와 볼까요?'
 
   return (
     <div className="absolute inset-0 z-10">
-      {/* 과일 */}
-      {fruits.map((fruit) => (
-        <FruitSprite fruit={fruit} key={fruit.id} />
-      ))}
+      {/* 피버 타임: 화면 가장자리를 달궈 과일이 쏟아지는 구간임을 알린다. */}
+      {fever ? (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(120% 100% at 50% 50%, rgba(255,200,60,0) 52%, rgba(255,140,20,0.42) 100%)',
+            animation: 'fruit-fever-glow 900ms ease-in-out infinite',
+          }}
+        />
+      ) : null}
 
-      {/* 손날(베는 날) + 스와이프 트레일 */}
-      {hand ? <HandBlade hand={hand} /> : null}
+      {/* 과일·칼·트레일 — 매 프레임 바뀌므로 캔버스에 직접 그린다. */}
+      <canvas
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        height={FRUIT_GAME_CONFIG.canvasHeight}
+        ref={game.canvasRef}
+        width={FRUIT_GAME_CONFIG.canvasWidth}
+      />
+
+      {fever ? (
+        <div className="absolute top-[150px] left-1/2 -translate-x-1/2">
+          <span
+            className="inline-block text-[56px] leading-none text-[#fff0a0] [text-shadow:0_4px_0_#c9450f,0_10px_18px_rgba(0,0,0,0.45)]"
+            style={{
+              ...jua,
+              animation: 'fruit-fever-bob 620ms ease-in-out infinite',
+            }}
+          >
+            피버 타임!
+          </span>
+        </div>
+      ) : null}
+
+      {/* 콤보 — 2연속부터 표시 */}
+      {combo >= 2 && phase === 'playing' ? (
+        <div
+          className="absolute top-[86px] left-1/2 -translate-x-1/2 text-center"
+          // 콤보가 갱신될 때마다 다시 마운트해 튀어오르는 연출을 반복한다.
+          key={combo}
+          style={{ animation: 'fruit-combo-pop 260ms ease-out' }}
+        >
+          <span
+            className="text-[52px] leading-none text-[#ffd75e] [text-shadow:0_4px_0_#a8541a,0_8px_14px_rgba(0,0,0,0.4)]"
+            style={jua}
+          >
+            {combo} 콤보
+          </span>
+          <span
+            className="ml-3 text-[34px] leading-none text-[#d6f56a] [text-shadow:0_3px_0_#3f7d1e]"
+            style={jua}
+          >
+            x{comboMultiplier.toFixed(2).replace(/\.?0+$/, '')}
+          </span>
+        </div>
+      ) : null}
 
       {/* 거리 안내 (손이 보이고 적당 거리가 아닐 때) */}
       {distanceHint && phase !== 'ended' ? (
@@ -300,11 +346,11 @@ function PlayField({
       {phase === 'waiting-hand' ? (
         <div className="absolute inset-0 grid place-items-center">
           <p
-            className="rounded-[28px] bg-[rgba(14,30,15,0.55)] px-8 py-5 text-center text-[32px] leading-snug text-white [text-shadow:0_3px_8px_rgba(0,0,0,0.5)]"
+            className="rounded-[28px] bg-[rgba(14,30,15,0.55)] px-8 py-5 text-center text-[32px] leading-snug whitespace-pre-line text-white [text-shadow:0_3px_8px_rgba(0,0,0,0.5)]"
             style={jua}
           >
             {handModelReady
-              ? '몸이 보이게 뒤로 물러나 한 손을 번쩍 들어 주세요'
+              ? '일어서서 상체가 다 보이게 물러난 뒤\n한 손을 번쩍 들어 주세요'
               : '동작 인식 준비 중...'}
           </p>
         </div>
@@ -322,159 +368,6 @@ function PlayField({
           </p>
         </div>
       ) : null}
-    </div>
-  )
-}
-
-function FruitSprite({ fruit }: { fruit: RenderFruit }) {
-  const { x, y, w, h, imageUrl, rotation, sliced } = fruit
-
-  if (!sliced) {
-    return (
-      <img
-        alt=""
-        className="absolute select-none"
-        decoding="async"
-        draggable={false}
-        src={imageUrl}
-        style={{
-          left: x,
-          top: y,
-          width: w,
-          height: h,
-          transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-          filter: 'drop-shadow(0 6px 8px rgba(20,50,20,0.4))',
-        }}
-      />
-    )
-  }
-
-  const p = fruit.sliceProgress
-  const gap = p * (h * 0.4 + 26)
-  const halfBase: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: `url(${imageUrl})`,
-    backgroundSize: '100% 100%',
-    filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.28))',
-  }
-
-  return (
-    <>
-      <div
-        className="absolute"
-        style={{
-          left: x,
-          top: y,
-          width: w,
-          height: h,
-          opacity: 1 - p * 0.9,
-          transform: `translate(-50%, -50%) rotate(${fruit.cutAngle}deg)`,
-        }}
-      >
-        <div
-          style={{
-            ...halfBase,
-            clipPath: 'inset(0 0 50% 0)',
-            transform: `translateY(${-gap}px) rotate(${-p * 10}deg)`,
-          }}
-        />
-        <div
-          style={{
-            ...halfBase,
-            clipPath: 'inset(50% 0 0 0)',
-            transform: `translateY(${gap}px) rotate(${p * 10}deg)`,
-          }}
-        />
-        {p < 0.4 ? (
-          <div
-            className="absolute top-1/2 -left-[10%] h-[5px] w-[120%] -translate-y-1/2 rounded-full bg-white"
-            style={{ opacity: (0.4 - p) / 0.4, boxShadow: '0 0 10px #fff' }}
-          />
-        ) : null}
-      </div>
-      <span
-        className="absolute -translate-x-1/2 text-[34px] leading-none text-[#ffe27a]"
-        style={{
-          left: x,
-          top: y,
-          transform: `translate(-50%, ${-40 - p * 46}px)`,
-          opacity: 1 - p,
-          fontFamily: "'Jua', sans-serif",
-          textShadow: '0 3px 0 #8a5a1a, 0 5px 8px rgba(0,0,0,0.4)',
-        }}
-      >
-        +{fruit.score}
-      </span>
-    </>
-  )
-}
-
-// leaf-sword.webp 내 손잡이 끝/칼끝 앵커 (이미지 비율 좌표)
-const SWORD_SIZE = 360
-const SWORD_HANDLE = { x: 0.8, y: 0.82 }
-const SWORD_TIP = { x: 0.14, y: 0.16 }
-
-function HandBlade({ hand }: { hand: HandScreen }) {
-  const { blade, trail, fast } = hand
-
-  // 손목(a)→손끝(b)에 검 이미지를 맞추는 유사변환(회전+스케일). 단일 img +
-  // GPU 합성 transform이라 빠르게 움직여도 가볍다.
-  const hix = SWORD_HANDLE.x * SWORD_SIZE
-  const hiy = SWORD_HANDLE.y * SWORD_SIZE
-  const vix = (SWORD_TIP.x - SWORD_HANDLE.x) * SWORD_SIZE
-  const viy = (SWORD_TIP.y - SWORD_HANDLE.y) * SWORD_SIZE
-  const viLen = Math.hypot(vix, viy) || 1
-  const vtx = blade.bx - blade.ax
-  const vty = blade.by - blade.ay
-  const vtLen = Math.hypot(vtx, vty) || 1
-  const scale = Math.max(vtLen / viLen, 0.62)
-  const rot = Math.atan2(vty, vtx) - Math.atan2(viy, vix)
-  const cos = Math.cos(rot)
-  const sin = Math.sin(rot)
-  // 이미지 손잡이 앵커를 손목 좌표로 보내는 오프셋 (회전·스케일 반영)
-  const originX = blade.ax - scale * (cos * hix - sin * hiy)
-  const originY = blade.ay - scale * (sin * hix + cos * hiy)
-
-  const trailPts = trail.map((point) => `${point.x},${point.y}`).join(' ')
-
-  return (
-    <div className="pointer-events-none absolute inset-0">
-      {trail.length > 1 ? (
-        <svg
-          className="absolute inset-0"
-          height="100%"
-          preserveAspectRatio="none"
-          viewBox="0 0 1280 720"
-          width="100%"
-        >
-          <polyline
-            fill="none"
-            opacity={0.55}
-            points={trailPts}
-            stroke={fast ? '#d6f56a' : 'rgba(255,255,255,0.45)'}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={fast ? 18 : 10}
-          />
-        </svg>
-      ) : null}
-      <img
-        alt=""
-        className="absolute top-0 left-0 will-change-transform"
-        decoding="async"
-        draggable={false}
-        src={leafSwordUrl}
-        style={{
-          width: SWORD_SIZE,
-          height: SWORD_SIZE,
-          transformOrigin: '0 0',
-          transform: `translate(${originX}px, ${originY}px) rotate(${rot}rad) scale(${scale})`,
-          filter: fast
-            ? 'drop-shadow(0 0 12px rgba(214,245,106,0.9))'
-            : 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
-        }}
-      />
     </div>
   )
 }

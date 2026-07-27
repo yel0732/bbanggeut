@@ -8,6 +8,7 @@ type ParentNoticeDialogProps = {
   title: string
   message?: string
   children?: ReactNode
+  compact?: boolean
   confirmLabel?: string
   cancelLabel?: string
   onConfirm: () => void
@@ -17,6 +18,7 @@ type ParentNoticeDialogProps = {
 export function ParentNoticeDialog({
   cancelLabel = '취소',
   children,
+  compact = false,
   confirmLabel = '확인',
   message,
   onCancel,
@@ -29,7 +31,9 @@ export function ParentNoticeDialog({
       className="absolute inset-0 z-100 flex items-center justify-center bg-[rgba(18,30,18,.62)]"
       role="dialog"
     >
-      <section className="relative -mt-8 h-[480px] w-[640px] [animation:parent-popup-in_.25s_cubic-bezier(.2,1.3,.5,1)_both]">
+      <section
+        className={`${compact ? 'h-[450px] w-[600px]' : 'h-[480px] w-[640px]'} relative -mt-8 [animation:parent-popup-in_.25s_cubic-bezier(.2,1.3,.5,1)_both]`}
+      >
         <img
           alt=""
           className="pointer-events-none absolute inset-0 size-full object-fill"

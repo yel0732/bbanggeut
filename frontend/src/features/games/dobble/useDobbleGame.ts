@@ -54,8 +54,22 @@ export type DobbleGameResult = {
   hintCount: number
   activePlaySec: number
   ruleVersion: string
+  perfectCount: number
+  excellentCount: number
+  goodCount: number
+  incompleteCount: number
+  averageReactionTimeMs: number
+  cardResults: DobbleCardResult[]
   /** 결과 정합성 통과 여부 */
   valid: boolean
+}
+
+export type DobbleCardResult = {
+  roundNo: number
+  comparisonCount: number
+  wrongCount: number
+  status: 'COMPLETED' | 'INCOMPLETE'
+  solveTimeMs: number | null
 }
 
 export type DobbleGameState = {
@@ -116,6 +130,7 @@ type Engine = {
   hintSide: CardSide | null
   /** 힌트가 켜진 라운드 수 */
   hintCount: number
+  cardResults: DobbleCardResult[]
   /** 이 시각까지는 새 입력을 받지 않는다 (중복 판정 방지) */
   inputLockedUntil: number
   /** 연출이 끝난 뒤 할 일 */
@@ -153,6 +168,7 @@ function createEngine(now: number): Engine {
     wrongInRound: 0,
     hintSide: null,
     hintCount: 0,
+    cardResults: [],
     inputLockedUntil: 0,
     pendingAfterFeedback: null,
     ended: false,
@@ -164,12 +180,10 @@ function createEngine(now: number): Engine {
  *
  * 힌트를 본 라운드는 기본 점수만 준다. 아이 화면에는 감점처럼 보이지 않는다.
  */
-function scoreForMatch(elapsedMs: number, hintUsed: boolean): number {
-  if (hintUsed) {
-    return CFG.matchScore
-  }
-  const ratio = Math.max(0, 1 - elapsedMs / CFG.speedBonusWithinMs)
-  return CFG.matchScore + Math.round(CFG.speedBonusMax * ratio)
+function scoreForComparisonCount(comparisonCount: number): number {
+  if (comparisonCount === 1) return 1000
+  if (comparisonCount <= 4) return 850
+  return 700
 }
 
 /** 손바닥이 올라간 그림. 히트 영역이 겹치면 더 가까운 쪽을 고른다. */
@@ -324,13 +338,19 @@ export function useDobbleGame(
       const correct = left.symbolId === right.symbolId
 
       if (correct) {
-        const gained = scoreForMatch(
-          now - engine.roundStartedAt,
-          engine.hintSide !== null,
-        )
+        const comparisonCount = engine.wrongInRound + 1
+        const solveTimeMs = Math.max(0, Math.round(now - engine.roundStartedAt))
+        const gained = scoreForComparisonCount(comparisonCount)
         engine.score += gained
         engine.scoreSum += gained
         engine.matchedCount++
+        engine.cardResults.push({
+          comparisonCount,
+          roundNo: engine.roundCount,
+          solveTimeMs,
+          status: 'COMPLETED',
+          wrongCount: engine.wrongInRound,
+        })
         engine.feedback = { kind: 'correct', symbolId: left.symbolId }
         engine.inputLockedUntil = now + CFG.correctFeedbackMs
         engine.pendingAfterFeedback = 'next-round'
@@ -573,10 +593,43 @@ export function useDobbleGame(
       if (engine.phase === 'ended') {
         if (!engine.ended) {
           engine.ended = true
+          if (engine.cardResults.length < engine.roundCount) {
+            engine.cardResults.push({
+              comparisonCount: engine.wrongInRound,
+              roundNo: engine.roundCount,
+              solveTimeMs: null,
+              status: 'INCOMPLETE',
+              wrongCount: engine.wrongInRound,
+            })
+          }
           // 정합성 검증: 정답 수 ≤ 진행 라운드 수, 점수 = 라운드 점수 합
           const valid =
             engine.matchedCount <= engine.roundCount &&
             engine.score === engine.scoreSum
+          const perfectCount = engine.cardResults.filter(
+            (round) => round.status === 'COMPLETED' && round.comparisonCount === 1,
+          ).length
+          const excellentCount = engine.cardResults.filter(
+            (round) =>
+              round.status === 'COMPLETED' &&
+              round.comparisonCount >= 2 &&
+              round.comparisonCount <= 4,
+          ).length
+          const goodCount = engine.cardResults.filter(
+            (round) => round.status === 'COMPLETED' && round.comparisonCount >= 5,
+          ).length
+          const completedReactionTimes = engine.cardResults.flatMap((round) =>
+            round.status === 'COMPLETED' && round.solveTimeMs !== null
+              ? [round.solveTimeMs]
+              : [],
+          )
+          const solvedCount = perfectCount + excellentCount + goodCount
+          const calculatedScore =
+            perfectCount * 1000 + excellentCount * 850 + goodCount * 700
+          const resultIsValid =
+            valid &&
+            engine.matchedCount === solvedCount &&
+            engine.score === calculatedScore
           onEndRef.current({
             score: engine.score,
             matchedCount: engine.matchedCount,
@@ -584,7 +637,19 @@ export function useDobbleGame(
             hintCount: engine.hintCount,
             activePlaySec: Math.round(engine.playElapsedMs / 1000),
             ruleVersion: CFG.ruleVersion,
-            valid,
+            perfectCount,
+            excellentCount,
+            goodCount,
+            incompleteCount: engine.cardResults.length - engine.matchedCount,
+            averageReactionTimeMs:
+              completedReactionTimes.length > 0
+                ? Math.round(
+                    completedReactionTimes.reduce((sum, time) => sum + time, 0) /
+                      completedReactionTimes.length,
+                  )
+                : 0,
+            cardResults: [...engine.cardResults],
+            valid: resultIsValid,
           })
         }
         return

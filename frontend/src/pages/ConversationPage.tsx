@@ -661,13 +661,21 @@ export function ConversationPage() {
                   className="mt-auto min-h-6 text-[16px] text-[#6f8e3f]"
                   style={jua}
                 >
-                  {isDiaryAttached ? '내 일기장에 예쁘게 붙였어요!' : ''}
+                  {isDiaryAttached
+                    ? '아래 버튼을 누르면 일기장으로 이동해요'
+                    : ''}
                 </p>
                 <div className="-mt-1 flex flex-col items-center">
                   <button
-                    className="relative block w-[320px] translate-x-2.5 transition hover:scale-105 active:scale-[.98]"
-                    disabled={isDiaryAttached}
-                    onClick={() => setIsDiaryAttached(true)}
+                    className="relative block w-[320px] translate-x-2.4 transition hover:scale-105 active:scale-[.98]"
+                    onClick={() => {
+                      if (isDiaryAttached) {
+                        stopVoiceResources()
+                        navigate('/diaries')
+                        return
+                      }
+                      setIsDiaryAttached(true)
+                    }}
                     type="button"
                   >
                     <img
@@ -685,7 +693,7 @@ export function ConversationPage() {
                     </span>
                   </button>
                   <button
-                    className="relative -mt-3 block w-[345px] translate-x-3 transition hover:scale-105 active:scale-[.98]"
+                    className="relative mt-0 block w-[345px] translate-x-2.4 -translate-y-[5px] transition hover:scale-105 active:scale-[.98]"
                     onClick={() => {
                       stopVoiceResources()
                       navigate('/child')

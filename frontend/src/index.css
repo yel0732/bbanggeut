@@ -22,6 +22,25 @@
   --shadow-panel: 0 18px 45px rgba(27, 46, 41, 0.08);
 }
 
+/* 회원가입 보드의 입력 에셋이 브라우저 자동완성 배경에 가려지지 않게 한다. */
+.auth-transparent-input,
+.auth-transparent-input:focus,
+.auth-transparent-input:active {
+  background-color: transparent !important;
+}
+
+.auth-transparent-input:-webkit-autofill,
+.auth-transparent-input:-webkit-autofill:hover,
+.auth-transparent-input:-webkit-autofill:focus,
+.auth-transparent-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #5a4a2a !important;
+  caret-color: #5a4a2a;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  box-shadow: 0 0 0 1000px transparent inset !important;
+  transition: background-color 99999s ease-out 0s;
+}
+
 @keyframes child-home-dino-bob {
   0%,
   100% {
@@ -267,6 +286,27 @@
   }
   50% {
     transform: scale(1.08) rotate(2deg);
+  }
+}
+
+@keyframes fruit-fever-rays {
+  from {
+    transform: rotate(0deg) scale(1.1);
+  }
+  to {
+    transform: rotate(360deg) scale(1.1);
+  }
+}
+
+@keyframes fruit-fever-border {
+  0%,
+  100% {
+    opacity: 0.65;
+    filter: drop-shadow(0 0 8px rgba(255, 119, 0, 0.8));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 22px rgba(255, 238, 80, 1));
   }
 }
 

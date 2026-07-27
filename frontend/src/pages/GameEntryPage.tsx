@@ -74,7 +74,7 @@ export function GameEntryPage() {
               onMouseEnter={() => setHoveredGameId(game.id)}
               onMouseLeave={() => setHoveredGameId(undefined)}
             >
-              <span className="relative h-[300px] w-[270px] [perspective:900px]">
+              <span className="relative h-[300px] w-[250px] translate-y-[10px] [perspective:900px]">
                 <span
                   className={`absolute inset-0 transition-transform duration-700 [transform-style:preserve-3d] ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`}
                 >

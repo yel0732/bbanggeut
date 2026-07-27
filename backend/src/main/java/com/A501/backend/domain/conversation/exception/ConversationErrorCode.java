@@ -23,7 +23,8 @@ public enum ConversationErrorCode {
     CONVERSATION_TURN_CONFLICT(HttpStatus.CONFLICT, "다른 대화 턴이 먼저 처리되었습니다."),
     AI_DIALOGUE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 대화 서비스를 사용할 수 없습니다."),
     AI_DIALOGUE_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI 대화 응답이 올바르지 않습니다."),
-    DIALOGUE_STATE_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "대화 상태를 읽을 수 없습니다.");
+    DIALOGUE_STATE_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "대화 상태를 읽을 수 없습니다."),
+    REDIS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "실시간 대화 저장소를 사용할 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String message;

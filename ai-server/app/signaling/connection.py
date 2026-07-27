@@ -224,7 +224,7 @@ class SignalingConnection:
                 self._conversation_id, self._realtime_session_id, self._session_epoch
             )
             assert self._peer_connection is not None
-            await self._registry.register(
+            registered = await self._registry.register(
                 RealtimeConnectionEntry(
                     conversation_id=self._conversation_id,
                     realtime_session_id=self._realtime_session_id,
@@ -233,6 +233,20 @@ class SignalingConnection:
                     heartbeat=self._heartbeat,
                 )
             )
+            if not registered:
+                # 더 최신 sessionEpoch의 연결이 이미 등록되어 있다 — 이 연결은 지연된
+                # 재연결 시도이므로 자신을 정리하고 물러난다(§4 T12, 리뷰에서 발견).
+                self._logger.warning(
+                    "stale reconnect reached connected after a newer session_epoch took over",
+                    extra={
+                        "conversation_id": self._conversation_id,
+                        "realtime_session_id": self._realtime_session_id,
+                        "session_epoch": self._session_epoch,
+                    },
+                )
+                await self._cleanup()
+                await self._websocket.close(code=1008)
+                return
             await self._send(
                 RtcConnected(
                     conversation_id=self._conversation_id,
@@ -243,6 +257,11 @@ class SignalingConnection:
         elif state == PeerConnectionState.FAILED:
             self._state = ConnectionState.FAILED
             await self._send_error(None, WEBRTC_CONNECTION_FAILED, "PeerConnection 연결에 실패했습니다.")
+            # FAILED는 더 이상 쓸 수 없는 연결이다 — Heartbeat·PeerConnection·Registry
+            # 항목을 즉시 정리하고 WebSocket을 닫는다(리뷰에서 발견: 이전에는 클라이언트가
+            # 스스로 연결을 끊을 때까지 Lease Heartbeat가 무한히 갱신되는 누수가 있었다).
+            await self._cleanup()
+            await self._websocket.close(code=1011)
 
     async def _cleanup(self) -> None:
         if self._state == ConnectionState.CLOSED:

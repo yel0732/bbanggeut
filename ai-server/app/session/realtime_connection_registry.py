@@ -38,20 +38,32 @@ class RealtimeConnectionRegistry:
     def __init__(self) -> None:
         self._entries: dict[str, RealtimeConnectionEntry] = {}
 
-    async def register(self, entry: RealtimeConnectionEntry) -> None:
+    async def register(self, entry: RealtimeConnectionEntry) -> bool:
         """Register a newly-connected entry, force-cleaning up any stale one left behind.
 
         A stale entry under the same ``conversation_id`` should not normally exist
         (the owning ``SignalingConnection`` cleans up on close), but if one does
         (e.g. a previous connection leaked without running its own cleanup), it is
         closed here so its PeerConnection/Heartbeat never outlive the new entry.
+
+        Returns ``False`` (without registering) if an entry with a *higher*
+        ``session_epoch`` is already registered — this happens when a slow
+        reconnect attempt (old epoch) finally reaches ``connected`` after a
+        newer reconnect (higher epoch) has already taken over the slot; the
+        stale one must back off instead of evicting the current one (mirrors
+        the "discard events referencing a stale sessionEpoch" rule in
+        REALTIME_EVENT_CONTRACT.md §4). The caller must clean itself up when
+        this returns ``False``.
         """
 
         stale = self._entries.get(entry.conversation_id)
         if stale is not None and stale is not entry:
+            if stale.session_epoch > entry.session_epoch:
+                return False
             await stale.heartbeat.stop()
             await stale.peer_connection.close()
         self._entries[entry.conversation_id] = entry
+        return True
 
     def find(self, conversation_id: str) -> RealtimeConnectionEntry | None:
         return self._entries.get(conversation_id)

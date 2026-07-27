@@ -60,18 +60,31 @@ def test_parses_rtc_ice_candidate_with_optional_fields_present() -> None:
     assert message.candidate.sdp_mline_index == 0
 
 
-def test_parses_rtc_ice_candidate_with_optional_fields_absent() -> None:
+def test_parses_rtc_ice_candidate_with_only_sdp_mline_index() -> None:
     message = parse_incoming_message(
         {
             "type": "rtc.ice-candidate",
             "requestId": "req_003",
-            "candidate": {"candidate": "candidate:..."},
+            "candidate": {"candidate": "candidate:...", "sdpMLineIndex": 0},
         }
     )
 
     assert isinstance(message, RtcIceCandidate)
     assert message.candidate.sdp_mid is None
-    assert message.candidate.sdp_mline_index is None
+    assert message.candidate.sdp_mline_index == 0
+
+
+def test_rejects_ice_candidate_with_neither_sdp_mid_nor_mline_index() -> None:
+    # aiortc's addIceCandidate() requires at least one of the two — reject at
+    # the message layer so it surfaces as a normal malformed-message rejection.
+    with pytest.raises(MalformedMessageError):
+        parse_incoming_message(
+            {
+                "type": "rtc.ice-candidate",
+                "requestId": "req_003",
+                "candidate": {"candidate": "candidate:..."},
+            }
+        )
 
 
 def test_parses_rtc_ice_complete() -> None:

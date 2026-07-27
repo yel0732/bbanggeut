@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 class SessionDescription(BaseModel):
@@ -28,6 +28,15 @@ class IceCandidate(BaseModel):
     candidate: str
     sdp_mid: str | None = Field(default=None, alias="sdpMid")
     sdp_mline_index: int | None = Field(default=None, alias="sdpMLineIndex")
+
+    @model_validator(mode="after")
+    def _require_sdp_mid_or_mline_index(self) -> "IceCandidate":
+        # aiortc's addIceCandidate() raises ValueError if both are absent — reject
+        # here instead so it surfaces as a normal MalformedMessageError/rtc.error
+        # rather than an uncaught exception out of the PeerConnection layer.
+        if self.sdp_mid is None and self.sdp_mline_index is None:
+            raise ValueError("candidate must have either sdpMid or sdpMLineIndex")
+        return self
 
 
 class SessionAuthenticate(BaseModel):

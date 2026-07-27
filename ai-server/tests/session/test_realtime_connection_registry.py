@@ -128,6 +128,31 @@ async def test_register_evicts_and_closes_stale_entry_for_same_conversation() ->
 
 
 @pytest.mark.asyncio
+async def test_register_returns_true_on_success() -> None:
+    registry = RealtimeConnectionRegistry()
+    entry, _, _ = _entry()
+
+    assert await registry.register(entry) is True
+
+
+@pytest.mark.asyncio
+async def test_register_with_lower_epoch_than_current_is_rejected_without_evicting() -> None:
+    registry = RealtimeConnectionRegistry()
+    current_entry, current_heartbeat, current_peer_connection = _entry(
+        realtime_session_id="rt_new", session_epoch=2
+    )
+    await registry.register(current_entry)
+
+    stale_entry, _, _ = _entry(realtime_session_id="rt_old", session_epoch=1)
+    accepted = await registry.register(stale_entry)
+
+    assert accepted is False
+    assert registry.find("conv_1") is current_entry
+    assert current_heartbeat.stop_call_count == 0
+    assert current_peer_connection.close_call_count == 0
+
+
+@pytest.mark.asyncio
 async def test_different_conversations_do_not_interfere() -> None:
     registry = RealtimeConnectionRegistry()
     entry_1, heartbeat_1, _ = _entry(conversation_id="conv_1")

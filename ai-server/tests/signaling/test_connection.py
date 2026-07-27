@@ -273,7 +273,7 @@ async def test_peer_connection_connected_starts_heartbeat_and_registers() -> Non
 
 
 @pytest.mark.asyncio
-async def test_peer_connection_failed_sends_error() -> None:
+async def test_peer_connection_failed_sends_error_and_cleans_up() -> None:
     websocket = FakeWebSocket()
     connection, _, factory, _, _ = _build_connection(
         websocket=websocket,
@@ -287,7 +287,35 @@ async def test_peer_connection_failed_sends_error() -> None:
 
     assert websocket.sent[-1]["type"] == "rtc.error"
     assert websocket.sent[-1]["code"] == "WEBRTC_CONNECTION_FAILED"
-    assert connection._state == ConnectionState.FAILED
+    # 리뷰에서 발견: FAILED는 즉시 정리되어야 한다 — 그렇지 않으면 클라이언트가 스스로
+    # 연결을 끊을 때까지 Lease Heartbeat가 무한히 갱신되는 누수가 생긴다.
+    assert connection._state == ConnectionState.CLOSED
+    assert peer_connection.closed
+    assert websocket.closed
+    assert websocket.close_code == 1011
+
+
+@pytest.mark.asyncio
+async def test_peer_connection_failed_after_connected_stops_heartbeat() -> None:
+    websocket = FakeWebSocket()
+    registry = RealtimeConnectionRegistry()
+    connection, _, factory, registry, heartbeat = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+        registry=registry,
+    )
+
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    peer_connection = factory.created[0]
+    await peer_connection.simulate_state_change(PeerConnectionState.CONNECTED)
+    assert registry.find("conv_1") is not None
+
+    await peer_connection.simulate_state_change(PeerConnectionState.FAILED)
+
+    assert heartbeat.stop_call_count == 1
+    assert registry.find("conv_1") is None
+    assert websocket.closed
 
 
 @pytest.mark.asyncio
@@ -334,3 +362,46 @@ async def test_cleanup_is_idempotent() -> None:
     await connection._cleanup()
 
     assert heartbeat.stop_call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_stale_reconnect_reaching_connected_after_newer_epoch_backs_off() -> None:
+    """Reproduces the race found in review: an old (lower sessionEpoch) connection's
+    slow SDP/ICE negotiation finally reaches ``connected`` after a newer reconnect
+    (higher sessionEpoch) has already registered — the stale one must clean itself
+    up and close, not evict the current, legitimate connection."""
+
+    registry = RealtimeConnectionRegistry()
+
+    new_websocket = FakeWebSocket()
+    new_connection, _, new_factory, _, new_heartbeat = _build_connection(
+        websocket=new_websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_new", 2),
+        registry=registry,
+    )
+    await new_connection._handle_raw(_authenticate_message())
+    await new_connection._handle_raw(_offer_message())
+    await new_factory.created[0].simulate_state_change(PeerConnectionState.CONNECTED)
+    assert registry.find("conv_1").realtime_session_id == "rt_new"
+
+    old_websocket = FakeWebSocket()
+    old_connection, _, old_factory, _, old_heartbeat = _build_connection(
+        websocket=old_websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_old", 1),
+        registry=registry,
+    )
+    await old_connection._handle_raw(_authenticate_message())
+    await old_connection._handle_raw(_offer_message())
+    await old_factory.created[0].simulate_state_change(PeerConnectionState.CONNECTED)
+
+    # The stale (lower-epoch) connection must not have evicted the newer one.
+    assert registry.find("conv_1").realtime_session_id == "rt_new"
+    assert new_heartbeat.stop_call_count == 0
+    assert not new_factory.created[0].closed
+    assert not new_websocket.closed
+
+    # The stale connection must have cleaned itself up instead.
+    assert old_heartbeat.stop_call_count == 1
+    assert old_factory.created[0].closed
+    assert old_websocket.closed
+    assert old_websocket.close_code == 1008

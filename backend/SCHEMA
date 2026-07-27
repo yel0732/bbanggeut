@@ -83,11 +83,10 @@ CREATE TABLE conversation_game_session (
     updated_at                   DATETIME(6) NOT NULL,
     PRIMARY KEY (conversation_game_session_id),
     CONSTRAINT uk_conversation_game_session
-        UNIQUE (conversation_id, game_session_id)
+        UNIQUE (conversation_id, game_session_id),
+    CONSTRAINT uk_conversation_game_order
+        UNIQUE (conversation_id, game_order)
 );
-
-CREATE INDEX idx_conversation_game_order
-    ON conversation_game_session (conversation_id, game_order);
 
 -- topic_type: GAME | DAILY
 -- status: PENDING | IN_PROGRESS | COMPLETED

@@ -70,4 +70,44 @@ class RedisRealtimeSessionLeaseStoreTest {
                 .extracting(exception -> ((ConversationException) exception).getErrorCode())
                 .isEqualTo(ConversationErrorCode.REDIS_UNAVAILABLE);
     }
+
+    @Test
+    void 존재하는_Lease를_조회한다() {
+        store = new RedisRealtimeSessionLeaseStore(redisTemplate, objectMapper);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        RealtimeSessionLeaseRecord record = RealtimeSessionLeaseRecord.active("rt_1", 2, 1_000L);
+        when(valueOperations.get("realtime:session:conv_1"))
+                .thenReturn(objectMapper.writeValueAsString(record));
+
+        var found = store.find("conv_1");
+
+        assertThat(found).isPresent();
+        assertThat(found.get().realtimeSessionId()).isEqualTo("rt_1");
+        assertThat(found.get().sessionEpoch()).isEqualTo(2);
+        assertThat(found.get().state()).isEqualTo(RealtimeSessionLeaseRecord.STATE_ACTIVE);
+    }
+
+    @Test
+    void 존재하지_않는_Lease는_빈_값을_반환한다() {
+        store = new RedisRealtimeSessionLeaseStore(redisTemplate, objectMapper);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("realtime:session:conv_missing")).thenReturn(null);
+
+        var found = store.find("conv_missing");
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void 조회_중_Redis_연결_실패는_REDIS_UNAVAILABLE로_변환한다() {
+        store = new RedisRealtimeSessionLeaseStore(redisTemplate, objectMapper);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("realtime:session:conv_1"))
+                .thenThrow(new RedisConnectionFailureException("connection refused"));
+
+        assertThatThrownBy(() -> store.find("conv_1"))
+                .isInstanceOf(ConversationException.class)
+                .extracting(exception -> ((ConversationException) exception).getErrorCode())
+                .isEqualTo(ConversationErrorCode.REDIS_UNAVAILABLE);
+    }
 }

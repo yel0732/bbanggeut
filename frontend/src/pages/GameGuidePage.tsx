@@ -1,6 +1,7 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
+import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
 import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
 import guideStartButtonUrl from '@/assets/images/game-entry/guide-start-btn.webp'
@@ -42,7 +43,7 @@ export function GameGuidePage() {
           loop
           preload="auto"
           ref={audioRef}
-          src={bgmUrl}
+          src={game.id === 'fruit' ? fruitBgmUrl : bgmUrl}
         />
 
         <img

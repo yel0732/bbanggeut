@@ -47,7 +47,7 @@ export function GameEntryPage() {
 
         <button
           aria-label="이전 화면으로"
-          className="absolute top-[25px] left-[45px] z-30 size-[66px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+          className="absolute top-[25px] left-[25px] z-30 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
           onClick={() => navigate('/child')}
           type="button"
         >
@@ -60,12 +60,14 @@ export function GameEntryPage() {
           />
         </button>
 
-        <h1
-          className="absolute top-[36px] left-[118px] z-30 text-[36px] leading-none text-white [text-shadow:0_4px_0_#4f8a30,0_7px_10px_rgba(19,50,18,0.28)]"
+        <button
+          className="absolute top-[16px] right-[78px] z-40 rounded-full border-2 border-white/70 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur-sm transition hover:scale-105"
+          onClick={() => navigate('/profiles')}
           style={jua}
+          type="button"
         >
-          게임 선택
-        </h1>
+          프로필 바꾸기
+        </button>
 
         {GAMES.map((game) => {
           const isFlipped = hoveredGameId === game.id
@@ -152,7 +154,7 @@ export function GameEntryPage() {
 
         <div
           aria-label="공룡"
-          className="absolute bottom-[55px] left-1/2 z-10 h-[310px] w-[330px] -translate-x-1/2 [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
+          className="absolute bottom-[90px] left-1/2 z-10 h-[310px] w-[330px] -translate-x-1/2 [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
           role="img"
         >
           <div className="absolute bottom-0 left-1/2 h-12 w-[230px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(45,90,35,0.32),rgba(45,90,35,0)_100%)]" />
@@ -166,7 +168,7 @@ export function GameEntryPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[28px] left-[48px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[85px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}

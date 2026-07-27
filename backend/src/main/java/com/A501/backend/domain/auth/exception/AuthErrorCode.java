@@ -19,7 +19,10 @@ public enum AuthErrorCode implements ErrorCode {
     INVALID_GOOGLE_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_GOOGLE_TOKEN", "구글 인증에 실패했습니다. 다시 시도해주세요."),
     INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_SIGNUP_TOKEN", "가입 세션이 만료되었습니다. 다시 시도해주세요."),
     INVALID_LINK_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_LINK_TOKEN", "연동 세션이 만료되었습니다. 다시 시도해주세요."),
-    PARENT_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_PARENT_NOT_FOUND", "계정 정보를 확인할 수 없습니다. 다시 로그인해주세요.");
+    PARENT_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_PARENT_NOT_FOUND", "계정 정보를 확인할 수 없습니다. 다시 로그인해주세요."),
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_CURRENT_PASSWORD_MISMATCH", "현재 비밀번호가 일치하지 않습니다."),
+    NEW_PASSWORD_CONFIRMATION_MISMATCH(HttpStatus.BAD_REQUEST, "AUTH_NEW_PASSWORD_CONFIRMATION_MISMATCH", "새 비밀번호와 확인 비밀번호가 일치하지 않습니다."),
+    PASSWORD_NOT_SET(HttpStatus.FORBIDDEN, "AUTH_PASSWORD_NOT_SET", "비밀번호가 설정되지 않은 계정입니다.");
 
     private final HttpStatus status;
     private final String code;

@@ -78,7 +78,7 @@ class JwtProviderTest {
     void parseAccessToken_returnsNullForTamperedToken() {
         Parent parent = createParentWithId(42L);
         String token = jwtProvider.generateAccessToken(parent);
-        String tamperedSignature = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+        String tamperedSignature = tamperSignature(token);
 
         assertThat(jwtProvider.parseAccessToken(tamperedSignature)).isNull();
     }
@@ -141,7 +141,7 @@ class JwtProviderTest {
     @Test
     void parseSignupToken_throwsForTamperedToken() {
         String token = jwtProvider.generateSignupToken("google-sub", "a@example.com");
-        String tampered = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+        String tampered = tamperSignature(token);
 
         assertThatThrownBy(() -> jwtProvider.parseSignupToken(tampered))
                 .isInstanceOf(BusinessException.class)
@@ -158,6 +158,15 @@ class JwtProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.INVALID_SIGNUP_TOKEN));
+    }
+
+    private String tamperSignature(String token) {
+        int signatureStart = token.lastIndexOf('.') + 1;
+        char original = token.charAt(signatureStart);
+        char replacement = original == 'A' ? 'B' : 'A';
+        return token.substring(0, signatureStart)
+                + replacement
+                + token.substring(signatureStart + 1);
     }
 
     private Claims parseClaims(String token) {

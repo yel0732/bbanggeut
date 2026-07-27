@@ -39,7 +39,9 @@ public class DailyReportGenerationService {
         manualRegenerationHistoryService.markProcessing(reportId);
         try {
             DailyReportGenerationResult result = generateWithRetry(reportId);
-            notificationPublisher.publishCompleted(reportId);
+            if (result.hasActivity()) {
+                notificationPublisher.publishCompleted(reportId);
+            }
             manualRegenerationHistoryService.markCompleted(reportId);
             return result;
         } catch (RuntimeException exception) {
@@ -115,15 +117,6 @@ public class DailyReportGenerationService {
                                 target.childId(),
                                 target.startedAt(),
                                 target.endedAt()));
-
-        if (gameSources.isEmpty() && conversationSummary.isEmpty()) {
-            throw failure(
-                    ReportFailureStage.SOURCE_VALIDATION,
-                    ReportErrorCode.REPORT_SOURCE_EMPTY,
-                    false,
-                    new IllegalStateException(
-                            "A daily report requires game or conversation data."));
-        }
 
         try {
             return persistenceService.persist(

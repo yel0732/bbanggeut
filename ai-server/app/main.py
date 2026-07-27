@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.dialogue import router as dialogue_router
+from app.api.report import router as report_router
 from app.config import AppSettings
 from app.dialogue.pipeline import DialogueTurnPipeline
 from app.dialogue.question.fallback import (
@@ -18,6 +19,7 @@ from app.dialogue.question.fallback import (
 from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.policy.termination import DialogueTerminationPolicy
 from app.providers.gms_chat import GmsChatClient
+from app.report.generator import DailyReportGenerator
 
 
 def create_app(
@@ -49,6 +51,11 @@ def create_app(
             api_key=resolved_settings.gms_key,
             model=resolved_settings.gms_response_model,
         )
+        report_client = GmsChatClient(
+            http_client,
+            api_key=resolved_settings.gms_key,
+            model=resolved_settings.gms_report_model,
+        )
         app.state.dialogue_pipeline = DialogueTurnPipeline(
             analysis_client=analysis_client,
             response_client=response_client,
@@ -61,6 +68,11 @@ def create_app(
             ),
             logger=logging.getLogger("app.dialogue.pipeline"),
         )
+        app.state.report_generator = DailyReportGenerator(
+            provider=report_client,
+            timeout_seconds=resolved_settings.gms_timeout_seconds,
+            max_attempts=resolved_settings.gms_max_attempts,
+        )
         try:
             yield
         finally:
@@ -72,6 +84,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.include_router(dialogue_router)
+    app.include_router(report_router)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

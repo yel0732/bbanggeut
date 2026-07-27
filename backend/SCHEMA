@@ -7,6 +7,15 @@ DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는�
 컬럼을 바꾸면 이 파일도 함께 갱신한다. 운영 DB에 DDL을 실제로 적용하는 절차(언제, 누가, 어떤 방식으로)는 아직
 정해지지 않았으며, 배포 작업 자체가 이 Epic의 범위 밖이라 별도 `[INFRA]` Epic에서 다룬다.
 
+-- External child-domain ownership contract used by report adapters:
+-- child.child_id BIGINT PRIMARY KEY
+-- child.parent_id BIGINT NOT NULL
+-- child.deleted_at DATETIME(6) NULL
+-- The child domain owns creation and migration of this table. Reports treat
+-- deleted_at IS NULL as the authoritative active-ownership condition.
+-- The daily report batch selects every active child from this table. Children
+-- without activity receive a completed empty report and no completion alert.
+
 -- DIARY-1-T01: conversation_session -----------------------------------------  
 
 CREATE TABLE conversation_session (
@@ -189,6 +198,9 @@ CREATE TABLE daily_report (
     CONSTRAINT uk_daily_report_child_date UNIQUE (child_id, report_date)
 );
 
+CREATE INDEX idx_daily_report_status_processing
+    ON daily_report (generation_status, processing_started_at);
+
 -- generation_status: PENDING | PROCESSING | COMPLETED | FAILED
 -- 집계 시간대: KST(Asia/Seoul)
 -- 집계 범위: 전날 19:00:00 이상, 당일 19:00:00 미만
@@ -364,6 +376,7 @@ CREATE TABLE report_conversation_summary (
 -- The report domain stores the final immutable summary snapshot atomically
 -- with game result snapshots and the daily_report COMPLETED status.
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportConversationSummary.java
+-- source_conversation_ids may be [] for a game-only narrative.
 
 
 -- Spring Batch metadata -----------------------------------------------------

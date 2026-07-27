@@ -135,6 +135,27 @@ class ReportNotificationGenerationTest {
     }
 
     @Test
+    void noActivityReportCompletesWithoutNotification() {
+        DailyReport report = createPendingReport();
+        when(gameReportQueryPort.findCompletedGames(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenReturn(List.of());
+        when(conversationSummaryPort.generateSummary(
+                CHILD_ID, STARTED_AT, ENDED_AT))
+                .thenReturn(Optional.empty());
+
+        var result = generationService.generate(report.getId());
+
+        assertThat(result.hasActivity()).isFalse();
+        assertThat(dailyReportRepository.findById(report.getId())
+                .orElseThrow()
+                .getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.COMPLETED);
+        assertThat(notificationRepository.findAll()).isEmpty();
+        assertThat(failureRepository.findAll()).isEmpty();
+    }
+
+    @Test
     void onlyFinalAutomaticRetryFailureCreatesFailureNotification() {
         DailyReport report = createPendingReport();
         when(gameReportQueryPort.findCompletedGames(

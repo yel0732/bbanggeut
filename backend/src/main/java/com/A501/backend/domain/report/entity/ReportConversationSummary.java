@@ -115,9 +115,6 @@ public class ReportConversationSummary extends BaseTimeEntity {
         if (source == null) {
             throw new IllegalArgumentException("Conversation summary source is required.");
         }
-        if (source.conversationIds().isEmpty()) {
-            throw new IllegalArgumentException("At least one conversation ID is required.");
-        }
         if (source.diaryTitle() == null || source.diaryTitle().isBlank()) {
             throw new IllegalArgumentException("Diary title is required.");
         }

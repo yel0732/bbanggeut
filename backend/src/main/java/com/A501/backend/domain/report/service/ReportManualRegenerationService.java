@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,7 @@ import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.entity.ReportManualRegeneration;
 import com.A501.backend.domain.report.exception.ReportApiErrorCode;
+import com.A501.backend.domain.report.event.ReportGenerationRequestedEvent;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
 import com.A501.backend.domain.report.port.ReportParentAccessTokenVerifier;
@@ -38,6 +40,7 @@ public class ReportManualRegenerationService {
     private final ObjectProvider<ReportParentAccessTokenVerifier>
             parentAccessTokenVerifier;
     private final Clock clock;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReportManualRegenerationService(
             DailyReportRepository dailyReportRepository,
@@ -46,7 +49,8 @@ public class ReportManualRegenerationService {
             ObjectProvider<ReportChildAccessVerifier> childAccessVerifier,
             ObjectProvider<ReportParentAccessTokenVerifier>
                     parentAccessTokenVerifier,
-            @Qualifier("utcClock") Clock clock
+            @Qualifier("utcClock") Clock clock,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.dailyReportRepository = dailyReportRepository;
         this.regenerationRepository = regenerationRepository;
@@ -54,6 +58,7 @@ public class ReportManualRegenerationService {
         this.childAccessVerifier = childAccessVerifier;
         this.parentAccessTokenVerifier = parentAccessTokenVerifier;
         this.clock = clock;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -107,6 +112,8 @@ public class ReportManualRegenerationService {
                     ReportApiErrorCode.IDEMPOTENCY_KEY_CONFLICT);
         }
         report.requestRegeneration();
+        eventPublisher.publishEvent(
+                new ReportGenerationRequestedEvent(report.getId()));
 
         return response(report, requestedAt);
     }

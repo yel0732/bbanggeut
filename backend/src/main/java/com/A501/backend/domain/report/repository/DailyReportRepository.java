@@ -1,6 +1,8 @@
 package com.A501.backend.domain.report.repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -11,6 +13,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.A501.backend.domain.report.entity.DailyReport;
+import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 
 import jakarta.persistence.LockModeType;
 
@@ -52,4 +55,26 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
     Optional<DailyReport> findByChildIdAndReportDateForUpdate(
             @Param("childId") Long childId,
             @Param("reportDate") LocalDate reportDate);
+
+    @Query("""
+            select report.id
+            from DailyReport report
+            where report.generationStatus = :status
+            order by report.id
+            """)
+    List<Long> findIdsByGenerationStatusOrderById(
+            @Param("status") ReportGenerationStatus status,
+            Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select report
+            from DailyReport report
+            where report.generationStatus = 'PROCESSING'
+              and report.processingStartedAt < :staleBefore
+            order by report.id
+            """)
+    List<DailyReport> findRecoverableProcessingForUpdate(
+            @Param("staleBefore") LocalDateTime staleBefore,
+            Pageable pageable);
 }

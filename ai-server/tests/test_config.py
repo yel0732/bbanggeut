@@ -58,6 +58,9 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.realtime_ticket_audience == "ai-realtime"
     assert settings.realtime_heartbeat_interval_seconds == 5.0
     assert settings.realtime_lease_ttl_seconds == 15.0
+    # 기본은 STUN 미사용 — 로컬 MVP에는 host 후보로 충분하고, 외부 STUN 의존은
+    # 도달 불가 네트워크에서 ICE gathering을 ~5초씩 지연시킨다.
+    assert settings.realtime_stun_urls == ()
 
 
 def test_reads_realtime_settings_from_environment() -> None:
@@ -71,6 +74,7 @@ def test_reads_realtime_settings_from_environment() -> None:
             "REALTIME_TICKET_AUDIENCE": "custom-audience",
             "REALTIME_HEARTBEAT_INTERVAL_SECONDS": "7.5",
             "REALTIME_LEASE_TTL_SECONDS": "20",
+            "REALTIME_STUN_URLS": "stun:stun.internal:3478, turns:turn.internal:5349",
         }
     )
 
@@ -83,6 +87,10 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.realtime_ticket_audience == "custom-audience"
     assert settings.realtime_heartbeat_interval_seconds == 7.5
     assert settings.realtime_lease_ttl_seconds == 20.0
+    assert settings.realtime_stun_urls == (
+        "stun:stun.internal:3478",
+        "turns:turn.internal:5349",
+    )
 
 
 def test_supports_legacy_model_for_analysis_only() -> None:
@@ -116,6 +124,8 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
         {"GMS_KEY": "key", "GMS_REPORT_MODEL": " "},
         {"GMS_KEY": "key", "GMS_CHILD_DIARY_MODEL": " "},
+        {"GMS_KEY": "key", "REALTIME_STUN_URLS": "not-a-stun-url"},
+        {"GMS_KEY": "key", "REALTIME_STUN_URLS": "http://stun.internal:3478"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

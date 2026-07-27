@@ -2,13 +2,16 @@
 
 No STUN/TURN is configured (out of scope per jira/plan/DIARY-2-W03.md §0) —
 both sides run in-process on loop-back, so host candidates are sufficient to
-reach ``connected`` (verified against aiortc 1.15, §11-B).
+reach ``connected`` (verified against aiortc 1.15, §11-B). Test-side client
+PeerConnections pass an explicit ``iceServers=[]`` because aiortc's default
+configuration otherwise queries Google STUN, stalling gathering ~5s per
+PeerConnection on networks where STUN is blocked (measured 2026-07-27).
 """
 
 import asyncio
 
 import pytest
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from app.webrtc.peer_connection import (
     AiortcPeerConnection,
@@ -26,7 +29,7 @@ def _first_ice_candidate_line(sdp: str) -> str | None:
 
 @pytest.mark.asyncio
 async def test_accept_offer_returns_answer_and_both_sides_reach_connected() -> None:
-    client = RTCPeerConnection()
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     client.createDataChannel("probe")  # ensure at least one m-line
     server = AiortcPeerConnectionFactory().create()
 
@@ -46,6 +49,9 @@ async def test_accept_offer_returns_answer_and_both_sides_reach_connected() -> N
 
     answer_sdp = await server.accept_offer(client.localDescription.sdp)
     assert "a=candidate:" in answer_sdp  # aiortc가 setLocalDescription 중 후보를 이미 채움
+    # stun_urls 미설정이면 STUN 조회 자체가 없어야 한다 — srflx 후보가 나오면
+    # 외부 STUN 의존이 되살아난 것이다(기본값이 Google STUN인 aiortc 특성).
+    assert "typ srflx" not in answer_sdp
 
     await client.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
 
@@ -67,7 +73,7 @@ async def _wait_until(predicate, interval: float = 0.01) -> None:
 
 @pytest.mark.asyncio
 async def test_add_ice_candidate_accepts_a_real_remote_candidate() -> None:
-    client = RTCPeerConnection()
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     client.createDataChannel("probe")
     server = AiortcPeerConnectionFactory().create()
 

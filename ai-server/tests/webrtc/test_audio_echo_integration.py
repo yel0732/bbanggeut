@@ -19,7 +19,7 @@ PeerConnection or block the suite indefinitely.
 import asyncio
 
 import pytest
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import AudioStreamTrack
 
 from app.webrtc.peer_connection import AiortcPeerConnectionFactory
@@ -51,7 +51,7 @@ async def _close_both(client: RTCPeerConnection, server) -> None:
 
 @pytest.mark.asyncio
 async def test_audio_sent_by_client_is_echoed_back_by_the_server_peer_connection() -> None:
-    client = RTCPeerConnection()
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     server = AiortcPeerConnectionFactory().create()
     try:
         client.addTrack(AudioStreamTrack())  # client's "mic" — deterministic silence generator
@@ -94,7 +94,7 @@ async def test_audio_sent_by_client_is_echoed_back_by_the_server_peer_connection
 
 @pytest.mark.asyncio
 async def test_audio_less_offer_does_not_negotiate_an_audio_transceiver() -> None:
-    client = RTCPeerConnection()
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     server = AiortcPeerConnectionFactory().create()
     try:
         client.createDataChannel("probe")  # no audio track at all

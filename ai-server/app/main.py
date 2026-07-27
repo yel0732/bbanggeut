@@ -121,7 +121,9 @@ def create_app(
             resolved_settings.realtime_ticket_audience,
             logging.getLogger("app.realtime.ticket_verification"),
         )
-        app.state.peer_connection_factory = AiortcPeerConnectionFactory()
+        app.state.peer_connection_factory = AiortcPeerConnectionFactory(
+            resolved_settings.realtime_stun_urls
+        )
         app.state.realtime_connection_registry = RealtimeConnectionRegistry()
         app.state.realtime_heartbeat_factory = lambda: SessionLeaseHeartbeat(
             redis_client,

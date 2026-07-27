@@ -13,7 +13,7 @@ import asyncio
 import logging
 
 import pytest
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import TicketVerificationResult
@@ -58,7 +58,7 @@ async def _wait_until(predicate, timeout: float = 10.0, interval: float = 0.01) 
 
 @pytest.mark.asyncio
 async def test_full_signaling_flow_reaches_connected_with_real_aiortc() -> None:
-    react_client = RTCPeerConnection()
+    react_client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     react_client.createDataChannel("probe")
 
     websocket = _FakeWebSocket()

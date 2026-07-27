@@ -36,7 +36,10 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from fastapi import WebSocketDisconnect
+from pydantic import ValidationError
 
+from app.events.envelope import ConversationEventEnvelope, ConversationEventGuard
+from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import TicketVerificationFailureCode, TicketVerificationResult
 from app.session.realtime_connection_registry import (
     Heartbeat,
@@ -58,6 +61,7 @@ from app.signaling.messages import (
     UnknownMessageTypeError,
     parse_incoming_message,
 )
+from app.webrtc.data_channel import DataChannel
 from app.webrtc.peer_connection import PeerConnection, PeerConnectionFactory, PeerConnectionState
 
 _AUTH_FAILURE_CLOSE_CODE = 1008  # WebSocket policy violation
@@ -91,6 +95,7 @@ class SignalingConnection:
         registry: RealtimeConnectionRegistry,
         heartbeat_factory: Callable[[], Heartbeat],
         map_failure_code: Callable[[TicketVerificationFailureCode], str],
+        epoch_registry: SessionEpochRegistry,
         logger: logging.Logger,
     ) -> None:
         self._websocket = websocket
@@ -99,11 +104,14 @@ class SignalingConnection:
         self._registry = registry
         self._heartbeat_factory = heartbeat_factory
         self._map_failure_code = map_failure_code
+        self._epoch_registry = epoch_registry
         self._logger = logger
 
         self._state = ConnectionState.AWAITING_AUTH
         self._peer_connection: PeerConnection | None = None
         self._heartbeat: Heartbeat | None = None
+        self._data_channel: DataChannel | None = None
+        self._event_guard: ConversationEventGuard | None = None
         self._conversation_id: str | None = None
         self._realtime_session_id: str | None = None
         self._session_epoch: int | None = None
@@ -192,6 +200,7 @@ class SignalingConnection:
 
         peer_connection = self._peer_connection_factory.create()
         peer_connection.on_state_change(self._on_peer_connection_state_change)
+        peer_connection.on_data_channel_received(self._on_data_channel_received)
         self._peer_connection = peer_connection
         answer_sdp = await peer_connection.accept_offer(message.sdp.sdp)
         self._state = ConnectionState.ANSWERED
@@ -210,6 +219,33 @@ class SignalingConnection:
             message.candidate.sdp_mid,
             message.candidate.sdp_mline_index,
         )
+
+    async def _on_data_channel_received(self, channel: DataChannel) -> None:
+        self._data_channel = channel
+        assert self._conversation_id and self._realtime_session_id
+        self._event_guard = ConversationEventGuard(
+            self._conversation_id, self._realtime_session_id, self._epoch_registry
+        )
+        channel.on_message(self._on_data_channel_message)
+
+    async def _on_data_channel_message(self, raw: dict) -> None:
+        try:
+            envelope = ConversationEventEnvelope.model_validate(raw)
+        except ValidationError:
+            self._logger.warning("malformed conversation-events payload dropped")
+            return
+
+        assert self._event_guard is not None
+        discard_reason = self._event_guard.check(envelope)
+        if discard_reason is not None:
+            self._logger.info(
+                "conversation-events payload discarded",
+                extra={"discard_reason": discard_reason.value, "event_type": envelope.type},
+            )
+            return
+
+        # W04 범위: 계약 검증까지만 한다 — 실제 이벤트 처리(STT/Dialogue/TTS)는 DIARY-3가
+        # 이 지점에 이어서 구현한다(jira/plan/DIARY-2-W04.md §3 원칙 6).
 
     async def _on_peer_connection_state_change(self, state: PeerConnectionState) -> None:
         if self._state == ConnectionState.CLOSED:

@@ -63,6 +63,14 @@ class ConversationEventPublisher:
         self._event_seq = 0
 
     @property
+    def conversation_id(self) -> str:
+        return self._conversation_id
+
+    @property
+    def session_epoch(self) -> int:
+        return self._session_epoch
+
+    @property
     def last_event_seq(self) -> int:
         return self._event_seq
 

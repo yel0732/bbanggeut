@@ -61,7 +61,11 @@ public class ChildService {
         return child;
     }
 
-    @Transactional
+    // noRollbackFor 필요: 이 메서드가 먼저 트랜잭션을 열기 때문에 pinService.verifyPin(...)
+    // 호출은 새 트랜잭션이 아니라 이 트랜잭션에 합류한다. 이 메서드에 noRollbackFor가 없으면
+    // verifyPin이 늘려놓은 PIN 실패 카운트까지 이 메서드의 기본 롤백 규칙에 밀려 통째로
+    // 롤백된다 — PinService 안에서 겪은 self-invocation 문제와 같은 종류의 버그다.
+    @Transactional(noRollbackFor = BusinessException.class)
     public void deleteChild(Long parentId, Long childId, String pin) {
         // 소유권 검증(404)을 PIN 검증보다 먼저 한다 — 어차피 404로 끝날 요청 때문에
         // PIN 실패 카운터를 소모하지 않기 위함이다. PIN 검증은 대상 자녀와 무관하게 호출자

@@ -1,6 +1,7 @@
 package com.A501.backend.domain.conversation.service;
 
 import java.time.Duration;
+import java.util.Optional;
 
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -34,9 +35,29 @@ public class RedisRealtimeSessionLeaseStore implements RealtimeSessionLeaseStore
         }
     }
 
+    @Override
+    public Optional<RealtimeSessionLeaseRecord> find(String conversationId) {
+        String key = KEY_PREFIX + conversationId;
+        String json;
+        try {
+            json = redisTemplate.opsForValue().get(key);
+        } catch (DataAccessException exception) {
+            throw new ConversationException(ConversationErrorCode.REDIS_UNAVAILABLE);
+        }
+        return json == null ? Optional.empty() : Optional.of(deserialize(json));
+    }
+
     private String serialize(RealtimeSessionLeaseRecord record) {
         try {
             return objectMapper.writeValueAsString(record);
+        } catch (JacksonException exception) {
+            throw new ConversationException(ConversationErrorCode.DIALOGUE_STATE_INVALID);
+        }
+    }
+
+    private RealtimeSessionLeaseRecord deserialize(String json) {
+        try {
+            return objectMapper.readValue(json, RealtimeSessionLeaseRecord.class);
         } catch (JacksonException exception) {
             throw new ConversationException(ConversationErrorCode.DIALOGUE_STATE_INVALID);
         }

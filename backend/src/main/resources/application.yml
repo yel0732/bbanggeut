@@ -42,6 +42,8 @@ app:
   pin:
     max-failed-attempts: 5
     lock-duration: 5m
+  child:
+    max-profile-count: 10
 
 ---
 # 로컬 개발용: H2 인메모리 DB

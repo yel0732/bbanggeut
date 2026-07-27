@@ -171,6 +171,78 @@ class TestIdempotence:
         await asyncio.gather(pipeline.finalize_turn(), pipeline.finalize_turn())
 
         assert len(channel.sent) == 1
+        # The buffer is handed over before the await, so the losing caller finds
+        # nothing to recognise — one Provider call, not two deduped ones.
+        assert len(recognizer.calls) == 1
+
+
+class _GatedRecognizer:
+    """Blocks inside transcribe() until released — models the ~2s whisper call."""
+
+    def __init__(self, result: SttResult) -> None:
+        self._result = result
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self.calls: list[tuple[int, float]] = []
+
+    async def transcribe(self, wav_bytes: bytes, audio_seconds: float) -> SttResult:
+        self.calls.append((len(wav_bytes), audio_seconds))
+        self.entered.set()
+        await self.release.wait()
+        return self._result
+
+
+class TestAudioDuringRecognition:
+    @pytest.mark.asyncio
+    async def test_frames_arriving_during_recognition_survive_into_the_next_turn(
+        self,
+    ) -> None:
+        """Recognition takes ~2s; the child may already be speaking again.
+
+        Regression for a review finding: the buffer used to be reset *after*
+        the Provider await, wiping every frame that arrived in that window —
+        real audio loss on the overflow path and for fast back-to-back
+        utterances once W02 wires VAD in.
+        """
+
+        recognizer = _GatedRecognizer(_good_result())
+        pipeline, channel, _ = _build()
+        pipeline._recognizer = recognizer  # noqa: SLF001 - gate the await window
+        _feed(pipeline, 2.0)
+
+        finalize = asyncio.create_task(pipeline.finalize_turn())
+        await asyncio.wait_for(recognizer.entered.wait(), timeout=1)
+
+        _feed(pipeline, 1.0)  # the child's next words, mid-recognition
+
+        recognizer.release.set()
+        await finalize
+
+        assert pipeline.has_audio  # next utterance kept, not wiped
+        assert pipeline.current_turn is not None
+        assert pipeline.current_turn.turn_seq == 2
+        assert channel.sent[-1]["type"] == "stt.final"
+
+    @pytest.mark.asyncio
+    async def test_hallucination_rejection_does_not_wipe_the_next_utterance(
+        self,
+    ) -> None:
+        hallucination = SttResult(
+            text="you", audio_seconds=2.0, no_speech_prob=0.94, avg_logprob=-0.5
+        )
+        recognizer = _GatedRecognizer(hallucination)
+        pipeline, channel, _ = _build()
+        pipeline._recognizer = recognizer  # noqa: SLF001
+        _feed(pipeline, 2.0)
+
+        finalize = asyncio.create_task(pipeline.finalize_turn())
+        await asyncio.wait_for(recognizer.entered.wait(), timeout=1)
+        _feed(pipeline, 1.0)
+        recognizer.release.set()
+        await finalize
+
+        assert channel.sent == []  # rejected, no final
+        assert pipeline.has_audio  # but the next utterance is intact
 
 
 class TestRejectedAudio:

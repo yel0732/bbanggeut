@@ -137,7 +137,16 @@ class SessionSttPipeline:
             self._discard_turn(turn, SpeechRejectionReason.TOO_SHORT, audio_seconds)
             return None
 
+        # Snapshot and hand the buffer over to the NEXT utterance *before*
+        # awaiting the Provider. Recognition takes ~2s (measured); any frames
+        # arriving in that window are the child's next speech — resetting after
+        # the await would silently destroy them (found in review: the overflow
+        # path, where the child is mid-sentence, made this a real audio loss).
+        # It also collapses the concurrent-finalisation race to a no-op: the
+        # second caller now finds an empty buffer/no turn instead of firing a
+        # second Provider call.
         wav_bytes = self._buffer.to_wav()
+        self._start_new_utterance()
         try:
             result = await self._recognizer.transcribe(wav_bytes, audio_seconds)
         except SttError as error:
@@ -146,18 +155,15 @@ class SessionSttPipeline:
 
         rejection = self._guard.evaluate(result)
         if rejection is not None:
-            self._discard_turn(turn, rejection, audio_seconds)
+            self._reject_result(turn, rejection, audio_seconds)
             return None
 
         if not turn.accept_final(result):
-            # A concurrent finalisation already confirmed this turn; the second
-            # result is dropped so no duplicate question is started (§16).
             self._logger.info(
                 "duplicate final dropped", extra={"turn_id": turn.turn_id}
             )
             return None
 
-        self._start_new_utterance()
         self._publisher.publish(
             "stt.final",
             {"text": result.text, "confidence": result.confidence},
@@ -193,9 +199,35 @@ class SessionSttPipeline:
         reason: SpeechRejectionReason,
         audio_seconds: float,
     ) -> None:
-        """No child speech here — not an error, so no error event (ADR-018)."""
+        """Pre-call rejection: the buffered audio itself is not worth a turn.
+
+        The only rejection path that still owns the buffer (nothing was
+        snapshotted yet), so it resets it. No error event — silence is not an
+        error (ADR-018).
+        """
 
         turn.abandon()
+        self._log_rejection(turn, reason, audio_seconds)
+        self._start_new_utterance()
+
+    def _reject_result(
+        self,
+        turn: SttTurn,
+        reason: SpeechRejectionReason,
+        audio_seconds: float,
+    ) -> None:
+        """Post-call rejection (hallucination): the buffer already belongs to
+        the next utterance and must not be touched."""
+
+        turn.abandon()
+        self._log_rejection(turn, reason, audio_seconds)
+
+    def _log_rejection(
+        self,
+        turn: SttTurn,
+        reason: SpeechRejectionReason,
+        audio_seconds: float,
+    ) -> None:
         self._logger.info(
             "utterance discarded before becoming a turn",
             extra={
@@ -204,7 +236,6 @@ class SessionSttPipeline:
                 "audio_seconds": round(audio_seconds, 2),
             },
         )
-        self._start_new_utterance()
 
     def _fail_turn(self, turn: SttTurn, error: SttError) -> None:
         turn.abandon()
@@ -222,4 +253,3 @@ class SessionSttPipeline:
             turn_id=turn.turn_id,
             turn_seq=turn.turn_seq,
         )
-        self._start_new_utterance()

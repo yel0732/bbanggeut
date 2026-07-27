@@ -43,6 +43,9 @@ conversation:
       issuer: ${REALTIME_TICKET_ISSUER:spring-backend}
       audience: ${REALTIME_TICKET_AUDIENCE:ai-realtime}
       ttl: ${REALTIME_TICKET_TTL:PT5M}
+    reconciler:
+      enabled: ${REALTIME_RECONCILER_ENABLED:false}
+      interval: ${REALTIME_RECONCILER_INTERVAL:PT10S}
 
 app:
   jwt:

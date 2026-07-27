@@ -115,6 +115,31 @@ class ConversationSessionRepositoryTest {
     }
 
     @Test
+    void Realtime_Session이_발급된_활성_세션만_Reconciler_대상으로_조회한다() {
+        ConversationSession textOnly = ConversationSession.create(
+                "conv_reconcile_text", 15L, ConversationTopic.DAILY, 6);
+        ConversationSession realtimeReady = ConversationSession.create(
+                "conv_reconcile_ready", 16L, ConversationTopic.DAILY, 6);
+        realtimeReady.startRealtimeSession();
+        ConversationSession realtimeTerminated = ConversationSession.create(
+                "conv_reconcile_done", 17L, ConversationTopic.DAILY, 6);
+        realtimeTerminated.startRealtimeSession();
+        realtimeTerminated.start();
+        realtimeTerminated.terminate(
+                LocalDateTime.of(2026, 7, 22, 1, 8), TerminationReason.USER_FINISHED);
+        conversationSessionRepository.saveAllAndFlush(
+                java.util.List.of(textOnly, realtimeReady, realtimeTerminated));
+
+        java.util.List<ConversationSession> candidates = conversationSessionRepository
+                .findAllByStatusInAndCurrentSessionEpochGreaterThan(
+                        Set.of(ConversationStatus.READY, ConversationStatus.IN_PROGRESS), 0);
+
+        assertThat(candidates)
+                .extracting(ConversationSession::getConversationId)
+                .containsExactly("conv_reconcile_ready");
+    }
+
+    @Test
     void 종료_사유는_문자열_Enum으로_저장되고_version이_증가한다() {
         ConversationSession session = ConversationSession.create(
                 "conv_version_001", 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);

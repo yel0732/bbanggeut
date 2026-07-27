@@ -1,6 +1,7 @@
 package com.A501.backend.domain.conversation.repository;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.Lock;
@@ -20,6 +21,14 @@ public interface ConversationSessionRepository extends JpaRepository<Conversatio
     Optional<ConversationSession> findFirstByChildIdAndStatusInOrderByCreatedAtDesc(
             Long childId,
             Collection<ConversationStatus> statuses);
+
+    /**
+     * Realtime Session을 한 번이라도 발급받았고(currentSessionEpoch > 0) 아직 종료되지 않은
+     * 세션만 좁힌다. 텍스트 전용 대화는 epoch가 계속 0이라 자동으로 제외된다(Reconciler 대상 조회용).
+     */
+    List<ConversationSession> findAllByStatusInAndCurrentSessionEpochGreaterThan(
+            Collection<ConversationStatus> statuses,
+            int currentSessionEpoch);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select session from ConversationSession session where session.conversationId = :conversationId")

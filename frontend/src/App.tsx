@@ -1,9 +1,12 @@
 import { Suspense } from 'react'
 import { RouterProvider } from 'react-router-dom'
 
+import { useButtonClickSound } from '@/hooks/useButtonClickSound'
 import { router } from '@/routes/router'
 
 function App() {
+  useButtonClickSound()
+
   return (
     <Suspense fallback={<PageLoader />}>
       <RouterProvider router={router} />

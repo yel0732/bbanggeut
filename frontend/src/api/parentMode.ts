@@ -5,11 +5,66 @@ export type ReportListItem = {
   reportDate: string
   status: ReportStatus
   dataAvailability: {
-    gameDataAvailable: boolean
-    conversationDataAvailable: boolean
+    hasGameData: boolean
+    hasConversationData: boolean
   }
   generatedAt: string | null
   createdAt: string
+  failure?: {
+    code: string
+    message: string
+    retryCount: number
+    canRegenerate: boolean
+    failedAt: string
+  } | null
+}
+
+export type ReportGameResult = {
+  gameSessionId: string
+  gameType: string
+  gameName: string
+  playDurationSeconds: number
+  score: number
+  resultMetrics: Record<string, unknown> | null
+  completedAt: string
+}
+
+export type ReportConversationSummary = {
+  diaryTitle: string
+  diaryContent: string
+  mainEvents: string[]
+  expressedEmotions: string[]
+  interests: string[]
+  sourceConversationCount: number
+  generatedAt: string
+}
+
+export type ReportDetailResponse = {
+  reportId: number
+  childId: number
+  reportDate: string
+  aggregationPeriod: {
+    startedAt: string
+    endedAt: string
+    timezone: string
+  }
+  status: ReportStatus
+  dataAvailability: ReportListItem['dataAvailability']
+  gameResults: ReportGameResult[]
+  conversationSummary: ReportConversationSummary | null
+  failure: ReportListItem['failure']
+  generatedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ReportRegenerationResponse = {
+  reportId: number
+  childId: number
+  reportDate: string
+  status: ReportStatus
+  requestedAt: string
+  message: string
 }
 
 export type ReportListResponse = {
@@ -47,7 +102,8 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(
 
 export function getStoredAccessToken() {
   for (const key of ['accessToken', 'authToken', 'token']) {
-    const token = window.localStorage.getItem(key)
+    const token =
+      window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key)
     if (token) return token
   }
   return null
@@ -59,12 +115,22 @@ export function isBackendChildId(id: string) {
 
 export async function getChildReports(
   childId: number,
-  options: { page?: number; size?: number; signal?: AbortSignal } = {},
+  options: {
+    page?: number
+    size?: number
+    startDate?: string
+    endDate?: string
+    status?: ReportStatus
+    signal?: AbortSignal
+  } = {},
 ) {
   const search = new URLSearchParams({
     page: String(options.page ?? 0),
     size: String(options.size ?? 20),
   })
+  if (options.startDate) search.set('startDate', options.startDate)
+  if (options.endDate) search.set('endDate', options.endDate)
+  if (options.status) search.set('status', options.status)
   const response = await fetch(
     `${API_BASE_URL}/api/children/${childId}/reports?${search}`,
     {
@@ -76,6 +142,43 @@ export async function getChildReports(
     throw new Error(`리포트 목록을 불러오지 못했어요. (${response.status})`)
   }
   return (await response.json()) as ReportListResponse
+}
+
+export async function getChildReport(
+  childId: number,
+  reportDate: string,
+  signal?: AbortSignal,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/children/${childId}/reports/${reportDate}`,
+    { headers: authorizationHeaders(), signal },
+  )
+  if (!response.ok) {
+    throw new Error(
+      `리포트 상세 내용을 불러오지 못했어요. (${response.status})`,
+    )
+  }
+  return (await response.json()) as ReportDetailResponse
+}
+
+export async function regenerateChildReport(
+  childId: number,
+  reportDate: string,
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/children/${childId}/reports/${reportDate}/regenerate`,
+    {
+      method: 'POST',
+      headers: {
+        ...authorizationHeaders(),
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+    },
+  )
+  if (!response.ok) {
+    throw new Error(`리포트 재생성을 요청하지 못했어요. (${response.status})`)
+  }
+  return (await response.json()) as ReportRegenerationResponse
 }
 
 export async function subscribeToReportNotifications(

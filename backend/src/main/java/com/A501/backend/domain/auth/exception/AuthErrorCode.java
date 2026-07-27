@@ -18,7 +18,8 @@ public enum AuthErrorCode implements ErrorCode {
     REFRESH_TOKEN_REUSED(HttpStatus.UNAUTHORIZED, "AUTH_REFRESH_TOKEN_REUSED", "토큰 재사용이 감지되었습니다. 다시 로그인해주세요."),
     INVALID_GOOGLE_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_GOOGLE_TOKEN", "구글 인증에 실패했습니다. 다시 시도해주세요."),
     INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_SIGNUP_TOKEN", "가입 세션이 만료되었습니다. 다시 시도해주세요."),
-    INVALID_LINK_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_LINK_TOKEN", "연동 세션이 만료되었습니다. 다시 시도해주세요.");
+    INVALID_LINK_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_LINK_TOKEN", "연동 세션이 만료되었습니다. 다시 시도해주세요."),
+    PARENT_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH_PARENT_NOT_FOUND", "계정 정보를 확인할 수 없습니다. 다시 로그인해주세요.");
 
     private final HttpStatus status;
     private final String code;

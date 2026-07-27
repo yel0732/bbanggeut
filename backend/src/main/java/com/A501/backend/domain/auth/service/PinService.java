@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.security.PinProperties;
@@ -32,7 +33,7 @@ public class PinService {
         if (parent.hasPin()) {
             throw new BusinessException(PinErrorCode.PIN_ALREADY_SET);
         }
-        parent.setPin(passwordEncoder.encode(rawPin));
+        parent.setPin(passwordEncoder.encode(rawPin), LocalDateTime.now(KST));
     }
 
     // 잠금 카운트 증가가 BusinessException으로 인한 트랜잭션 롤백에 같이 취소되지 않도록
@@ -72,13 +73,22 @@ public class PinService {
         }
 
         Parent parent = getParent(parentId);
-        parent.setPin(passwordEncoder.encode(newPin));
+        parent.setPin(passwordEncoder.encode(newPin), LocalDateTime.now(KST));
         // TODO(TBD-P6): 신규 PIN이 기존 PIN과 동일한 경우의 허용/거부 정책 미정 — 지금은 허용.
     }
 
+    // child 도메인이 Parent 엔티티/리포지토리를 직접 참조하지 않고 이 서비스 메서드를 통해서만
+    // PIN 설정 여부를 확인하도록 하기 위한 공개 API.
+    public boolean hasPin(Long parentId) {
+        return getParent(parentId).hasPin();
+    }
+
+    // 소프트 삭제된 Parent는 걸러낸다 — AuthService.findAuthenticatedParent/googleLink와
+    // 동일한 패턴. 삭제 시점 이후에도 만료 전 access token으로 PIN API를 계속 쓸 수 있게
+    // 되는 걸 막기 위함이다(JwtAuthenticationFilter는 토큰만 검증하고 삭제 여부는 보지 않음).
     private Parent getParent(Long parentId) {
         return parentRepository.findById(parentId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "인증된 parentId에 해당하는 Parent를 찾을 수 없습니다: " + parentId));
+                .filter(p -> !p.isDeleted())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.PARENT_NOT_FOUND));
     }
 }

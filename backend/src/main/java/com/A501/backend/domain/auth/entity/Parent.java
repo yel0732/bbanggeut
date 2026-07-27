@@ -100,9 +100,11 @@ public class Parent extends BaseTimeEntity {
         return pinLockedUntil != null && pinLockedUntil.isAfter(now);
     }
 
-    public void setPin(String pinHash) {
+    // now는 호출부(PinService)가 Asia/Seoul 기준으로 계산해 넘긴다 — 엔티티가 타임존을
+    // 알 필요 없이, PIN 잠금 시간 비교와 동일한 기준으로 pinSetAt을 남기기 위함.
+    public void setPin(String pinHash, LocalDateTime now) {
         this.pinHash = pinHash;
-        this.pinSetAt = LocalDateTime.now();
+        this.pinSetAt = now;
         resetPinFailures();
     }
 

@@ -106,6 +106,17 @@ class PinControllerTest {
     }
 
     @Test
+    void verifyPin_returnsBadRequestForNonFourDigitPin() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"12a4\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void verifyPin_returnsForbiddenWhenPinNotSet() throws Exception {
         String accessToken = generateAccessToken();
         doThrow(new BusinessException(PinErrorCode.PIN_NOT_SET))
@@ -171,6 +182,17 @@ class PinControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPin\":\"1234\",\"newPin\":\"56a8\",\"newPinConfirm\":\"56a8\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void changePin_returnsBadRequestForNonFourDigitCurrentPin() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(patch("/api/profile/pin")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPin\":\"12a4\",\"newPin\":\"5678\",\"newPinConfirm\":\"5678\"}"))
                 .andExpect(status().isBadRequest());
     }
 

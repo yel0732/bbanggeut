@@ -12,6 +12,9 @@ import dino3Url from '@/assets/images/child-home/dino-3.webp'
 import dino4Url from '@/assets/images/child-home/dino-4.webp'
 import dino5Url from '@/assets/images/child-home/dino-5.webp'
 import gateUrl from '@/assets/images/child-home/gate.webp'
+import hoverCaveUrl from '@/assets/images/child-home/hover-cave.webp'
+import hoverGateUrl from '@/assets/images/child-home/hover-gate.webp'
+import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
@@ -38,7 +41,7 @@ export function ChildHomePage() {
 
   useEffect(() => {
     let cancelled = false
-    const frames = Object.values(DINO_FRAMES)
+    const frames = [...Object.values(DINO_FRAMES), hoverCaveUrl, hoverGateUrl]
     Promise.all(
       frames.map(
         (frame) =>
@@ -97,6 +100,20 @@ export function ChildHomePage() {
           src={backgroundUrl}
         />
 
+        <Link
+          aria-label="프로필 선택으로 돌아가기"
+          className="absolute top-[25px] left-[25px] z-40 size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+          to="/profiles"
+        >
+          <img
+            alt=""
+            className="size-full object-contain"
+            decoding="async"
+            draggable={false}
+            src={leftButtonUrl}
+          />
+        </Link>
+
         {/* 문(門): 놀자! */}
         <button
           className="absolute top-[25px] left-[90px] z-[5] h-[277.5px] w-[370px] cursor-pointer border-none bg-none p-0"
@@ -105,27 +122,26 @@ export function ChildHomePage() {
           onMouseLeave={() => setIsGateHovered(false)}
           type="button"
         >
-          <div className="absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite] transition-transform duration-[180ms] hover:scale-[1.06]">
+          <div
+            className={`absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite] transition duration-[220ms] ${isGateHovered ? '-translate-y-1 scale-[1.04] brightness-110 drop-shadow-[0_18px_18px_rgba(255,222,105,0.48)]' : ''}`}
+          >
             <img
               alt="문"
               className="h-full w-full [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] object-contain"
               decoding="async"
-              src={gateUrl}
+              src={isGateHovered ? hoverGateUrl : gateUrl}
             />
           </div>
           <div className="absolute top-0 left-[300px]">
             <div
-              className="relative flex h-[94px] w-[132px] items-center justify-center transition-opacity duration-200"
-              style={{ opacity: isGateHovered ? 1 : 0 }}
+              className={`relative flex h-[94px] w-[132px] items-center justify-center transition duration-[220ms] ${isGateHovered ? '-translate-y-1 scale-[1.08] brightness-110 drop-shadow-[0_8px_10px_rgba(255,229,134,0.38)]' : ''}`}
             >
-              {isGateHovered ? (
-                <img
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
-                  decoding="async"
-                  src={bubbleSmallUrl}
-                />
-              ) : null}
+              <img
+                alt=""
+                className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
+                decoding="async"
+                src={bubbleSmallUrl}
+              />
               <span
                 className="relative z-[1] mb-3.5 text-[24px] whitespace-nowrap text-[#3a7d2c]"
                 style={jua}
@@ -144,27 +160,28 @@ export function ChildHomePage() {
           onMouseLeave={() => setIsCaveHovered(false)}
           type="button"
         >
-          <div className="absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite] transition-transform duration-[180ms] hover:scale-[1.06]">
-            <img
-              alt="동굴 집"
-              className="h-full w-full [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] object-contain"
-              decoding="async"
-              src={caveUrl}
-            />
-          </div>
-          <div className="absolute top-0 left-[-145px]">
+          <div className="absolute top-[5px] right-[-10px] bottom-[-13px] left-[-10px]">
             <div
-              className="relative flex h-[96px] w-[178px] items-center justify-center transition-opacity duration-200"
-              style={{ opacity: isCaveHovered ? 1 : 0 }}
+              className={`absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite] transition-transform duration-[220ms] ${isCaveHovered ? '-translate-y-1 scale-[1.04]' : ''}`}
             >
-              {isCaveHovered ? (
-                <img
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
-                  decoding="async"
-                  src={bubbleMediumUrl}
-                />
-              ) : null}
+              <img
+                alt="동굴 집"
+                className="h-full w-full [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] object-contain"
+                decoding="async"
+                src={isCaveHovered ? hoverCaveUrl : caveUrl}
+              />
+            </div>
+          </div>
+          <div className="absolute top-0 left-[-150px]">
+            <div
+              className={`relative flex h-[96px] w-[178px] items-center justify-center transition duration-[220ms] ${isCaveHovered ? '-translate-y-1 scale-[1.08] brightness-110 drop-shadow-[0_8px_10px_rgba(255,212,117,0.38)]' : ''}`}
+            >
+              <img
+                alt=""
+                className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
+                decoding="async"
+                src={bubbleMediumUrl}
+              />
               <span
                 className="relative z-[1] mb-4 text-[21px] whitespace-nowrap text-[#c96a2e]"
                 style={jua}
@@ -176,7 +193,7 @@ export function ChildHomePage() {
         </button>
 
         {/* 공룡 캐릭터 */}
-        <div className="absolute top-[300px] left-1/2 h-[300px] w-[336px] -translate-x-1/2">
+        <div className="absolute top-[280px] left-1/2 h-[300px] w-[336px] -translate-x-1/2">
           <div className="absolute top-[-115px] left-1/2 h-[122px] w-[270px] -translate-x-1/2">
             <img
               alt=""

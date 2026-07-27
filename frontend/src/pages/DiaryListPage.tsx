@@ -185,7 +185,8 @@ export function DiaryListPage() {
 
         <Link
           aria-label="대화 화면으로 돌아가기"
-          className="absolute top-4 left-[78px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
+          className="absolute top-[25px] left-[25px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
+          state={{ skipGuide: true }}
           to="/conversation"
         >
           <img

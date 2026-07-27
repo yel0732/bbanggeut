@@ -9,12 +9,16 @@ tested without a real PeerConnection.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Protocol
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.mediastreams import MediaStreamTrack
 from aiortc.sdp import candidate_from_sdp
+
+from app.webrtc.audio_bridge import SessionAudioBridge
 
 
 class PeerConnectionState(StrEnum):
@@ -112,13 +116,34 @@ class AiortcPeerConnection:
     def __init__(self) -> None:
         self._pc = RTCPeerConnection()
         self._pc.on("connectionstatechange", self._handle_state_change)
+        self._pc.on("track", self._handle_track)
         self._callback: StateChangeCallback | None = None
+        self._audio_bridge = SessionAudioBridge(logging.getLogger("app.webrtc.audio_bridge"))
 
     async def accept_offer(self, sdp: str) -> str:
+        # setRemoteDescription() processes the offer's m-lines synchronously,
+        # so _handle_track() has already started self._audio_bridge (if the
+        # offer carried an audio track) by the time we reach the next line —
+        # confirmed against aiortc 1.15 source (jira/plan/DIARY-2-W04.md §1).
+        #
+        # addTrack() must NOT be called for an audio-less offer: aiortc only
+        # creates a transceiver per m-line actually present in the offer, and
+        # adding a track with no matching transceiver crashes createAnswer()/
+        # setLocalDescription() with "None is not in list" (found while wiring
+        # this up — a test client offering only a DataChannel, no audio,
+        # reproduced it). So the outbound echo track is only added when an
+        # inbound audio track was actually received (§11-C correction: no
+        # AudioStreamTrack() fallback for a genuinely audio-less offer).
         await self._pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
+        if self._audio_bridge.is_running:
+            self._pc.addTrack(self._audio_bridge.create_outbound_track())
         answer = await self._pc.createAnswer()
         await self._pc.setLocalDescription(answer)
         return self._pc.localDescription.sdp
+
+    def _handle_track(self, track: MediaStreamTrack) -> None:
+        if track.kind == "audio" and not self._audio_bridge.is_running:
+            self._audio_bridge.start(track)
 
     async def add_ice_candidate(
         self, candidate: str, sdp_mid: str | None, sdp_mline_index: int | None
@@ -132,6 +157,7 @@ class AiortcPeerConnection:
         self._callback = callback
 
     async def close(self) -> None:
+        await self._audio_bridge.stop()
         await self._pc.close()
 
     async def _handle_state_change(self) -> None:

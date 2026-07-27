@@ -30,6 +30,7 @@ async def signaling_endpoint(websocket: WebSocket) -> None:
         registry=state.realtime_connection_registry,
         heartbeat_factory=state.realtime_heartbeat_factory,
         map_failure_code=state.map_ticket_failure_code,
+        epoch_registry=state.session_epoch_registry,
         logger=_logger,
     )
     await connection.run()

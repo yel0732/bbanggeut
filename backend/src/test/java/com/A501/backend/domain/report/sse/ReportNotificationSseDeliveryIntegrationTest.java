@@ -25,6 +25,7 @@ import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.port.ConversationSummaryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort;
+import com.A501.backend.domain.report.port.ReportNotificationRecipientPort.ReportNotificationRecipient;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
 import com.A501.backend.domain.report.service.DailyReportGenerationService;
@@ -73,7 +74,8 @@ class ReportNotificationSseDeliveryIntegrationTest {
     void setUp() {
         notificationRepository.deleteAll();
         dailyReportRepository.deleteAll();
-        when(recipientPort.findParentId(CHILD_ID)).thenReturn(PARENT_ID);
+        when(recipientPort.findRecipient(CHILD_ID))
+                .thenReturn(new ReportNotificationRecipient(PARENT_ID, "하준"));
     }
 
     @Test

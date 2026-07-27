@@ -13,21 +13,24 @@ public class LocalReportNotificationRecipientAdapter
 
     private final Long mockChildId;
     private final Long mockParentId;
+    private final String mockChildName;
 
     public LocalReportNotificationRecipientAdapter(
             @Value("${app.local.mock-child-id:15}") Long mockChildId,
-            @Value("${app.local.mock-child-owner-id:1}") Long mockParentId
+            @Value("${app.local.mock-child-owner-id:1}") Long mockParentId,
+            @Value("${app.local.mock-child-name:아이}") String mockChildName
     ) {
         this.mockChildId = mockChildId;
         this.mockParentId = mockParentId;
+        this.mockChildName = mockChildName;
     }
 
     @Override
-    public Long findParentId(Long childId) {
+    public ReportNotificationRecipient findRecipient(Long childId) {
         if (!mockChildId.equals(childId)) {
             throw new IllegalArgumentException(
                     "Notification recipient was not found.");
         }
-        return mockParentId;
+        return new ReportNotificationRecipient(mockParentId, mockChildName);
     }
 }

@@ -568,8 +568,8 @@ async def test_dialogue_session_is_created_when_the_data_channel_arrives() -> No
     created: list = []
     session = _FakeDialogueSession()
 
-    async def factory(publisher, conversation_id):
-        created.append((publisher, conversation_id))
+    async def factory(publisher, conversation_id, speaker):
+        created.append((publisher, conversation_id, speaker))
         return session
 
     websocket = FakeWebSocket()
@@ -595,7 +595,7 @@ async def test_the_publisher_given_to_the_session_targets_this_session() -> None
     captured: list = []
     session = _FakeDialogueSession()
 
-    async def factory(publisher, conversation_id):
+    async def factory(publisher, conversation_id, speaker):
         captured.append(publisher)
         return session
 
@@ -623,7 +623,7 @@ async def test_guard_uses_the_session_hooks_for_inbound_events() -> None:
 
     session = _FakeDialogueSession()
 
-    async def factory(publisher, conversation_id):
+    async def factory(publisher, conversation_id, speaker):
         return session
 
     websocket = FakeWebSocket()
@@ -658,7 +658,7 @@ async def test_guard_uses_the_session_hooks_for_inbound_events() -> None:
 async def test_cleanup_closes_the_dialogue_session() -> None:
     session = _FakeDialogueSession()
 
-    async def factory(publisher, conversation_id):
+    async def factory(publisher, conversation_id, speaker):
         return session
 
     websocket = FakeWebSocket()

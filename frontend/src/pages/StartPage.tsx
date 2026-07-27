@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
+import { restoreSession } from '@/api/auth'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
@@ -25,16 +26,22 @@ export function StartPage() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(
     Boolean((location.state as StartPageLocationState | null)?.openLoginModal),
   )
+  const [isCheckingSession, setIsCheckingSession] = useState(false)
 
   const enterForest = async () => {
+    if (isCheckingSession) return
+    setIsCheckingSession(true)
     await playBgm()
 
-    if (isAuthenticated()) {
-      navigate('/profiles')
-      return
+    try {
+      if (await restoreSession()) {
+        navigate('/profiles')
+        return
+      }
+      setIsLoginModalOpen(true)
+    } finally {
+      setIsCheckingSession(false)
     }
-
-    setIsLoginModalOpen(true)
   }
 
   return (
@@ -57,7 +64,7 @@ export function StartPage() {
       />
       <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(180deg,rgba(3,16,10,0.02)_0%,rgba(3,16,10,0.34)_100%)]" />
 
-      <div className="absolute top-[clamp(44px,9vh,70px)] right-[clamp(24px,7.5vw,96px)] z-20 flex w-[min(440px,calc(100vw-48px))] flex-col items-center">
+      <div className="absolute top-[clamp(44px,9vh,70px)] right-[clamp(24px,7.5vw,96px)] z-20 flex w-[550px] flex-col items-center">
         <img
           alt="빵긋"
           className="block w-full drop-shadow-[0_10px_18px_rgba(0,0,0,0.28)]"
@@ -69,7 +76,7 @@ export function StartPage() {
       <div className="absolute right-30 bottom-12 z-20">
         <MainStartButton
           imageUrl={greenButtonUrl}
-          label="숲 속 들어가기"
+          label={isCheckingSession ? '확인하고 있어요...' : '숲 속 들어가기'}
           onClick={() => {
             void enterForest()
           }}
@@ -78,7 +85,7 @@ export function StartPage() {
 
       <button
         aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="absolute bottom-10 left-[clamp(16px,6vw,78px)] z-40 size-28 border-none bg-none p-0 drop-shadow-[0_5px_10px_rgba(0,0,0,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white max-[420px]:h-[68px] max-[420px]:w-[68px]"
+        className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_5px_10px_rgba(0,0,0,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white max-[420px]:h-[68px] max-[420px]:w-[68px]"
         onClick={toggleBgm}
         type="button"
       >
@@ -176,12 +183,6 @@ function LoginModal({ onClose }: { onClose: () => void }) {
         </button>
       </div>
     </div>
-  )
-}
-
-function isAuthenticated() {
-  return ['accessToken', 'authToken', 'token'].some((key) =>
-    Boolean(localStorage.getItem(key) ?? sessionStorage.getItem(key)),
   )
 }
 

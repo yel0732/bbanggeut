@@ -1,3 +1,7 @@
+import { authFetch } from '@/api/auth'
+import { apiUrl } from '@/api/config'
+export { getStoredAccessToken } from '@/api/auth'
+
 export type ReportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
 
 export type ReportListItem = {
@@ -84,6 +88,7 @@ export type ReportNotificationEvent = {
   id: string
   reportDate: string
   message: string
+  childName: string
 }
 
 export const PARENT_MODE_API_CAPABILITIES = {
@@ -94,20 +99,6 @@ export const PARENT_MODE_API_CAPABILITIES = {
   parentPasswordUpdate: false,
   reportNotificationPreferenceUpdate: false,
 } as const
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(
-  /\/$/,
-  '',
-)
-
-export function getStoredAccessToken() {
-  for (const key of ['accessToken', 'authToken', 'token']) {
-    const token =
-      window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key)
-    if (token) return token
-  }
-  return null
-}
 
 export function isBackendChildId(id: string) {
   return /^[1-9]\d*$/.test(id)
@@ -131,10 +122,9 @@ export async function getChildReports(
   if (options.startDate) search.set('startDate', options.startDate)
   if (options.endDate) search.set('endDate', options.endDate)
   if (options.status) search.set('status', options.status)
-  const response = await fetch(
-    `${API_BASE_URL}/api/children/${childId}/reports?${search}`,
+  const response = await authFetch(
+    apiUrl(`/api/children/${childId}/reports?${search}`),
     {
-      headers: authorizationHeaders(),
       signal: options.signal,
     },
   )
@@ -149,9 +139,9 @@ export async function getChildReport(
   reportDate: string,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/children/${childId}/reports/${reportDate}`,
-    { headers: authorizationHeaders(), signal },
+  const response = await authFetch(
+    apiUrl(`/api/children/${childId}/reports/${reportDate}`),
+    { signal },
   )
   if (!response.ok) {
     throw new Error(
@@ -165,12 +155,11 @@ export async function regenerateChildReport(
   childId: number,
   reportDate: string,
 ) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/children/${childId}/reports/${reportDate}/regenerate`,
+  const response = await authFetch(
+    apiUrl(`/api/children/${childId}/reports/${reportDate}/regenerate`),
     {
       method: 'POST',
       headers: {
-        ...authorizationHeaders(),
         'Idempotency-Key': crypto.randomUUID(),
       },
     },
@@ -185,10 +174,9 @@ export async function subscribeToReportNotifications(
   onEvent: (event: ReportNotificationEvent) => void,
   signal: AbortSignal,
 ) {
-  const response = await fetch(`${API_BASE_URL}/api/notifications/stream`, {
+  const response = await authFetch(apiUrl('/api/notifications/stream'), {
     headers: {
       Accept: 'text/event-stream',
-      ...authorizationHeaders(),
     },
     signal,
   })
@@ -216,11 +204,6 @@ export async function subscribeToReportNotifications(
   }
 }
 
-function authorizationHeaders(): HeadersInit {
-  const token = getStoredAccessToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
 function parseSseBlock(block: string): ReportNotificationEvent | null {
   let id = ''
   let type = ''
@@ -237,6 +220,10 @@ function parseSseBlock(block: string): ReportNotificationEvent | null {
     const data = JSON.parse(dataLines.join('\n')) as {
       reportDate?: unknown
       message?: unknown
+      childNickname?: unknown
+      childName?: unknown
+      nickname?: unknown
+      name?: unknown
     }
     if (
       typeof data.reportDate !== 'string' ||
@@ -244,11 +231,20 @@ function parseSseBlock(block: string): ReportNotificationEvent | null {
     ) {
       return null
     }
+    const childName = [
+      data.name,
+      data.childName,
+      data.childNickname,
+      data.nickname,
+    ].find(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    )
     return {
       id,
       type,
       reportDate: data.reportDate,
       message: data.message,
+      childName: childName?.trim() ?? '',
     }
   } catch {
     return null

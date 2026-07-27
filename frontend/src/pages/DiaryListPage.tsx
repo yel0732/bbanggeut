@@ -12,6 +12,7 @@ import diaryNoteUrl from '@/assets/images/diary/diary-note.webp'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
 import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
+import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
@@ -331,7 +332,7 @@ export function DiaryListPage() {
                 src={pagerLeftUrl}
               />
             </button>
-            {Array.from({ length: pageCount }, (_, index) => (
+            {getVisiblePageIndices(page, pageCount).map((index) => (
               <button
                 aria-label={`${index + 1}페이지`}
                 aria-current={index === page ? 'page' : undefined}

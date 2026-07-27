@@ -29,7 +29,7 @@ export const GAMES: GameInfo[] = [
       '손을 화면에 보여 주면 카메라가 손을 따라가요. 날아오는 과일 위로 손을 빠르게 휘저어 슝슝 잘라 보세요!',
     cardImageUrl: fruitCardUrl,
     floatClassName: '[animation-delay:-0.4s]',
-    positionClassName: 'top-[78px] left-[154px]',
+    positionClassName: 'top-[93px] left-[154px]',
     playable: true,
   },
   {
@@ -40,7 +40,7 @@ export const GAMES: GameInfo[] = [
       '두 카드에 똑같이 있는 그림은 하나예요. 왼손과 오른손으로 각각 그 그림을 짚고 잠깐 멈추면 정답!',
     cardImageUrl: dobbleCardUrl,
     floatClassName: '[animation-delay:-1.7s]',
-    positionClassName: 'top-[78px] right-[154px]',
+    positionClassName: 'top-[93px] right-[154px]',
     playable: true,
   },
 ]

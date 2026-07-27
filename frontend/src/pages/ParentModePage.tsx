@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { verifyParentPin } from '@/api/auth'
 
 import {
   getChildReports,
@@ -18,11 +19,13 @@ import keypadButtonUrl from '@/assets/images/parent-profile/keypad-panel.webp'
 import kidCellUrl from '@/assets/images/parent-profile/kid-cell.webp'
 import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
 import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
+import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import menuBoardUrl from '@/assets/images/parent-mode/menu-board.webp'
-import profileMenuButtonUrl from '@/assets/images/parent-mode/profile-menu-button.webp'
+import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide.webp'
+import reportNotificationButtonUrl from '@/assets/images/parent-mode/report-notification-button.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
 import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
@@ -33,6 +36,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
+import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreateDialog'
 import {
   loadChildProfiles,
   MAX_CHILD_PROFILES,
@@ -40,8 +44,14 @@ import {
   type ChildProfile,
 } from '@/lib/childProfiles'
 
-type PopupType = 'children' | 'profile' | 'notification' | null
-type ProfileView = 'menu' | 'photo' | 'pin' | 'password'
+type PopupType =
+  | 'children'
+  | 'child-create'
+  | 'child-edit'
+  | 'profile'
+  | 'notification'
+  | null
+type ProfileView = 'menu' | 'photo' | 'pin' | 'password' | 'withdraw'
 type PinStep = 'current' | 'new' | 'confirm'
 type PasswordErrors = {
   current: string
@@ -49,7 +59,6 @@ type PasswordErrors = {
   confirm: string
 }
 type NoticeDialog =
-  | { kind: 'edit'; profile: ChildProfile; value: string; error: string }
   | { kind: 'delete'; profile: ChildProfile }
   | null
 
@@ -59,9 +68,17 @@ type NotificationSettings = {
   timezone: string
 }
 
+type ReportArrivalNotification = {
+  id: string
+  childName: string
+  reportDate: string
+  read: boolean
+}
+
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PARENT_PHOTO_KEY = 'bbanggut-parent-photo'
 const NOTIFICATION_KEY = 'bbanggut-report-notification'
+const REPORT_ARRIVALS_KEY = 'bbanggut-report-arrivals'
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 const ALLOWED_PASSWORD_SPECIALS = `!"#$%&'()*+,-./:;<=>?@[\\]₩^_\`{|}~`
 const PASSWORD_GUIDE =
@@ -87,6 +104,17 @@ function loadNotificationSettings(): NotificationSettings {
     }
   } catch {
     return { enabled: true, time: '20:00', timezone: 'Asia/Seoul' }
+  }
+}
+
+function loadReportArrivals(): ReportArrivalNotification[] {
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(REPORT_ARRIVALS_KEY) ?? '[]',
+    )
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
   }
 }
 
@@ -138,6 +166,10 @@ export function ParentModePage() {
   const [pinMessage, setPinMessage] = useState(
     '현재 핀 번호 4자리를 입력해 주세요.',
   )
+  const [withdrawPin, setWithdrawPin] = useState('')
+  const [firstWithdrawPin, setFirstWithdrawPin] = useState('')
+  const [withdrawMessage, setWithdrawMessage] = useState('핀 번호를 입력해 주세요.')
+  const [isVerifyingWithdrawal, setIsVerifyingWithdrawal] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -151,7 +183,11 @@ export function ParentModePage() {
   const [savedMessage, setSavedMessage] = useState('')
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({})
   const [notificationToast, setNotificationToast] = useState('')
+  const [reportArrivals, setReportArrivals] = useState(loadReportArrivals)
+  const [isArrivalListOpen, setIsArrivalListOpen] = useState(false)
   const [childListPage, setChildListPage] = useState(0)
+  const [editingChildProfile, setEditingChildProfile] =
+    useState<ChildProfile | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialog>(null)
 
   useEffect(() => {
@@ -199,14 +235,53 @@ export function ParentModePage() {
     const controller = new AbortController()
 
     void subscribeToReportNotifications((event) => {
-      setNotificationToast(event.message)
+      const childName = event.childName.trim()
+      const message = childName
+        ? `${childName}이의 일일 리포트가 도착했어요!`
+        : event.message
+      setNotificationToast(message)
       window.setTimeout(() => setNotificationToast(''), 4500)
+      if (event.type !== 'REPORT_COMPLETED' || !childName) return
+      setReportArrivals((current) => {
+        const nextItem: ReportArrivalNotification = {
+          id: event.id || `${childName}-${event.reportDate}`,
+          childName,
+          reportDate: event.reportDate,
+          read: false,
+        }
+        const next = [
+          nextItem,
+          ...current.filter((item) => item.id !== nextItem.id),
+        ].slice(0, 30)
+        window.localStorage.setItem(REPORT_ARRIVALS_KEY, JSON.stringify(next))
+        return next
+      })
     }, controller.signal).catch(() => {
       // 인증/서버가 준비되지 않은 개발 환경에서는 홈 기능을 계속 제공한다.
     })
 
     return () => controller.abort()
   }, [])
+
+  const openArrivedReport = (arrival: ReportArrivalNotification) => {
+    const profile = profiles.find(
+      (item) =>
+        item.name.trim().toLocaleLowerCase('ko-KR') ===
+        arrival.childName.trim().toLocaleLowerCase('ko-KR'),
+    )
+    if (!profile) {
+      setNotificationToast(`${arrival.childName} 프로필을 찾을 수 없어요.`)
+      return
+    }
+    const next = reportArrivals.map((item) =>
+      item.id === arrival.id ? { ...item, read: true } : item,
+    )
+    setReportArrivals(next)
+    window.localStorage.setItem(REPORT_ARRIVALS_KEY, JSON.stringify(next))
+    navigate(
+      `/reports?childId=${encodeURIComponent(profile.id)}&childName=${encodeURIComponent(profile.name)}&reportDate=${encodeURIComponent(arrival.reportDate)}`,
+    )
+  }
 
   const openPopup = (nextPopup: Exclude<PopupType, null>) => {
     setSavedMessage('')
@@ -236,6 +311,55 @@ export function ParentModePage() {
     setNewPin('')
     setPinStep('current')
     setPinMessage('현재 핀 번호 4자리를 입력해 주세요.')
+  }
+
+  const resetWithdrawal = () => {
+    setWithdrawPin('')
+    setFirstWithdrawPin('')
+    setWithdrawMessage('핀 번호를 입력해 주세요.')
+    setIsVerifyingWithdrawal(false)
+  }
+
+  const pressWithdrawalPinKey = (key: string) => {
+    if (isVerifyingWithdrawal) return
+    if (key === '←') {
+      setWithdrawPin((value) => value.slice(0, -1))
+      return
+    }
+    if (!/^\d$/.test(key) || withdrawPin.length >= 4) return
+    const nextPin = withdrawPin + key
+    setWithdrawPin(nextPin)
+    if (nextPin.length < 4) return
+
+    if (!firstWithdrawPin) {
+      window.setTimeout(() => {
+        setFirstWithdrawPin(nextPin)
+        setWithdrawPin('')
+        setWithdrawMessage('확인을 위해 같은 핀 번호를 한 번 더 입력해 주세요.')
+      }, 180)
+      return
+    }
+
+    if (nextPin !== firstWithdrawPin) {
+      setWithdrawMessage('핀 번호가 서로 달라요. 처음부터 다시 입력해 주세요.')
+      window.setTimeout(resetWithdrawal, 700)
+      return
+    }
+
+    setIsVerifyingWithdrawal(true)
+    void verifyParentPin(nextPin)
+      .then(() => {
+        setWithdrawMessage(
+          '핀 번호가 확인됐어요. 회원 탈퇴 API 연결이 필요해요.',
+        )
+      })
+      .catch((error: unknown) => {
+        setWithdrawMessage(
+          error instanceof Error ? error.message : '핀 번호가 올바르지 않아요.',
+        )
+        window.setTimeout(resetWithdrawal, 900)
+      })
+      .finally(() => setIsVerifyingWithdrawal(false))
   }
 
   const pressPinKey = (key: string) => {
@@ -282,15 +406,20 @@ export function ParentModePage() {
   }
 
   useEffect(() => {
-    if (popup !== 'profile' || profileView !== 'pin') return
+    if (
+      popup !== 'profile' ||
+      (profileView !== 'pin' && profileView !== 'withdraw')
+    ) return
 
     const handlePinKeyboard = (event: KeyboardEvent) => {
       if (/^\d$/.test(event.key)) {
         event.preventDefault()
-        pressPinKey(event.key)
+        if (profileView === 'withdraw') pressWithdrawalPinKey(event.key)
+        else pressPinKey(event.key)
       } else if (event.key === 'Backspace') {
         event.preventDefault()
-        pressPinKey('←')
+        if (profileView === 'withdraw') pressWithdrawalPinKey('←')
+        else pressPinKey('←')
       }
     }
     window.addEventListener('keydown', handlePinKeyboard)
@@ -340,34 +469,8 @@ export function ParentModePage() {
   }
 
   const editChildProfile = (profile: ChildProfile) => {
-    setNoticeDialog({ kind: 'edit', profile, value: profile.name, error: '' })
-  }
-
-  const confirmChildProfileEdit = () => {
-    if (!noticeDialog || noticeDialog.kind !== 'edit') return
-    const trimmedName = noticeDialog.value.trim()
-    if (!trimmedName) {
-      setNoticeDialog({
-        ...noticeDialog,
-        error: '아이 이름을 입력해 주세요.',
-      })
-      return
-    }
-    if (trimmedName.length > 15) {
-      setNoticeDialog({
-        ...noticeDialog,
-        error: '이름은 15자까지 가능해요.',
-      })
-      return
-    }
-    updateChildProfiles(
-      profiles.map((item) =>
-        item.id === noticeDialog.profile.id
-          ? { ...item, name: trimmedName }
-          : item,
-      ),
-    )
-    setNoticeDialog(null)
+    setEditingChildProfile(profile)
+    setPopup('child-edit')
   }
 
   const removeChildProfile = (profile: ChildProfile) => {
@@ -434,6 +537,82 @@ export function ParentModePage() {
             src={isBgmPlaying ? musicOnUrl : musicOffUrl}
           />
         </button>
+
+        <div className="absolute bottom-[158px] left-[24px] z-50">
+          <button
+            aria-expanded={isArrivalListOpen}
+            aria-label="도착한 일일 리포트 알림"
+            className="relative size-[62px] overflow-hidden rounded-[17px] bg-[#f6edcf] p-0 shadow-[0_4px_9px_rgba(0,0,0,.34)] transition hover:scale-106"
+            onClick={() => setIsArrivalListOpen((value) => !value)}
+            type="button"
+          >
+            <img
+              alt=""
+              className="size-full scale-[1.62] object-cover"
+              src={reportNotificationButtonUrl}
+            />
+            {reportArrivals.some((item) => !item.read) ? (
+              <span
+                className="absolute top-0.5 right-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-[#ef694f] px-1 text-[12px] leading-none text-white shadow"
+                style={jua}
+              >
+                {Math.min(99, reportArrivals.filter((item) => !item.read).length)}
+              </span>
+            ) : null}
+          </button>
+
+          {isArrivalListOpen ? (
+            <section
+              aria-label="리포트 알림 목록"
+              className="absolute bottom-0 left-[76px] w-[360px] rounded-[22px] border-4 border-[#d8bd79] bg-[#fff9e9] p-4 shadow-[0_12px_30px_rgba(0,0,0,.32)]"
+            >
+              <div className="mb-2 flex items-center justify-between px-1">
+                <h2 className="text-[20px] text-[#4f6f35]" style={jua}>
+                  도착한 일일 리포트
+                </h2>
+                <button
+                  aria-label="알림 목록 닫기"
+                  className="text-[20px] text-[#806d47]"
+                  onClick={() => setIsArrivalListOpen(false)}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="max-h-[250px] space-y-2 overflow-y-auto pr-1">
+                {reportArrivals.length ? (
+                  reportArrivals.map((arrival) => (
+                    <button
+                      className={`w-full rounded-[15px] border-2 px-4 py-3 text-left text-[16px] transition hover:-translate-y-0.5 hover:bg-[#eef6d9] ${
+                        arrival.read
+                          ? 'border-[#dfd5b9] bg-[#faf5e8] text-[#756a51]'
+                          : 'border-[#aac86b] bg-[#f5fbdc] text-[#4e6434]'
+                      }`}
+                      key={arrival.id}
+                      onClick={() => openArrivedReport(arrival)}
+                      style={jua}
+                      type="button"
+                    >
+                      <span className="block">
+                        {arrival.childName}이의 일일 리포트가 도착했어요!
+                      </span>
+                      <span className="mt-1 block text-[13px] opacity-70">
+                        {arrival.reportDate}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p
+                    className="py-8 text-center text-[15px] text-[#8a7a55]"
+                    style={jua}
+                  >
+                    새로 도착한 리포트가 없어요.
+                  </p>
+                )}
+              </div>
+            </section>
+          ) : null}
+        </div>
 
         <nav className="absolute top-[25px] right-[10px] z-40 flex gap-3">
           <button
@@ -516,7 +695,7 @@ export function ParentModePage() {
           </div>
         ) : null}
 
-        {popup === 'children' ? (
+        {popup === 'children' || popup === 'child-edit' ? (
           <div
             className="absolute inset-0 z-60 flex items-center justify-center bg-[rgba(18,30,18,.58)]"
             onClick={closePopup}
@@ -620,7 +799,7 @@ export function ParentModePage() {
               {profiles.length < MAX_CHILD_PROFILES ? (
                 <button
                   className="absolute bottom-[74%] left-5/7 flex h-18 w-60 -translate-x-1/2 items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-103"
-                  onClick={() => navigate('/profiles/new?add=1')}
+                  onClick={() => setPopup('child-create')}
                   style={{
                     ...jua,
                     backgroundImage: `url(${completeButtonUrl})`,
@@ -661,7 +840,8 @@ export function ParentModePage() {
                     src={pagerLeftUrl}
                   />
                 </button>
-                {Array.from({ length: childPageCount }, (_, index) => (
+                {getVisiblePageIndices(currentChildPage, childPageCount).map(
+                  (index) => (
                   <button
                     aria-current={
                       index === currentChildPage ? 'page' : undefined
@@ -689,7 +869,8 @@ export function ParentModePage() {
                       {index + 1}
                     </span>
                   </button>
-                ))}
+                  ),
+                )}
                 <button
                   aria-label="다음 페이지"
                   className="size-[54px] bg-transparent p-0 transition hover:scale-105 disabled:opacity-40"
@@ -710,6 +891,40 @@ export function ParentModePage() {
               </nav>
             </section>
           </div>
+        ) : null}
+
+        {popup === 'child-create' ? (
+          <ChildProfileCreateDialog
+            onBack={() => setPopup('children')}
+            onCreate={(profile) => {
+              updateChildProfiles([...profiles, profile])
+              setChildListPage(
+                Math.floor(profiles.length / 3),
+              )
+              setPopup('children')
+            }}
+            profiles={profiles}
+          />
+        ) : null}
+
+        {popup === 'child-edit' && editingChildProfile ? (
+          <ChildProfileCreateDialog
+            initialProfile={editingChildProfile}
+            onBack={() => {
+              setEditingChildProfile(null)
+              setPopup('children')
+            }}
+            onCreate={(updatedProfile) => {
+              updateChildProfiles(
+                profiles.map((profile) =>
+                  profile.id === updatedProfile.id ? updatedProfile : profile,
+                ),
+              )
+              setEditingChildProfile(null)
+              setPopup('children')
+            }}
+            profiles={profiles}
+          />
         ) : null}
 
         {popup === 'profile' ? (
@@ -751,7 +966,9 @@ export function ParentModePage() {
                     ? '프로필 사진 관리'
                     : profileView === 'pin'
                       ? '핀 번호 변경'
-                      : '계정 비밀번호 변경'}
+                      : profileView === 'password'
+                        ? '계정 비밀번호 변경'
+                        : '회원 탈퇴'}
               </h2>
 
               {profileView !== 'menu' ? (
@@ -773,7 +990,7 @@ export function ParentModePage() {
                 <div className="absolute top-[18%] right-[17%] left-[17%] flex flex-col items-center">
                   <img
                     alt="부모 프로필"
-                    className="mb-3 size-[132px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
+                    className="-mb-4 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
                     src={parentPhoto ?? parentAvatarUrl}
                   />
                   {[
@@ -792,24 +1009,30 @@ export function ParentModePage() {
                       label: '계정 비밀번호 변경',
                       view: 'password' as const,
                     },
+                    {
+                      description: '핀 번호를 확인하고 계정을 탈퇴해요',
+                      label: '탈퇴하기',
+                      view: 'withdraw' as const,
+                    },
                   ].map((item) => (
                     <button
-                      className="relative -mb-0 h-[110px] w-[430px] bg-[length:100%_100%] bg-center bg-no-repeat text-center transition hover:scale-103"
+                      className="relative -mb-22 h-[170px] w-[410px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition hover:scale-103"
                       key={item.view}
                       onClick={() => {
                         if (item.view === 'pin') resetPin()
+                        if (item.view === 'withdraw') resetWithdrawal()
                         setProfileView(item.view)
                       }}
                       style={{
                         ...jua,
-                        backgroundImage: `url(${profileMenuButtonUrl})`,
+                        backgroundImage: `url(${profileMenuWideUrl})`,
                       }}
                       type="button"
                     >
-                      <span className="block text-[23px] text-[#5f492a]">
+                      <span className="block text-[21px] text-[#5f492a]">
                         {item.label}
                       </span>
-                      <span className="mt-0.5 block text-[13px] text-[#82945a]">
+                      <span className="mt-0.5 block text-[12px] text-[#82945a]">
                         {item.description}
                       </span>
                     </button>
@@ -904,6 +1127,60 @@ export function ParentModePage() {
                   <button
                     className="mt-4 text-[15px] text-[#8a7a55] underline"
                     onClick={resetPin}
+                    style={jua}
+                    type="button"
+                  >
+                    처음부터 다시 입력
+                  </button>
+                </div>
+              ) : null}
+
+              {profileView === 'withdraw' ? (
+                <div className="absolute top-[22%] right-[18%] left-[18%] text-center">
+                  <p className="h-12 text-[17px] leading-6 text-[#a34f3d]" style={jua}>
+                    {withdrawMessage}
+                  </p>
+                  <div className="mt-1 flex justify-center gap-1">
+                    {Array.from({ length: 4 }, (_, index) => (
+                      <img
+                        alt=""
+                        className="size-[55px] object-contain"
+                        key={index}
+                        src={
+                          index < withdrawPin.length
+                            ? pinDotFillUrl
+                            : pinDotEmptyUrl
+                        }
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-4 text-[14px] text-[#8a7a55]" style={jua}>
+                    탈퇴 확인을 위해 동일한 핀 번호를 두 번 입력해 주세요.
+                  </p>
+                  <div className="mx-auto mt-2 grid w-[300px] -translate-x-2 grid-cols-3">
+                    {KEYS.map((key, index) =>
+                      key ? (
+                        <button
+                          className="-m-3 mx-auto h-[85px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#3a7d2c] active:scale-95 disabled:opacity-50"
+                          disabled={isVerifyingWithdrawal}
+                          key={key}
+                          onClick={() => pressWithdrawalPinKey(key)}
+                          style={{
+                            ...jua,
+                            backgroundImage: `url(${keypadButtonUrl})`,
+                          }}
+                          type="button"
+                        >
+                          {key}
+                        </button>
+                      ) : (
+                        <span key={`withdraw-empty-${index}`} />
+                      ),
+                    )}
+                  </div>
+                  <button
+                    className="mt-4 text-[15px] text-[#8a7a55] underline"
+                    onClick={resetWithdrawal}
                     style={jua}
                     type="button"
                   >
@@ -1149,35 +1426,6 @@ export function ParentModePage() {
               </button>
             </section>
           </div>
-        ) : null}
-        {noticeDialog?.kind === 'edit' ? (
-          <ParentNoticeDialog
-            confirmLabel="수정"
-            onCancel={() => setNoticeDialog(null)}
-            onConfirm={confirmChildProfileEdit}
-            title="아이 이름 수정"
-          >
-            <input
-              autoFocus
-              className="mt-4 h-12 w-full rounded-xl border-[3px] border-[#d2bd8c] bg-[#fffdf5] px-4 text-center text-[20px] text-[#5a4a2a] outline-none focus:border-[#88a959]"
-              maxLength={15}
-              onChange={(event) =>
-                setNoticeDialog({
-                  ...noticeDialog,
-                  value: event.target.value,
-                  error: '',
-                })
-              }
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') confirmChildProfileEdit()
-              }}
-              style={jua}
-              value={noticeDialog.value}
-            />
-            <p className="mt-1 h-5 text-[14px] text-[#c7563a]" style={jua}>
-              {noticeDialog.error}
-            </p>
-          </ParentNoticeDialog>
         ) : null}
         {noticeDialog?.kind === 'delete' ? (
           <ParentNoticeDialog

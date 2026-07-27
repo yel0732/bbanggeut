@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/fruit-game/result-bg.webp'
 import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
+import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import type { FruitGameResult } from '@/features/games/fruit/useFruitGame'
 import { getGameById } from '@/features/games/games'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
@@ -18,7 +20,10 @@ export function GameResultPage() {
   const { audioRef, isBgmPlaying } = useBgmPlayer()
 
   const game = getGameById(gameId)
-  const result = location.state as FruitGameResult | null
+  const result = location.state as
+    | (FruitGameResult & { recordError?: string })
+    | null
+  const [recordError, setRecordError] = useState(result?.recordError ?? '')
 
   // 정상 완료로 전달된 결과가 없으면 안내 화면으로 되돌린다.
   if (!game || !result) {
@@ -53,7 +58,7 @@ export function GameResultPage() {
         />
         <div className="absolute inset-0 bg-[rgba(10,26,12,0.42)]" />
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
+        <div className="absolute inset-0 flex -translate-y-8 flex-col items-center justify-center gap-6">
           <p
             className="text-[40px] leading-none text-white [text-shadow:0_3px_0_#3f7d1e,0_6px_10px_rgba(0,0,0,0.4)]"
             style={jua}
@@ -113,6 +118,15 @@ export function GameResultPage() {
             <ResultButton label="그만하기" onClick={() => navigate('/child')} />
           </div>
         </div>
+        {recordError ? (
+          <ParentNoticeDialog
+            compact
+            confirmLabel="확인"
+            message={recordError}
+            onConfirm={() => setRecordError('')}
+            title="게임 기록을 저장하지 못했어요"
+          />
+        ) : null}
       </div>
     </div>
   )

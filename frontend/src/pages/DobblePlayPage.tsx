@@ -43,6 +43,10 @@ import {
 } from '@/features/games/dobble/useDobbleGame'
 import { getGameById } from '@/features/games/games'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import {
+  nowAsLocalDateTime,
+  saveCompletedGameSession,
+} from '@/api/gameSessions'
 import { useCameraStream } from '@/hooks/useCameraStream'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useHandGestures, type HandSlot } from '@/hooks/useHandGestures'
@@ -83,6 +87,9 @@ export function DobblePlayPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { videoRef, status, requestCamera } = useCameraStream()
+  const selectedAtRef = useRef(nowAsLocalDateTime())
+  const playStartedAtRef = useRef<string | null>(null)
+  const clientPlayIdRef = useRef(crypto.randomUUID())
   // 효과음이 묻히지 않도록 배경 음악은 낮게 깐다.
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer({ volume: 0.22 })
   const { gesturesRef, modelReady } = useHandGestures(
@@ -108,7 +115,37 @@ export function DobblePlayPage() {
         navigate('/games', { replace: true })
         return
       }
-      navigate('/games/dobble/result', { replace: true, state: result })
+      const completedAt = nowAsLocalDateTime()
+      const playStartedAt = playStartedAtRef.current ?? selectedAtRef.current
+      void saveCompletedGameSession({
+        cardResults: result.cardResults,
+        clientPlayId: clientPlayIdRef.current,
+        completedAt,
+        gameId: 'dobble',
+        playDurationSeconds: result.activePlaySec,
+        playStartedAt,
+        score: result.score,
+        selectedAt: selectedAtRef.current,
+      })
+        .then(() => {
+          navigate('/games/dobble/result', {
+            replace: true,
+            state: { ...result, recordSaved: true },
+          })
+        })
+        .catch((error: unknown) => {
+          navigate('/games/dobble/result', {
+            replace: true,
+            state: {
+              ...result,
+              recordError:
+                error instanceof Error
+                  ? error.message
+                  : '게임 기록을 저장하지 못했어요.',
+              recordSaved: false,
+            },
+          })
+        })
     },
     [navigate],
   )
@@ -145,6 +182,19 @@ export function DobblePlayPage() {
     status === 'error',
   )
 
+  useEffect(() => {
+    if (dobble.phase === 'playing' && !playStartedAtRef.current) {
+      playStartedAtRef.current = nowAsLocalDateTime()
+    }
+  }, [dobble.phase])
+
+  const restartGame = useCallback(() => {
+    selectedAtRef.current = nowAsLocalDateTime()
+    playStartedAtRef.current = null
+    clientPlayIdRef.current = crypto.randomUUID()
+    dobble.restart()
+  }, [dobble])
+
   if (!game) {
     return <Navigate replace to="/games" />
   }
@@ -169,7 +219,7 @@ export function DobblePlayPage() {
 
         <img
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute top-[-30px] left-0 h-[750px] w-full object-cover"
           decoding="async"
           draggable={false}
           fetchPriority="high"
@@ -180,7 +230,7 @@ export function DobblePlayPage() {
         {status === 'granted' ? (
           <video
             autoPlay
-            className="pointer-events-none absolute right-3 bottom-3 z-[6] h-[120px] w-[160px] scale-x-[-1] rounded-2xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
+            className="pointer-events-none absolute right-[30px] bottom-[100px] z-[6] h-[120px] w-[160px] scale-x-[-1] rounded-2xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
             muted
             playsInline
             ref={videoRef}
@@ -208,7 +258,7 @@ export function DobblePlayPage() {
             {dobble.phase === 'paused' ? (
               <PauseOverlay
                 onQuit={leaveGame}
-                onRestart={dobble.restart}
+                onRestart={restartGame}
                 onResume={dobble.resume}
               />
             ) : null}
@@ -235,7 +285,7 @@ export function DobblePlayPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[22px] left-[24px] z-40 size-[56px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}
@@ -278,7 +328,7 @@ function PlayField({
   }
 
   return (
-    <div className="absolute inset-0 z-10">
+    <div className="absolute inset-0 z-10 -translate-y-[30px]">
       {(['left', 'right'] as const).map((side) => (
         <BoardSide
           feedbackKind={feedback?.kind ?? null}
@@ -345,7 +395,7 @@ function PlayField({
       {/* 플레이 중 조작 안내 */}
       {phase === 'playing' && !feedback && !hintSide ? (
         <p
-          className="absolute bottom-[24px] left-1/2 -translate-x-1/2 rounded-full bg-[rgba(40,26,10,0.4)] px-6 py-2 text-[22px] leading-none text-white [text-shadow:0_2px_6px_rgba(20,50,20,0.5)]"
+          className="absolute bottom-[50px] left-1/2 -translate-x-1/2 rounded-full bg-[rgba(40,26,10,0.4)] px-6 py-2 text-[22px] leading-none text-white [text-shadow:0_2px_6px_rgba(20,50,20,0.5)]"
           style={jua}
         >
           손바닥을 올리고 주먹을 쥐면 그 동물을 잡아요
@@ -805,40 +855,44 @@ function PlayHud({
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
-      <div className="absolute top-[22px] left-[38px]">
+      <div className="absolute top-[25px] left-[25px]">
         <QuitButton onClick={onQuit} />
       </div>
 
-      <h1
-        className="absolute top-[32px] left-[112px] text-[30px] leading-none text-white [text-shadow:0_4px_0_#7a4d16,0_7px_10px_rgba(40,26,10,0.35)]"
-        style={jua}
-      >
-        {title}
-      </h1>
-
-      <div className="absolute top-[20px] left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-[rgba(40,26,10,0.5)] px-7 py-2">
-        <span
-          className="text-[38px] leading-none text-[#ffe27a] [text-shadow:0_3px_0_#8a5a1a,0_6px_10px_rgba(0,0,0,0.4)]"
+      <div className="absolute inset-0">
+        <h1
+          className="absolute top-[40px] left-[90px] text-[30px] leading-none text-white [text-shadow:0_4px_0_#7a4d16,0_7px_10px_rgba(40,26,10,0.35)]"
           style={jua}
         >
-          {score}
-        </span>
-        <span className="text-[22px] leading-none text-white/85" style={jua}>
-          그림 {matchedCount}개
-        </span>
+          {title}
+        </h1>
+
+        <div className="absolute top-[35px] left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-[rgba(40,26,10,0.5)] px-7 py-2">
+          <span
+            className="text-[38px] leading-none text-[#ffe27a] [text-shadow:0_3px_0_#8a5a1a,0_6px_10px_rgba(0,0,0,0.4)]"
+            style={jua}
+          >
+            {score}
+          </span>
+          <span className="text-[22px] leading-none text-white/85" style={jua}>
+            그림 {matchedCount}개
+          </span>
+        </div>
+
+        <div
+          className={`absolute top-[35px] right-[112px] rounded-full px-5 py-1.5 ${
+            timeWarning
+              ? 'bg-[rgba(200,60,30,0.72)]'
+              : 'bg-[rgba(40,26,10,0.5)]'
+          }`}
+        >
+          <span className="text-[28px] leading-none text-white" style={jua}>
+            {formatTime(remainingSec)}
+          </span>
+        </div>
       </div>
 
-      <div
-        className={`absolute top-[28px] right-[112px] rounded-full px-5 py-1.5 ${
-          timeWarning ? 'bg-[rgba(200,60,30,0.72)]' : 'bg-[rgba(40,26,10,0.5)]'
-        }`}
-      >
-        <span className="text-[28px] leading-none text-white" style={jua}>
-          {formatTime(remainingSec)}
-        </span>
-      </div>
-
-      <div className="absolute top-[22px] right-[38px]">
+      <div className="absolute top-[25px] right-[30px] size-[62px]">
         <PauseButton disabled={!canPause} onClick={onPause} />
       </div>
     </div>

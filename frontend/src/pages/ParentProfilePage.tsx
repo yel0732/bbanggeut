@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
+import { completeNewSignupOnboarding } from '@/api/auth'
+
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
+import childTigerAvatarUrl from '@/assets/images/profile/child-avatar-tiger.webp'
+import childRabbitAvatarUrl from '@/assets/images/profile/child-avatar-rabbit.webp'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
 import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
@@ -152,6 +156,17 @@ export function ParentProfilePage() {
     setIsCameraOn(false)
   }
 
+  const cycleDefaultChildPhoto = () => {
+    stopCamera()
+    setChildPhotoUrl((current) => {
+      if (current === childTigerAvatarUrl) return childRabbitAvatarUrl
+      if (current === childRabbitAvatarUrl) return null
+      if (current === null) return childTigerAvatarUrl
+      return null
+    })
+    setChildFormMessage('')
+  }
+
   const toggleCamera = async () => {
     if (!isCameraOn) {
       try {
@@ -216,6 +231,16 @@ export function ParentProfilePage() {
       setChildFormMessage('아이 이름을 입력해 주세요.')
       return
     }
+    if (
+      profiles.some(
+        (profile) =>
+          profile.name.trim().toLocaleLowerCase('ko-KR') ===
+          name.toLocaleLowerCase('ko-KR'),
+      )
+    ) {
+      setChildFormMessage('같은 이름의 아이 프로필이 이미 있어요.')
+      return
+    }
     saveChildProfiles([
       ...profiles,
       {
@@ -237,6 +262,7 @@ export function ParentProfilePage() {
       setPinMessage('핀번호 설정과 확인을 완료해 주세요.')
       return
     }
+    completeNewSignupOnboarding()
     navigate('/profiles')
   }
 
@@ -272,7 +298,7 @@ export function ParentProfilePage() {
 
         <Link
           aria-label="뒤로"
-          className="absolute top-4 left-[78px] z-30 block size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105"
+          className="absolute top-[25px] left-[25px] z-30 block size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105"
           to="/"
         >
           <img
@@ -284,7 +310,7 @@ export function ParentProfilePage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-3 left-[78px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105"
+          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105"
           onClick={() => void toggleBgm()}
           type="button"
         >
@@ -295,7 +321,7 @@ export function ParentProfilePage() {
           />
         </button>
 
-        <main className="absolute top-[-2px] left-1/2 z-10 h-[720px] w-[710px] -translate-x-1/2">
+        <main className="absolute top-[-40px] left-1/2 z-10 h-[720px] w-[710px] -translate-x-1/2">
           <img
             alt=""
             className="pointer-events-none absolute inset-0 size-full"
@@ -483,11 +509,7 @@ export function ParentProfilePage() {
                 </button>
                 <button
                   className="-mt-5 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
-                  onClick={() => {
-                    stopCamera()
-                    setChildPhotoUrl(null)
-                    setChildFormMessage('')
-                  }}
+                  onClick={cycleDefaultChildPhoto}
                   style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
                   type="button"
                 >
@@ -506,7 +528,7 @@ export function ParentProfilePage() {
                 className="absolute top-[42%] right-0 left-0 text-center text-[15px] text-[#8a7a55]"
                 style={jua}
               >
-                기본 프사를 사용하거나 사진을 추가할 수 있어요.
+                세 마리의 동물이 있어요! 눌러서 확인해보세요!
               </p>
               <label
                 className="absolute top-[48.5%] left-[20%] text-[22px] text-[#3a7d2c]"

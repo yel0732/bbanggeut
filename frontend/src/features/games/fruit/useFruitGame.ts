@@ -4,8 +4,8 @@ import type { DistanceHint, PlayHand } from '@/hooks/useHandTracking'
 
 import {
   FRUIT_GAME_CONFIG as CFG,
+  FRUIT_TYPES,
   fruitDimensions,
-  pickRandomFruitType,
 } from './fruitGameConfig'
 import { drawScene, type RenderBlade, type RenderFruit } from './fruitRenderer'
 
@@ -28,6 +28,11 @@ export type FruitGameResult = {
   maxCombo: number
   activePlaySec: number
   ruleVersion: string
+  fruitResults: {
+    fruitCode: string
+    generatedCount: number
+    slicedCount: number
+  }[]
   /** 결과 정합성 통과 여부 (MGAME-21) */
   valid: boolean
 }
@@ -39,8 +44,6 @@ export type FruitGameState = {
   remainingSec: number
   /** 현재 이어 베고 있는 개수. 끊기면 0. */
   combo: number
-  /** 현재 콤보에 적용되는 점수 배수 */
-  comboMultiplier: number
   /** 피버 타임 진행 중인지 — 과일이 쏟아진다 */
   fever: boolean
   /** 손이 보일 때의 카메라 거리 힌트 */
@@ -60,6 +63,7 @@ type Snapshot = Omit<
 
 type Fruit = {
   id: number
+  fruitCode: string
   imageUrl: string
   score: number
   x: number
@@ -80,6 +84,15 @@ type Fruit = {
 
 type Blade = { ax: number; ay: number; bx: number; by: number }
 
+export type FruitGameRuntimeRule = {
+  rulesVersion: string
+  plannedDurationSeconds: number
+  sliceSpeedThreshold: number
+  fruitSpawnIntervalMs: number
+  maxVisibleFruit: number
+  fruits: { fruitCode: string; sizePx: number; score: number }[]
+}
+
 type Engine = {
   phase: GamePhase
   fruits: Fruit[]
@@ -88,6 +101,8 @@ type Engine = {
   slicedScoreSum: number
   slicedCount: number
   totalCount: number
+  generatedByFruit: Record<string, number>
+  slicedByFruit: Record<string, number>
   combo: number
   maxCombo: number
   comboExpiresAt: number
@@ -120,6 +135,8 @@ function createEngine(now: number): Engine {
     slicedScoreSum: 0,
     slicedCount: 0,
     totalCount: 0,
+    generatedByFruit: {},
+    slicedByFruit: {},
     combo: 0,
     maxCombo: 0,
     comboExpiresAt: 0,
@@ -170,8 +187,23 @@ function cuttingEdge(blade: Blade): Blade {
   }
 }
 
-function spawnFruit(engine: Engine): void {
-  const type = pickRandomFruitType()
+function spawnFruit(engine: Engine, rule: FruitGameRuntimeRule): void {
+  const configuredTypes = rule.fruits.flatMap((configured) => {
+    const localType = FRUIT_TYPES.find(
+      (type) => type.id.toUpperCase() === configured.fruitCode.toUpperCase(),
+    )
+    return localType
+      ? [
+          {
+            ...localType,
+            baseSize: configured.sizePx,
+            score: configured.score,
+          },
+        ]
+      : []
+  })
+  const pool = configuredTypes.length > 0 ? configuredTypes : FRUIT_TYPES
+  const type = pool[Math.floor(Math.random() * pool.length)]
   const { w, h } = fruitDimensions(type)
   const x = CFG.spawnXMargin + Math.random() * (W - 2 * CFG.spawnXMargin)
   const vy =
@@ -183,6 +215,7 @@ function spawnFruit(engine: Engine): void {
 
   engine.fruits.push({
     id: engine.nextId++,
+    fruitCode: type.id.toUpperCase(),
     imageUrl: type.imageUrl,
     score: type.score,
     x,
@@ -201,15 +234,9 @@ function spawnFruit(engine: Engine): void {
     gained: 0,
   })
   engine.totalCount++
-}
-
-/** 지금 콤보에 적용할 점수 배수. 피버 중에는 최소 배수가 보장된다. */
-function comboMultiplier(combo: number, fever: boolean): number {
-  const byCombo =
-    combo <= 1
-      ? 1
-      : Math.min(CFG.comboMaxMultiplier, 1 + (combo - 1) * CFG.comboStep)
-  return fever ? Math.max(byCombo, CFG.feverMinMultiplier) : byCombo
+  const fruitCode = type.id.toUpperCase()
+  engine.generatedByFruit[fruitCode] =
+    (engine.generatedByFruit[fruitCode] ?? 0) + 1
 }
 
 /**
@@ -231,7 +258,22 @@ export function useFruitGame(
   onSlice?: (combo: number) => void,
   redesignateHand?: () => void,
   cameraError?: boolean,
+  runtimeRule?: FruitGameRuntimeRule,
 ): FruitGameState {
+  const rule = runtimeRule ?? {
+    fruitSpawnIntervalMs: CFG.spawnIntervalMs,
+    fruits: FRUIT_TYPES.map((type) => ({
+      fruitCode: type.id.toUpperCase(),
+      score: type.score,
+      sizePx: type.baseSize,
+    })),
+    maxVisibleFruit: CFG.maxVisibleFruit,
+    plannedDurationSeconds: CFG.durationSec,
+    rulesVersion: CFG.ruleVersion,
+    sliceSpeedThreshold: CFG.sliceSpeedThreshold,
+  }
+  const ruleRef = useRef(rule)
+  ruleRef.current = rule
   const engineRef = useRef<Engine | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -248,9 +290,8 @@ export function useFruitGame(
     phase: 'waiting-hand',
     countdown: CFG.countdownSec,
     score: 0,
-    remainingSec: CFG.durationSec,
+    remainingSec: rule.plannedDurationSeconds,
     combo: 0,
-    comboMultiplier: 1,
     fever: false,
     distance: null,
   })
@@ -375,7 +416,7 @@ export function useFruitGame(
       if (elapsed > 0) {
         const speed =
           (Math.hypot(tip.bx - base.x, tip.by - base.y) / elapsed) * 1000
-        if (speed >= CFG.sliceSpeedThreshold) {
+        if (speed >= ruleRef.current.sliceSpeedThreshold) {
           // 인식 프레임이 비어 속도가 순간 0이 되어도 베기가 끊기지 않게 유지한다.
           engine.fastUntil = now + CFG.sliceSpeedHoldMs
         }
@@ -420,14 +461,13 @@ export function useFruitGame(
         engine.comboExpiresAt = now + CFG.comboWindowMs
         engine.maxCombo = Math.max(engine.maxCombo, engine.combo)
 
-        // 콤보가 기준에 닿으면 피버가 열리고, 이어 갈 때마다 시간이 다시 찬다.
-        if (engine.combo >= CFG.feverCombo) {
+        // 콤보가 기준에 처음 닿을 때 피버를 열고, 진행 중에는 시간을 연장하지 않는다.
+        if (engine.feverUntil === 0 && engine.combo === CFG.feverCombo) {
           engine.feverUntil = now + CFG.feverDurationMs
         }
 
-        const gained = Math.round(
-          fruit.score * comboMultiplier(engine.combo, now < engine.feverUntil),
-        )
+        // 콤보는 과일 생성량(피버)에만 영향을 주며 점수는 과일 기본 점수로 계산한다.
+        const gained = fruit.score
         fruit.sliced = true
         fruit.slicedAt = now
         fruit.gained = gained
@@ -436,11 +476,19 @@ export function useFruitGame(
         engine.score += gained
         engine.slicedScoreSum += gained
         engine.slicedCount++
+        engine.slicedByFruit[fruit.fruitCode] =
+          (engine.slicedByFruit[fruit.fruitCode] ?? 0) + 1
         onSliceRef.current?.(engine.combo)
       }
     }
 
     const step = (engine: Engine, dt: number, now: number): void => {
+      // 피버가 끝나면 콤보를 초기화해 새 콤보를 달성해야 다시 시작되게 한다.
+      if (engine.feverUntil > 0 && now >= engine.feverUntil) {
+        engine.feverUntil = 0
+        engine.combo = 0
+        engine.comboExpiresAt = 0
+      }
       // 과일 이동 및 화면 밖 제거 (MGAME-14). 베인 과일도 조각이 떨어지도록 계속 이동.
       for (const fruit of engine.fruits) {
         fruit.vy += CFG.gravity * dt
@@ -460,8 +508,10 @@ export function useFruitGame(
       const fever = now < engine.feverUntil
       const spawnIntervalMs = fever
         ? CFG.feverSpawnIntervalMs
-        : CFG.spawnIntervalMs
-      const maxVisible = fever ? CFG.feverMaxVisibleFruit : CFG.maxVisibleFruit
+        : ruleRef.current.fruitSpawnIntervalMs
+      const maxVisible = fever
+        ? CFG.feverMaxVisibleFruit
+        : ruleRef.current.maxVisibleFruit
       // 벤 과일 조각은 곧 사라지므로 아직 안 벤 것만 센다.
       const aliveCount = engine.fruits.reduce(
         (count, fruit) => (fruit.sliced ? count : count + 1),
@@ -471,7 +521,7 @@ export function useFruitGame(
         now - engine.lastSpawnAt >= spawnIntervalMs &&
         aliveCount < maxVisible
       ) {
-        spawnFruit(engine)
+        spawnFruit(engine, ruleRef.current)
         engine.lastSpawnAt = now
       }
 
@@ -575,8 +625,12 @@ export function useFruitGame(
             break
           }
           engine.playElapsedMs += dtMs
-          if (engine.playElapsedMs >= CFG.durationSec * 1000) {
-            engine.playElapsedMs = CFG.durationSec * 1000
+          if (
+            engine.playElapsedMs >=
+            ruleRef.current.plannedDurationSeconds * 1000
+          ) {
+            engine.playElapsedMs =
+              ruleRef.current.plannedDurationSeconds * 1000
             engine.phase = 'ended'
           } else {
             step(engine, dt, now)
@@ -604,7 +658,9 @@ export function useFruitGame(
           : CFG.countdownSec
       const remainingSec = Math.max(
         0,
-        Math.ceil(CFG.durationSec - engine.playElapsedMs / 1000),
+        Math.ceil(
+          ruleRef.current.plannedDurationSeconds - engine.playElapsedMs / 1000,
+        ),
       )
 
       const fever = engine.phase === 'playing' && now < engine.feverUntil
@@ -629,7 +685,6 @@ export function useFruitGame(
           score: engine.score,
           remainingSec,
           combo: engine.combo,
-          comboMultiplier: comboMultiplier(engine.combo, fever),
           fever,
           distance: engine.distance,
         })
@@ -648,7 +703,14 @@ export function useFruitGame(
             totalFruitCount: engine.totalCount,
             maxCombo: engine.maxCombo,
             activePlaySec: Math.round(engine.playElapsedMs / 1000),
-            ruleVersion: CFG.ruleVersion,
+            ruleVersion: ruleRef.current.rulesVersion,
+            fruitResults: Object.entries(engine.generatedByFruit).map(
+              ([fruitCode, generatedCount]) => ({
+                fruitCode,
+                generatedCount,
+                slicedCount: engine.slicedByFruit[fruitCode] ?? 0,
+              }),
+            ),
             valid,
           })
         }

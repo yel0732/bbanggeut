@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
+import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
+import signupCompleteFrameUrl from '@/assets/images/auth/signup-complete-frame.webp'
 import signupBoardUrl from '@/assets/images/auth/signup-board.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
@@ -9,6 +11,11 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import {
+  checkEmailAvailability,
+  markNewSignup,
+  signupWithEmail,
+} from '@/api/auth'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const boardSize = {
@@ -16,7 +23,7 @@ const boardSize = {
   width: 'min(512px, calc(100vw - 32px), calc((100vh - 32px) * 512 / 682))',
 } as const
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
-const MIN_PASSWORD_LENGTH = 8
+const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])[A-Za-z\d!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]{8,16}$/
 const MIN_SIGNUP_AGE = 19
 
 function latestAllowedBirthDate() {
@@ -54,15 +61,19 @@ export function EmailSignupPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [birth, setBirth] = useState('')
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [requestError, setRequestError] = useState('')
+  const [isSignupComplete, setIsSignupComplete] = useState(false)
   const maxBirthDate = useMemo(latestAllowedBirthDate, [])
 
   const emailValid = EMAIL_PATTERN.test(email)
-  const passwordValid = password.length >= MIN_PASSWORD_LENGTH
+  const passwordValid = PASSWORD_PATTERN.test(password)
   const age = useMemo(() => ageOf(birth), [birth])
   const ageValid = age !== null && age >= MIN_SIGNUP_AGE
   const canSubmit = emailChecked && emailAvailable && passwordValid && ageValid
 
-  const checkEmail = () => {
+  const checkEmail = async () => {
     if (!emailValid) {
       setEmailChecked(false)
       setEmailAvailable(false)
@@ -70,12 +81,24 @@ export function EmailSignupPage() {
       return
     }
 
-    const taken = email.trim().toLowerCase() === 'taken@bbanggut.com'
-    setEmailChecked(true)
-    setEmailAvailable(!taken)
+    setIsCheckingEmail(true)
+    setRequestError('')
+    try {
+      const result = await checkEmailAvailability(email.trim())
+      setEmailChecked(true)
+      setEmailAvailable(result.available)
+    } catch (error) {
+      setEmailChecked(false)
+      setEmailAvailable(false)
+      setRequestError(
+        error instanceof Error ? error.message : '이메일 확인에 실패했어요.',
+      )
+    } finally {
+      setIsCheckingEmail(false)
+    }
   }
 
-  const submit = () => {
+  const submit = async () => {
     if (!emailChecked || !emailAvailable) {
       window.alert('이메일 중복 확인을 해주세요.')
       return
@@ -88,7 +111,24 @@ export function EmailSignupPage() {
       window.alert('만 19세 이상만 가입할 수 있어요.')
       return
     }
-    navigate('/profiles')
+    setIsSubmitting(true)
+    setRequestError('')
+    try {
+      const normalizedEmail = email.trim().toLowerCase()
+      await signupWithEmail({
+        birthDate: birth,
+        email: normalizedEmail,
+        password,
+      })
+      markNewSignup(normalizedEmail)
+      setIsSignupComplete(true)
+    } catch (error) {
+      setRequestError(
+        error instanceof Error ? error.message : '회원가입에 실패했어요.',
+      )
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const emailMessage = emailChecked
@@ -123,26 +163,21 @@ export function EmailSignupPage() {
 
       <Link
         aria-label="뒤로"
-        className="absolute top-4 left-[clamp(16px,6vw,78px)] z-30 grid h-[58px] w-[58px] place-items-center rounded-full border-2 border-white/70 bg-black/35 drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105"
+        className="absolute top-[25px] left-[25px] z-30 block size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
         to="/"
       >
-        <svg
-          aria-hidden="true"
-          className="ml-[-2px] size-6"
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={3}
-          viewBox="0 0 24 24"
-        >
-          <path d="M15 19l-7-7 7-7" />
-        </svg>
+        <img
+          alt=""
+          className="block size-full object-contain"
+          decoding="async"
+          draggable={false}
+          src={leftButtonUrl}
+        />
       </Link>
 
       <button
         aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="absolute bottom-6 left-[clamp(16px,6vw,78px)] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+        className="absolute bottom-[25px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
         onClick={() => {
           void toggleBgm()
         }}
@@ -179,7 +214,7 @@ export function EmailSignupPage() {
         </span>
 
         <input
-          className="absolute top-[36%] left-[17.5%] z-20 h-[7%] w-[44%] border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:outline-none"
+          className="auth-transparent-input absolute top-[36%] left-[17.5%] z-20 h-[7%] w-[44%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
           onChange={(event) => {
             setEmail(event.target.value)
             setEmailChecked(false)
@@ -192,7 +227,8 @@ export function EmailSignupPage() {
         />
         <button
           className="absolute top-[36%] left-[65%] z-20 h-[7%] w-[19%] rounded-full border-none text-[clamp(11px,3vw,15px)] text-white"
-          onClick={checkEmail}
+          disabled={isCheckingEmail || isSubmitting}
+          onClick={() => void checkEmail()}
           style={{
             ...jua,
             paintOrder: 'stroke fill',
@@ -245,7 +281,8 @@ export function EmailSignupPage() {
 
         <button
           className="absolute top-[75.5%] left-[17%] z-20 h-[9%] w-[66%] rounded-full border-none text-[clamp(20px,6vw,27px)] text-white transition active:translate-y-0.5"
-          onClick={submit}
+          disabled={!canSubmit || isSubmitting}
+          onClick={() => void submit()}
           style={{
             ...jua,
             cursor: canSubmit ? 'pointer' : 'not-allowed',
@@ -257,7 +294,53 @@ export function EmailSignupPage() {
         >
           가입하기
         </button>
+        {requestError ? (
+          <p
+            className="absolute top-[85%] left-[17%] z-20 w-[66%] text-center text-[clamp(11px,2.8vw,13px)] text-[#c7563a]"
+            style={jua}
+          >
+            {requestError}
+          </p>
+        ) : null}
       </div>
+      {isSignupComplete ? (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(10,26,15,.55)]">
+          <section className="relative aspect-square w-[min(460px,calc(100vw-32px),calc(100vh-32px))]">
+            <img
+              alt=""
+              className="pointer-events-none absolute inset-0 size-full object-contain"
+              src={signupCompleteFrameUrl}
+            />
+            <h2
+              className="absolute top-[35%] right-0 left-0 text-center text-[28px] text-[#5a7d3a]"
+              style={jua}
+            >
+              회원가입 완료!
+            </h2>
+            <p
+              className="absolute top-[47%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
+              style={jua}
+            >
+              회원가입이 완료되었어요!
+              <br />
+              아래 버튼을 눌러 로그인해 주세요.
+            </p>
+            <button
+              className="absolute top-[68%] left-1/2 flex h-[10%] w-[62%] -translate-x-1/2 items-center justify-center rounded-full text-[22px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill]"
+              onClick={() =>
+                navigate('/auth/login', {
+                  replace: true,
+                  state: { email: email.trim().toLowerCase() },
+                })
+              }
+              style={jua}
+              type="button"
+            >
+              로그인하기
+            </button>
+          </section>
+        </div>
+      ) : null}
     </div>
   )
 }

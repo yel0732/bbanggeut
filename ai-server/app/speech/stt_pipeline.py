@@ -73,6 +73,7 @@ class SessionSttPipeline:
         self._on_final = on_final
         self._turn: SttTurn | None = None
         self._task: asyncio.Task | None = None
+        self._pending_finalize = False
         self._closed = False
         self._detector: TurnDetector | None = None
         if vad is not None:
@@ -156,8 +157,23 @@ class SessionSttPipeline:
 
     def _schedule_finalize(self) -> None:
         if self._task is not None and not self._task.done():
-            return  # a finalisation is already running for this turn
-        self._task = asyncio.create_task(self.finalize_turn())
+            # A finalisation is already running. That used to mean "same turn,
+            # duplicate request — skip", but W03 lengthened the critical
+            # section: ``on_final`` awaits the dialogue pipeline (~1–3s LLM),
+            # and a child can finish their NEXT utterance inside that window.
+            # Silently skipping would leave that utterance buffered but never
+            # finalised until yet another turn ended (found in W03 review) —
+            # so the request is remembered and re-run once the current one
+            # completes, preserving turn order.
+            self._pending_finalize = True
+            return
+        self._task = asyncio.create_task(self._run_finalize())
+
+    async def _run_finalize(self) -> None:
+        await self.finalize_turn()
+        while self._pending_finalize and not self._closed:
+            self._pending_finalize = False
+            await self.finalize_turn()
 
     async def finalize_turn(self) -> SttResult | None:
         """Recognise the buffered utterance and confirm it as one turn.

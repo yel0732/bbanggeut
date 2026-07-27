@@ -40,6 +40,7 @@ from pydantic import ValidationError
 
 from app.events.envelope import ConversationEventEnvelope, ConversationEventGuard
 from app.events.outbound import ConversationEventPublisher
+from app.session.realtime_dialogue import RealtimeDialogueSession
 from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import TicketVerificationFailureCode, TicketVerificationResult
 from app.session.realtime_connection_registry import (
@@ -62,7 +63,6 @@ from app.signaling.messages import (
     UnknownMessageTypeError,
     parse_incoming_message,
 )
-from app.webrtc.audio_bridge import AudioSink
 from app.webrtc.data_channel import DataChannel
 from app.webrtc.peer_connection import PeerConnection, PeerConnectionFactory, PeerConnectionState
 
@@ -99,7 +99,10 @@ class SignalingConnection:
         map_failure_code: Callable[[TicketVerificationFailureCode], str],
         epoch_registry: SessionEpochRegistry,
         logger: logging.Logger,
-        stt_sink_factory: Callable[[ConversationEventPublisher], AudioSink] | None = None,
+        realtime_session_factory: (
+            Callable[[ConversationEventPublisher, str], Awaitable[RealtimeDialogueSession]]
+            | None
+        ) = None,
     ) -> None:
         self._websocket = websocket
         self._ticket_verifier = ticket_verifier
@@ -109,7 +112,7 @@ class SignalingConnection:
         self._map_failure_code = map_failure_code
         self._epoch_registry = epoch_registry
         self._logger = logger
-        self._stt_sink_factory = stt_sink_factory
+        self._realtime_session_factory = realtime_session_factory
 
         self._state = ConnectionState.AWAITING_AUTH
         self._peer_connection: PeerConnection | None = None
@@ -117,6 +120,7 @@ class SignalingConnection:
         self._data_channel: DataChannel | None = None
         self._event_guard: ConversationEventGuard | None = None
         self._event_publisher: ConversationEventPublisher | None = None
+        self._dialogue_session: RealtimeDialogueSession | None = None
         self._conversation_id: str | None = None
         self._realtime_session_id: str | None = None
         self._session_epoch: int | None = None
@@ -229,9 +233,6 @@ class SignalingConnection:
         self._data_channel = channel
         assert self._conversation_id and self._realtime_session_id
         assert self._session_epoch is not None
-        self._event_guard = ConversationEventGuard(
-            self._conversation_id, self._realtime_session_id, self._epoch_registry
-        )
         self._event_publisher = ConversationEventPublisher(
             channel,
             conversation_id=self._conversation_id,
@@ -239,13 +240,40 @@ class SignalingConnection:
             session_epoch=self._session_epoch,
             logger=self._logger,
         )
-        # STT can only start now: the pipeline publishes stt.final through this
-        # channel, and aiortc delivers the audio track earlier than the
-        # DataChannel (see SessionAudioBridge.attach_sink).
-        if self._stt_sink_factory is not None and self._peer_connection is not None:
-            self._peer_connection.attach_audio_sink(
-                self._stt_sink_factory(self._event_publisher)
-            )
+        # 대화 세션(STT+Dialogue)은 지금에야 만들 수 있다: stt.final과 assistant.*
+        # 이벤트가 이 채널로 나가야 하는데, aiortc는 audio track을 DataChannel보다
+        # 먼저 올린다(SessionAudioBridge.attach_sink 참고).
+        if self._realtime_session_factory is not None and self._peer_connection is not None:
+            try:
+                self._dialogue_session = await self._realtime_session_factory(
+                    self._event_publisher, self._conversation_id
+                )
+                self._peer_connection.attach_audio_sink(self._dialogue_session.audio_sink)
+            except Exception:  # noqa: BLE001 - 조립 실패가 연결 전체를 죽여선 안 된다
+                # aiortc의 datachannel 콜백에서 예외가 빠져나가면 조용히 사라진다.
+                # 대화 없이(에코만) 유지하고 명시적으로 기록한다.
+                self._dialogue_session = None
+                self._logger.exception(
+                    "realtime dialogue session could not be assembled",
+                    extra={"conversation_id": self._conversation_id},
+                )
+        # Guard는 대화 세션이 생긴 뒤에 만든다 — 취소된 responseId·알려진 turnId
+        # 판정 훅이 그 세션의 Registry/Ledger를 읽는다(T13).
+        self._event_guard = ConversationEventGuard(
+            self._conversation_id,
+            self._realtime_session_id,
+            self._epoch_registry,
+            is_response_cancelled=(
+                self._dialogue_session.is_response_cancelled
+                if self._dialogue_session is not None
+                else None
+            ),
+            is_known_turn=(
+                self._dialogue_session.is_known_turn
+                if self._dialogue_session is not None
+                else None
+            ),
+        )
         channel.on_message(self._on_data_channel_message)
 
     async def _on_data_channel_message(self, raw: dict) -> None:
@@ -328,6 +356,9 @@ class SignalingConnection:
         if self._heartbeat is not None:
             await self._heartbeat.stop()
         self._event_publisher = None
+        if self._dialogue_session is not None:
+            await self._dialogue_session.aclose()
+            self._dialogue_session = None
         if self._data_channel is not None:
             self._data_channel.close()
         if self._peer_connection is not None:

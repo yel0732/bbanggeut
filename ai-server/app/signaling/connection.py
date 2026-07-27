@@ -43,6 +43,7 @@ from app.session.realtime_connection_registry import (
     RealtimeConnectionEntry,
     RealtimeConnectionRegistry,
 )
+from app.signaling.error_mapping import SIGNALING_MESSAGE_INVALID, WEBRTC_CONNECTION_FAILED
 from app.signaling.messages import (
     MalformedMessageError,
     RtcAnswer,
@@ -59,8 +60,6 @@ from app.signaling.messages import (
 )
 from app.webrtc.peer_connection import PeerConnection, PeerConnectionFactory, PeerConnectionState
 
-_SIGNALING_MESSAGE_INVALID = "SIGNALING_MESSAGE_INVALID"
-_WEBRTC_CONNECTION_FAILED = "WEBRTC_CONNECTION_FAILED"
 _AUTH_FAILURE_CLOSE_CODE = 1008  # WebSocket policy violation
 
 
@@ -124,12 +123,12 @@ class SignalingConnection:
             message = parse_incoming_message(raw)
         except UnknownMessageTypeError:
             await self._send_error(
-                raw.get("requestId"), _SIGNALING_MESSAGE_INVALID, "알 수 없는 메시지입니다."
+                raw.get("requestId"), SIGNALING_MESSAGE_INVALID, "알 수 없는 메시지입니다."
             )
             return
         except MalformedMessageError:
             await self._send_error(
-                raw.get("requestId"), _SIGNALING_MESSAGE_INVALID, "메시지 형식이 올바르지 않습니다."
+                raw.get("requestId"), SIGNALING_MESSAGE_INVALID, "메시지 형식이 올바르지 않습니다."
             )
             return
 
@@ -140,7 +139,7 @@ class SignalingConnection:
         if self._state == ConnectionState.AWAITING_AUTH:
             await self._send_error(
                 getattr(message, "request_id", None),
-                _SIGNALING_MESSAGE_INVALID,
+                SIGNALING_MESSAGE_INVALID,
                 "인증 전에는 처리할 수 없습니다.",
             )
             return
@@ -155,7 +154,7 @@ class SignalingConnection:
     async def _handle_authenticate(self, message: SessionAuthenticate) -> None:
         if self._state != ConnectionState.AWAITING_AUTH:
             await self._send_error(
-                message.request_id, _SIGNALING_MESSAGE_INVALID, "이미 인증되었습니다."
+                message.request_id, SIGNALING_MESSAGE_INVALID, "이미 인증되었습니다."
             )
             return
 
@@ -187,7 +186,7 @@ class SignalingConnection:
     async def _handle_offer(self, message: RtcOffer) -> None:
         if self._state != ConnectionState.AUTHENTICATED:
             await self._send_error(
-                message.request_id, _SIGNALING_MESSAGE_INVALID, "지금은 Offer를 받을 수 없습니다."
+                message.request_id, SIGNALING_MESSAGE_INVALID, "지금은 Offer를 받을 수 없습니다."
             )
             return
 
@@ -203,7 +202,7 @@ class SignalingConnection:
     async def _handle_ice_candidate(self, message: RtcIceCandidate) -> None:
         if self._peer_connection is None:
             await self._send_error(
-                message.request_id, _SIGNALING_MESSAGE_INVALID, "PeerConnection이 아직 없습니다."
+                message.request_id, SIGNALING_MESSAGE_INVALID, "PeerConnection이 아직 없습니다."
             )
             return
         await self._peer_connection.add_ice_candidate(
@@ -243,7 +242,7 @@ class SignalingConnection:
             )
         elif state == PeerConnectionState.FAILED:
             self._state = ConnectionState.FAILED
-            await self._send_error(None, _WEBRTC_CONNECTION_FAILED, "PeerConnection 연결에 실패했습니다.")
+            await self._send_error(None, WEBRTC_CONNECTION_FAILED, "PeerConnection 연결에 실패했습니다.")
 
     async def _cleanup(self) -> None:
         if self._state == ConnectionState.CLOSED:

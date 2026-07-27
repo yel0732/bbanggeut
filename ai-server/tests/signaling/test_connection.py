@@ -16,6 +16,7 @@ from app.realtime.ticket_verification import (
 )
 from app.session.realtime_connection_registry import RealtimeConnectionRegistry
 from app.signaling.connection import ConnectionState, SignalingConnection
+from app.signaling.error_mapping import map_ticket_failure_code
 from app.webrtc.peer_connection import FakePeerConnectionFactory, PeerConnectionState
 
 _LOGGER = logging.getLogger("test.signaling.connection")
@@ -68,10 +69,6 @@ class FakeHeartbeat:
         self.stop_call_count += 1
 
 
-def _map_failure_code(code: TicketVerificationFailureCode) -> str:
-    return f"REALTIME_TICKET_{code.value.upper()}"
-
-
 def _build_connection(
     *,
     websocket: FakeWebSocket,
@@ -89,7 +86,7 @@ def _build_connection(
         peer_connection_factory=factory,
         registry=registry,
         heartbeat_factory=lambda: heartbeat,
-        map_failure_code=_map_failure_code,
+        map_failure_code=map_ticket_failure_code,
         logger=_LOGGER,
     )
     return connection, ticket_verifier, factory, registry, heartbeat

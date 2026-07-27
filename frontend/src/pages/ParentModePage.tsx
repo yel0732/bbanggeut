@@ -32,6 +32,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import {
   loadChildProfiles,
   MAX_CHILD_PROFILES,
@@ -47,6 +48,10 @@ type PasswordErrors = {
   next: string
   confirm: string
 }
+type NoticeDialog =
+  | { kind: 'edit'; profile: ChildProfile; value: string; error: string }
+  | { kind: 'delete'; profile: ChildProfile }
+  | null
 
 type NotificationSettings = {
   enabled: boolean
@@ -147,6 +152,7 @@ export function ParentModePage() {
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({})
   const [notificationToast, setNotificationToast] = useState('')
   const [childListPage, setChildListPage] = useState(0)
+  const [noticeDialog, setNoticeDialog] = useState<NoticeDialog>(null)
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -334,30 +340,46 @@ export function ParentModePage() {
   }
 
   const editChildProfile = (profile: ChildProfile) => {
-    const nextName = window.prompt(
-      '변경할 아이 이름을 입력해 주세요.',
-      profile.name,
-    )
-    if (nextName === null) return
-    const trimmedName = nextName.trim()
+    setNoticeDialog({ kind: 'edit', profile, value: profile.name, error: '' })
+  }
+
+  const confirmChildProfileEdit = () => {
+    if (!noticeDialog || noticeDialog.kind !== 'edit') return
+    const trimmedName = noticeDialog.value.trim()
     if (!trimmedName) {
-      window.alert('아이 이름을 입력해 주세요.')
+      setNoticeDialog({
+        ...noticeDialog,
+        error: '아이 이름을 입력해 주세요.',
+      })
       return
     }
     if (trimmedName.length > 15) {
-      window.alert('이름은 15자까지 가능해요.')
+      setNoticeDialog({
+        ...noticeDialog,
+        error: '이름은 15자까지 가능해요.',
+      })
       return
     }
     updateChildProfiles(
       profiles.map((item) =>
-        item.id === profile.id ? { ...item, name: trimmedName } : item,
+        item.id === noticeDialog.profile.id
+          ? { ...item, name: trimmedName }
+          : item,
       ),
     )
+    setNoticeDialog(null)
   }
 
   const removeChildProfile = (profile: ChildProfile) => {
-    if (!window.confirm(`${profile.name} 프로필을 삭제할까요?`)) return
-    updateChildProfiles(profiles.filter((item) => item.id !== profile.id))
+    setNoticeDialog({ kind: 'delete', profile })
+  }
+
+  const confirmChildProfileRemoval = () => {
+    if (!noticeDialog || noticeDialog.kind !== 'delete') return
+    updateChildProfiles(
+      profiles.filter((item) => item.id !== noticeDialog.profile.id),
+    )
+    setNoticeDialog(null)
   }
 
   const childPageCount = Math.max(1, Math.ceil(profiles.length / 3))
@@ -390,7 +412,7 @@ export function ParentModePage() {
 
         <Link
           aria-label="프로필 선택으로 돌아가기"
-          className="absolute top-4 left-[78px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
+          className="absolute top-[24px] left-[24px] z-30 size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
           to="/profiles"
         >
           <img
@@ -402,7 +424,7 @@ export function ParentModePage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-3 left-[78px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
+          className="absolute bottom-[85px] left-[24px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
           onClick={() => void toggleBgm()}
           type="button"
         >
@@ -413,7 +435,7 @@ export function ParentModePage() {
           />
         </button>
 
-        <nav className="absolute top-[22px] right-[70px] z-40 flex gap-3">
+        <nav className="absolute top-[24px] right-[48px] z-40 flex gap-3">
           <button
             className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('children')}
@@ -441,23 +463,25 @@ export function ParentModePage() {
         </nav>
 
         <h1
-          className="absolute top-[120px] right-0 left-0 z-10 text-center text-[40px] text-white [-webkit-text-stroke:6px_#3c7d38] [paint-order:stroke_fill]"
+          className="absolute top-[110px] right-0 left-0 z-10 text-center text-[40px] text-white [-webkit-text-stroke:6px_#3c7d38] [paint-order:stroke_fill]"
           style={jua}
         >
           리포트를 볼 아이를 선택하세요
         </h1>
 
-        <section className="absolute top-[56%] left-1/2 z-10 flex -translate-1/2 flex-wrap items-center justify-center gap-x-14 gap-y-10">
+        <section className="absolute top-[130px] right-[120px] bottom-[78px] left-[120px] z-10 flex flex-wrap content-center items-center justify-center gap-x-14 gap-y-7">
           {profiles.map((profile) => (
             <button
               className="group relative flex w-[150px] flex-col items-center gap-3.5 transition hover:-translate-y-1.5"
               key={profile.id}
               onClick={() =>
-                navigate(`/reports?childId=${encodeURIComponent(profile.id)}`)
+                navigate(
+                  `/reports?childId=${encodeURIComponent(profile.id)}&childName=${encodeURIComponent(profile.name)}`,
+                )
               }
               type="button"
             >
-              <span className="size-[150px] overflow-hidden rounded-full border-[7px] border-[#ffe6a6] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,.3)] transition group-hover:scale-105">
+              <span className="size-[130px] overflow-hidden rounded-full border-[7px] border-[#ffe6a6] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,.3)] transition group-hover:scale-105">
                 <img
                   alt={`${profile.name} 프로필`}
                   className="size-full object-cover"
@@ -499,7 +523,7 @@ export function ParentModePage() {
           >
             <section
               aria-label="아이 프로필 목록"
-              className="relative -mt-6 h-[672px] w-[640px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
+              className="relative -top-[40px] h-[672px] w-[640px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -526,13 +550,13 @@ export function ParentModePage() {
                 아이 프로필 목록
               </h2>
               <p
-                className="absolute top-[12%] right-[18%] text-[16px] text-[#8a7a55]"
+                className="absolute top-[11.8%] right-[18%] text-[17px] text-[#8a7a55]"
                 style={jua}
               >
                 {profiles.length}/{MAX_CHILD_PROFILES}
               </p>
 
-              <div className="absolute top-[22%] right-[12%] left-[13%] flex flex-col">
+              <div className="absolute top-[23.2%] right-[12%] left-[13%] flex flex-col">
                 {visibleChildProfiles.length ? (
                   visibleChildProfiles.map((profile) => (
                     <article
@@ -544,22 +568,22 @@ export function ParentModePage() {
                         className="pointer-events-none absolute inset-0 size-full"
                         src={kidCellUrl}
                       />
-                      <div className="relative z-10 flex min-w-0 flex-1 items-center">
+                      <div className="relative z-10 flex min-w-0 flex-1 -translate-y-0.5 items-center">
                         <img
                           alt={`${profile.name} 프로필`}
                           className="ml-[54px] size-[92px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_3px_#d9c79a]"
                           src={profile.photoUrl ?? childAvatarUrl}
                         />
                         <span
-                          className="ml-[22px] max-w-[150px] truncate text-[29px] text-[#5a4a2a]"
+                          className="ml-[22px] truncate text-[33px] text-[#5a4a2a]"
                           style={jua}
                         >
                           {profile.name}
                         </span>
                       </div>
-                      <div className="relative z-10 mr-[22px] flex flex-col">
+                      <div className="relative z-10 mr-[22px] flex -translate-y-0.5 flex-col">
                         <button
-                          className="h-[68px] w-[168px] bg-[length:100%_100%] bg-center bg-no-repeat text-[18px] text-[#7a5a1e] transition hover:scale-105"
+                          className="h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#7a5a1e] transition hover:scale-105"
                           onClick={() => editChildProfile(profile)}
                           style={{
                             ...jua,
@@ -570,7 +594,7 @@ export function ParentModePage() {
                           수정
                         </button>
                         <button
-                          className="-mt-[22px] h-[68px] w-[168px] bg-[length:100%_100%] bg-center bg-no-repeat text-[18px] text-[#9a4a3e] transition hover:scale-105"
+                          className="-mt-[23px] h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#9a4a3e] transition hover:scale-105"
                           onClick={() => removeChildProfile(profile)}
                           style={{
                             ...jua,
@@ -585,7 +609,7 @@ export function ParentModePage() {
                   ))
                 ) : (
                   <p
-                    className="mt-28 text-center text-[23px] text-[#8a7a55]"
+                    className="mt-24 text-center text-[24px] text-[#8a7a55]"
                     style={jua}
                   >
                     아직 만든 아이 프로필이 없어요.
@@ -595,7 +619,7 @@ export function ParentModePage() {
 
               {profiles.length < MAX_CHILD_PROFILES ? (
                 <button
-                  className="absolute bottom-[14%] left-1/2 flex h-[76px] w-[260px] -translate-x-1/2 items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-103"
+                  className="absolute bottom-[74%] left-5/7 flex h-18 w-60 -translate-x-1/2 items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-103"
                   onClick={() => navigate('/profiles/new?add=1')}
                   style={{
                     ...jua,
@@ -607,8 +631,12 @@ export function ParentModePage() {
                 </button>
               ) : (
                 <p
-                  className="absolute right-0 bottom-[18%] left-0 text-center text-[17px] text-[#8a7a55]"
-                  style={jua}
+                  className="absolute right-0 bottom-[75.9%] left-0 flex h-14 items-center justify-center text-center text-[20px] text-white"
+                  style={{
+                    ...jua,
+                    paintOrder: 'stroke fill',
+                    WebkitTextStroke: '3px #8fac68',
+                  }}
                 >
                   최대 10개까지 만들 수 있어요
                 </p>
@@ -616,11 +644,11 @@ export function ParentModePage() {
 
               <nav
                 aria-label="아이 프로필 목록 페이지"
-                className="absolute right-0 bottom-[5%] left-0 flex items-center justify-center gap-1.5"
+                className="absolute right-0 bottom-[8.7%] left-0 flex items-center justify-center gap-1.5"
               >
                 <button
                   aria-label="이전 페이지"
-                  className="size-[50px] bg-transparent p-0 transition hover:scale-105 disabled:opacity-40"
+                  className="size-[54px] bg-transparent p-0 transition hover:scale-105 disabled:opacity-40"
                   disabled={currentChildPage === 0}
                   onClick={() =>
                     setChildListPage((value) => Math.max(0, value - 1))
@@ -638,7 +666,7 @@ export function ParentModePage() {
                     aria-current={
                       index === currentChildPage ? 'page' : undefined
                     }
-                    className={`relative size-[50px] bg-transparent p-0 transition hover:scale-105 ${
+                    className={`relative size-[54px] bg-transparent p-0 transition hover:scale-105 ${
                       index === currentChildPage ? '' : 'opacity-50'
                     }`}
                     key={index}
@@ -651,8 +679,12 @@ export function ParentModePage() {
                       src={pagerPageUrl}
                     />
                     <span
-                      className="absolute inset-0 flex items-center justify-center text-[21px] text-white"
-                      style={jua}
+                      className="absolute inset-0 flex items-center justify-center text-[24px] text-white"
+                      style={{
+                        ...jua,
+                        paintOrder: 'stroke fill',
+                        WebkitTextStroke: '2px #3f7d1e',
+                      }}
                     >
                       {index + 1}
                     </span>
@@ -660,7 +692,7 @@ export function ParentModePage() {
                 ))}
                 <button
                   aria-label="다음 페이지"
-                  className="size-[50px] bg-transparent p-0 transition hover:scale-105 disabled:opacity-40"
+                  className="size-[54px] bg-transparent p-0 transition hover:scale-105 disabled:opacity-40"
                   disabled={currentChildPage >= childPageCount - 1}
                   onClick={() =>
                     setChildListPage((value) =>
@@ -1117,6 +1149,44 @@ export function ParentModePage() {
               </button>
             </section>
           </div>
+        ) : null}
+        {noticeDialog?.kind === 'edit' ? (
+          <ParentNoticeDialog
+            confirmLabel="수정"
+            onCancel={() => setNoticeDialog(null)}
+            onConfirm={confirmChildProfileEdit}
+            title="아이 이름 수정"
+          >
+            <input
+              autoFocus
+              className="mt-4 h-12 w-full rounded-xl border-[3px] border-[#d2bd8c] bg-[#fffdf5] px-4 text-center text-[20px] text-[#5a4a2a] outline-none focus:border-[#88a959]"
+              maxLength={15}
+              onChange={(event) =>
+                setNoticeDialog({
+                  ...noticeDialog,
+                  value: event.target.value,
+                  error: '',
+                })
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') confirmChildProfileEdit()
+              }}
+              style={jua}
+              value={noticeDialog.value}
+            />
+            <p className="mt-1 h-5 text-[14px] text-[#c7563a]" style={jua}>
+              {noticeDialog.error}
+            </p>
+          </ParentNoticeDialog>
+        ) : null}
+        {noticeDialog?.kind === 'delete' ? (
+          <ParentNoticeDialog
+            confirmLabel="삭제"
+            message={`${noticeDialog.profile.name} 프로필을 삭제할까요?`}
+            onCancel={() => setNoticeDialog(null)}
+            onConfirm={confirmChildProfileRemoval}
+            title="프로필 삭제"
+          />
         ) : null}
       </div>
     </div>

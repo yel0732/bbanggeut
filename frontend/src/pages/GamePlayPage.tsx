@@ -8,9 +8,16 @@ import {
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import cutSoundUrl from '@/assets/audio/fruit-game/cut-fruit.mp3'
+import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import leafSwordUrl from '@/assets/images/fruit-game/leaf-sword.webp'
 import playFrameUrl from '@/assets/images/fruit-game/play-frame.webp'
-import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
+import {
+  CameraErrorOverlay,
+  CameraPermissionView,
+  PauseButton,
+  PauseOverlay,
+  QuitButton,
+} from '@/components/game/PlayOverlays'
 import {
   useFruitGame,
   type FruitGameResult,
@@ -20,6 +27,7 @@ import {
 } from '@/features/games/fruit/useFruitGame'
 import { getGameById } from '@/features/games/games'
 import { useCameraStream } from '@/hooks/useCameraStream'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useHandTracking } from '@/hooks/useHandTracking'
 
@@ -37,6 +45,7 @@ export function GamePlayPage() {
   const navigate = useNavigate()
   const { gameId } = useParams()
   const canvasRef = useFitScale<HTMLDivElement>()
+  const { audioRef } = useBgmPlayer({ volume: 0.35 })
   const { videoRef, status, requestCamera } = useCameraStream()
   const hand = useHandTracking(videoRef, status === 'granted')
 
@@ -98,6 +107,31 @@ export function GamePlayPage() {
     status === 'error',
   )
 
+  const lastCountdownRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (fruitGame.phase !== 'countdown') {
+      lastCountdownRef.current = null
+      return
+    }
+    if (lastCountdownRef.current === fruitGame.countdown) return
+    lastCountdownRef.current = fruitGame.countdown
+
+    const AudioContextClass = window.AudioContext
+    const context = new AudioContextClass()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.value = fruitGame.countdown === 1 ? 880 : 660
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.22, context.currentTime + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.16)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.17)
+    oscillator.addEventListener('ended', () => void context.close())
+  }, [fruitGame.countdown, fruitGame.phase])
+
   // MGAME-02: 게임 화면 진입 시 카메라를 시작한다. (종료는 훅 언마운트에서 처리)
   useEffect(() => {
     if (game?.playable) {
@@ -120,6 +154,7 @@ export function GamePlayPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
       >
+        <audio autoPlay loop preload="auto" ref={audioRef} src={fruitBgmUrl} />
         <div className="absolute inset-0 bg-[radial-gradient(110%_90%_at_50%_38%,#cfe6a0_0%,#a9d47f_46%,#77b458_78%,#4f8f43_100%)]" />
 
         {/* 자기 모습 미리보기 (구석, 위치 확인용) — 동작 인식도 이 영상에서 수행 */}
@@ -464,20 +499,9 @@ function PlayHud({
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
-      <button
-        aria-label="게임 그만하기"
-        className="pointer-events-auto absolute top-[25px] left-[45px] size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
-        onClick={onQuit}
-        type="button"
-      >
-        <img
-          alt=""
-          className="block h-full w-full object-contain"
-          decoding="async"
-          draggable={false}
-          src={leftButtonUrl}
-        />
-      </button>
+      <div className="absolute top-[25px] left-[45px]">
+        <QuitButton onClick={onQuit} />
+      </div>
 
       <h1
         className="absolute top-[34px] left-[120px] text-[30px] leading-none text-white [text-shadow:0_4px_0_#4f8a30,0_7px_10px_rgba(19,50,18,0.28)]"
@@ -502,183 +526,8 @@ function PlayHud({
         </span>
       </div>
 
-      <button
-        aria-label="일시정지"
-        className="pointer-events-auto absolute top-[24px] right-[42px] grid size-[62px] place-items-center rounded-full border-[4px] border-white bg-[#8fc75a] shadow-[0_6px_0_#5d8e2e,0_10px_14px_rgba(20,55,20,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#5d8e2e] disabled:opacity-40"
-        disabled={!canPause}
-        onClick={onPause}
-        type="button"
-      >
-        <span className="flex gap-[6px]">
-          <span className="h-6 w-[7px] rounded-[2px] bg-white" />
-          <span className="h-6 w-[7px] rounded-[2px] bg-white" />
-        </span>
-      </button>
-    </div>
-  )
-}
-
-function CameraPermissionView({
-  onQuit,
-  onRetry,
-  status,
-  title,
-}: {
-  onQuit: () => void
-  onRetry: () => void
-  status: ReturnType<typeof useCameraStream>['status']
-  title: string
-}) {
-  return (
-    <>
-      <button
-        aria-label="게임 그만하기"
-        className="absolute top-[25px] left-[45px] z-30 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
-        onClick={onQuit}
-        type="button"
-      >
-        <img
-          alt=""
-          className="block h-full w-full object-contain"
-          decoding="async"
-          draggable={false}
-          src={leftButtonUrl}
-        />
-      </button>
-      <h1
-        className="absolute top-[34px] left-[120px] z-30 text-[30px] leading-none text-white [text-shadow:0_4px_0_#4f8a30,0_7px_10px_rgba(19,50,18,0.28)]"
-        style={jua}
-      >
-        {title}
-      </h1>
-
-      <div className="absolute inset-0 z-10 flex items-center justify-center">
-        {status === 'requesting' || status === 'idle' ? (
-          <p
-            className="text-[34px] leading-none text-white [text-shadow:0_3px_8px_rgba(20,50,20,0.5)]"
-            style={jua}
-          >
-            카메라 준비 중...
-          </p>
-        ) : (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p
-              className="text-[52px] leading-none text-white [text-shadow:0_4px_0_#4f8a30,0_8px_12px_rgba(19,50,18,0.4)]"
-              style={jua}
-            >
-              {status === 'unavailable'
-                ? '카메라를 찾을 수 없어요'
-                : '카메라 없음'}
-            </p>
-            <p
-              className="text-[24px] leading-snug text-white/90 [text-shadow:0_2px_6px_rgba(20,50,20,0.45)]"
-              style={jua}
-            >
-              브라우저 주소창의 카메라 아이콘에서 권한을 허용해 주세요
-            </p>
-            <button
-              className="mt-2 grid h-[62px] w-[200px] place-items-center rounded-full border-[4px] border-white bg-[#8fc75a] text-[26px] leading-none text-white shadow-[0_6px_0_#5d8e2e,0_10px_14px_rgba(20,55,20,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#5d8e2e]"
-              onClick={onRetry}
-              style={jua}
-              type="button"
-            >
-              다시 시도
-            </button>
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
-
-function CameraErrorOverlay({
-  onQuit,
-  onRetry,
-}: {
-  onQuit: () => void
-  onRetry: () => void
-}) {
-  return (
-    <div
-      aria-modal="true"
-      className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(14,30,15,0.6)]"
-      role="dialog"
-    >
-      <div className="flex w-[440px] flex-col items-center gap-6 rounded-[36px] border-[8px] border-[#8a5a2b] bg-[#f4ead0] px-10 py-9 shadow-[0_22px_44px_rgba(20,48,16,0.45)]">
-        <p
-          className="text-center text-[32px] leading-snug text-[#6f4a1f]"
-          style={jua}
-        >
-          카메라에 문제가 생겼어요
-        </p>
-        <div className="flex w-full flex-col items-center gap-3">
-          <button
-            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#8fc75a] text-[26px] leading-none text-white shadow-[0_6px_0_#5d8e2e] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#5d8e2e]"
-            onClick={onRetry}
-            style={jua}
-            type="button"
-          >
-            다시 시도
-          </button>
-          <button
-            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#e6a838] text-[26px] leading-none text-white shadow-[0_6px_0_#a9761f] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#a9761f]"
-            onClick={onQuit}
-            style={jua}
-            type="button"
-          >
-            메인으로
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PauseOverlay({
-  onQuit,
-  onRestart,
-  onResume,
-}: {
-  onQuit: () => void
-  onRestart: () => void
-  onResume: () => void
-}) {
-  return (
-    <div
-      aria-modal="true"
-      className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(14,30,15,0.55)]"
-      role="dialog"
-    >
-      <div className="flex w-[420px] flex-col items-center gap-6 rounded-[36px] border-[8px] border-[#8a5a2b] bg-[#f4ead0] px-10 py-9 shadow-[0_22px_44px_rgba(20,48,16,0.45)]">
-        <p className="text-[34px] leading-none text-[#6f4a1f]" style={jua}>
-          잠깐 쉬어 갈까요?
-        </p>
-        <div className="flex w-full flex-col items-center gap-3">
-          <button
-            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#8fc75a] text-[26px] leading-none text-white shadow-[0_6px_0_#5d8e2e] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#5d8e2e]"
-            onClick={onResume}
-            style={jua}
-            type="button"
-          >
-            이어하기
-          </button>
-          <button
-            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#f0c94b] text-[26px] leading-none text-white shadow-[0_6px_0_#b6892a] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#b6892a]"
-            onClick={onRestart}
-            style={jua}
-            type="button"
-          >
-            처음부터 다시
-          </button>
-          <button
-            className="grid h-[64px] w-full place-items-center rounded-full border-[4px] border-white bg-[#e6a838] text-[26px] leading-none text-white shadow-[0_6px_0_#a9761f] transition hover:scale-[1.03] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-1 active:shadow-[0_2px_0_#a9761f]"
-            onClick={onQuit}
-            style={jua}
-            type="button"
-          >
-            그만하기
-          </button>
-        </div>
+      <div className="absolute top-[24px] right-[42px]">
+        <PauseButton disabled={!canPause} onClick={onPause} />
       </div>
     </div>
   )

@@ -5,4 +5,7 @@ public record DailyReportGenerationResult(
         int gameResultCount,
         boolean conversationSummaryIncluded
 ) {
+    public boolean hasActivity() {
+        return gameResultCount > 0 || conversationSummaryIncluded;
+    }
 }

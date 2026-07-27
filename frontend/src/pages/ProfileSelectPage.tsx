@@ -158,6 +158,23 @@ export function ProfileSelectPage() {
     setIsPinError(false)
   }
 
+  useEffect(() => {
+    if (!showPin) return
+
+    const handlePinKeyboard = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) {
+        event.preventDefault()
+        pressDigit(event.key)
+      } else if (event.key === 'Backspace') {
+        event.preventDefault()
+        pressBackspace()
+      }
+    }
+
+    window.addEventListener('keydown', handlePinKeyboard)
+    return () => window.removeEventListener('keydown', handlePinKeyboard)
+  })
+
   return (
     <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
       <div
@@ -272,7 +289,7 @@ export function ProfileSelectPage() {
             onClick={closePin}
           >
             <div
-              className="relative h-[560px] w-[440px]"
+              className="relative -top-[30px] h-[560px] w-[440px]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -297,15 +314,26 @@ export function ProfileSelectPage() {
                 </div>
 
                 <div className="mt-5 mb-1.5 flex justify-center gap-4">
-                  {Array.from({ length: PIN_LENGTH }).map((_, index) => (
-                    <img
-                      alt=""
-                      className="size-[30px]"
-                      decoding="async"
-                      key={index}
-                      src={index < pin.length ? pinDotFillUrl : pinDotEmptyUrl}
-                    />
-                  ))}
+                  {Array.from({ length: PIN_LENGTH }).map((_, index) => {
+                    const isFilled = index < pin.length
+                    return (
+                      <span
+                        className="flex size-[30px] items-center justify-center"
+                        key={index}
+                      >
+                        <img
+                          alt=""
+                          className={
+                            isFilled
+                              ? 'size-[56px] max-w-none object-contain'
+                              : 'size-[30px] object-contain'
+                          }
+                          decoding="async"
+                          src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
+                        />
+                      </span>
+                    )
+                  })}
                 </div>
                 <div
                   className="h-[22px] text-center text-[18px]"

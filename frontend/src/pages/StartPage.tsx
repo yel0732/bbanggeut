@@ -181,7 +181,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
 
 function isAuthenticated() {
   return ['accessToken', 'authToken', 'token'].some((key) =>
-    Boolean(localStorage.getItem(key)),
+    Boolean(localStorage.getItem(key) ?? sessionStorage.getItem(key)),
   )
 }
 

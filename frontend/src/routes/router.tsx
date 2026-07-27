@@ -6,6 +6,8 @@ import {
   ChildProfileListPage,
   ConversationPage,
   DiaryListPage,
+  DobblePlayPage,
+  DobbleResultPage,
   EmailLoginPage,
   EmailSignupPage,
   GameEntryPage,
@@ -16,6 +18,8 @@ import {
   ParentModePage,
   ParentProfilePage,
   ProfileSelectPage,
+  ReportListPage,
+  ReportDetailPage,
   StartPage,
 } from '@/routes/lazyPages'
 
@@ -47,6 +51,15 @@ export const router = createBrowserRouter([
   {
     path: '/games/:gameId/guide',
     element: <GameGuidePage />,
+  },
+  // 도블은 양손 포인터/카드 판정이라 플레이·결과 화면을 따로 쓴다.
+  {
+    path: '/games/dobble/play',
+    element: <DobblePlayPage />,
+  },
+  {
+    path: '/games/dobble/result',
+    element: <DobbleResultPage />,
   },
   {
     path: '/games/:gameId/play',
@@ -92,12 +105,10 @@ export const router = createBrowserRouter([
   },
   {
     path: '/reports',
-    element: (
-      <PlaceholderPage
-        eyebrow="Report"
-        title="성장 리포트"
-        description="게임 결과와 일기를 종합한 부모 리포트 화면을 연결할 자리입니다."
-      />
-    ),
+    element: <ReportListPage />,
+  },
+  {
+    path: '/reports/:reportDate',
+    element: <ReportDetailPage />,
   },
 ])

@@ -6,6 +6,10 @@ spring:
   batch:
     job:
       enabled: false
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
 
 report:
   schedule:
@@ -15,6 +19,12 @@ report:
   retry:
     max-attempts: ${REPORT_RETRY_MAX_ATTEMPTS:3}
     interval: ${REPORT_RETRY_INTERVAL:PT5S}
+  recovery:
+    enabled: ${REPORT_RECOVERY_ENABLED:false}
+    interval: ${REPORT_RECOVERY_INTERVAL:PT1M}
+    initial-delay: ${REPORT_RECOVERY_INITIAL_DELAY:PT30S}
+    stale-processing-threshold: ${REPORT_STALE_PROCESSING_THRESHOLD:PT10M}
+    batch-size: ${REPORT_RECOVERY_BATCH_SIZE:100}
   notification:
     sse:
       # SseEmitter 생성 시 타임아웃으로 사용되어 서블릿 async 타임아웃과 일치시킨다.
@@ -28,6 +38,20 @@ conversation:
   topic:
     game-max-question-count: ${CONVERSATION_GAME_MAX_QUESTIONS:6}
     daily-max-question-count: ${CONVERSATION_DAILY_MAX_QUESTIONS:6}
+  realtime:
+    context:
+      ttl: ${CONVERSATION_REALTIME_CONTEXT_TTL:PT30M}
+    session:
+      signaling-url: ${REALTIME_SIGNALING_URL:ws://localhost:8000/realtime/signaling}
+      ice-servers: []
+      lease-ttl: ${REALTIME_SESSION_LEASE_TTL:PT15S}
+    ticket:
+      issuer: ${REALTIME_TICKET_ISSUER:spring-backend}
+      audience: ${REALTIME_TICKET_AUDIENCE:ai-realtime}
+      ttl: ${REALTIME_TICKET_TTL:PT5M}
+    reconciler:
+      enabled: ${REALTIME_RECONCILER_ENABLED:false}
+      interval: ${REALTIME_RECONCILER_INTERVAL:PT10S}
 
 app:
   jwt:
@@ -119,8 +143,24 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
+conversation:
+  realtime:
+    ticket:
+      private-key-pem: ${REALTIME_TICKET_PRIVATE_KEY_PEM}
+      public-key-pem: ${REALTIME_TICKET_PUBLIC_KEY_PEM}
+
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics
+
+report:
+  ai:
+    enabled: ${REPORT_AI_ENABLED:true}
+    base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
+    timeout: ${REPORT_AI_TIMEOUT:PT12S}
+  schedule:
+    enabled: ${REPORT_SCHEDULE_ENABLED:true}
+  recovery:
+    enabled: ${REPORT_RECOVERY_ENABLED:true}

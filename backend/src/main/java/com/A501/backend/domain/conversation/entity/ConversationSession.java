@@ -140,6 +140,18 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
         questionCount++;
     }
 
+    /**
+     * Realtime Session을 발급하며 재연결 세대(sessionEpoch)를 증가시킨다. 완전한 재연결
+     * Epoch 검증·비교는 W02(T07)에서 다루며, 여기서는 발급 시점의 세대 확정만 담당한다.
+     */
+    public int startRealtimeSession() {
+        if (status.isTerminal()) {
+            throw new IllegalStateException("종료된 대화 세션에는 Realtime Session을 발급할 수 없습니다.");
+        }
+        currentSessionEpoch++;
+        return currentSessionEpoch;
+    }
+
     public void switchTopic(ConversationTopic nextTopic) {
         if (status != ConversationStatus.IN_PROGRESS) {
             throw new IllegalStateException("진행 중인 대화만 주제를 전환할 수 있습니다.");

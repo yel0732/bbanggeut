@@ -1,24 +1,12 @@
-import {
-  FilesetResolver,
-  PoseLandmarker,
-  type PoseLandmarkerResult,
-} from '@mediapipe/tasks-vision'
+import { type PoseLandmarkerResult } from '@mediapipe/tasks-vision'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
-const TASKS_VISION_VERSION = '0.10.35'
-const WASM_PATH = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VISION_VERSION}/wasm`
-const MODEL_PATH =
-  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task'
+import {
+  POSE_LM as LM,
+  POSE_VISIBILITY_MIN as VISIBILITY_MIN,
+  usePoseLandmarker,
+} from '@/hooks/usePoseLandmarker'
 
-// BlazePose 랜드마크 인덱스
-const LM = {
-  leftElbow: 13,
-  rightElbow: 14,
-  leftWrist: 15,
-  rightWrist: 16,
-} as const
-
-const VISIBILITY_MIN = 0.4
 // 팔뚝 길이(정규화)로 카메라 거리 추정
 const ARM_NEAR = 0.5
 const ARM_FAR = 0.1
@@ -67,10 +55,8 @@ export function useHandTracking(
   videoRef: RefObject<HTMLVideoElement | null>,
   enabled: boolean,
 ): HandTrackingState {
-  const [modelReady, setModelReady] = useState(false)
   const [designated, setDesignated] = useState(false)
   const [playHand, setPlayHand] = useState<PlayHand | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   // 지정된 플레이 팔. 한 번 정해지면 계속 유지한다.
   const playSideRef = useRef<'left' | 'right' | null>(null)
@@ -81,145 +67,92 @@ export function useHandTracking(
     setPlayHand(null)
   }, [])
 
-  useEffect(() => {
-    if (!enabled) {
+  const handleResult = useCallback((result: PoseLandmarkerResult) => {
+    const pose = result.landmarks?.[0]
+    if (!pose) {
+      setPlayHand(null)
       return
     }
 
-    let landmarker: PoseLandmarker | null = null
-    let rafId = 0
-    let cancelled = false
-    let lastVideoTime = -1
+    const lw = pose[LM.leftWrist]
+    const rw = pose[LM.rightWrist]
+    const le = pose[LM.leftElbow]
+    const re = pose[LM.rightElbow]
 
-    const detectLoop = () => {
-      if (cancelled) {
-        return
-      }
-      const video = videoRef.current
-      if (
-        landmarker &&
-        video &&
-        video.readyState >= 2 &&
-        video.videoWidth > 0
-      ) {
-        if (video.currentTime !== lastVideoTime) {
-          lastVideoTime = video.currentTime
-          const result = landmarker.detectForVideo(video, performance.now())
-          handleResult(result)
-        }
-      }
-      rafId = requestAnimationFrame(detectLoop)
-    }
+    const leftOk =
+      (lw?.visibility ?? 0) > VISIBILITY_MIN &&
+      (le?.visibility ?? 0) > VISIBILITY_MIN
+    const rightOk =
+      (rw?.visibility ?? 0) > VISIBILITY_MIN &&
+      (re?.visibility ?? 0) > VISIBILITY_MIN
 
-    const handleResult = (result: PoseLandmarkerResult) => {
-      const pose = result.landmarks?.[0]
-      if (!pose) {
+    // 미지정이면 먼저 든(더 높이 올린) 팔을 플레이 팔로 지정한다.
+    if (playSideRef.current === null) {
+      if (leftOk && rightOk) {
+        playSideRef.current = lw.y < rw.y ? 'left' : 'right'
+      } else if (leftOk) {
+        playSideRef.current = 'left'
+      } else if (rightOk) {
+        playSideRef.current = 'right'
+      } else {
         setPlayHand(null)
         return
       }
-
-      const lw = pose[LM.leftWrist]
-      const rw = pose[LM.rightWrist]
-      const le = pose[LM.leftElbow]
-      const re = pose[LM.rightElbow]
-
-      const leftOk =
-        (lw?.visibility ?? 0) > VISIBILITY_MIN &&
-        (le?.visibility ?? 0) > VISIBILITY_MIN
-      const rightOk =
-        (rw?.visibility ?? 0) > VISIBILITY_MIN &&
-        (re?.visibility ?? 0) > VISIBILITY_MIN
-
-      // 미지정이면 먼저 든(더 높이 올린) 팔을 플레이 팔로 지정한다.
-      if (playSideRef.current === null) {
-        if (leftOk && rightOk) {
-          playSideRef.current = lw.y < rw.y ? 'left' : 'right'
-        } else if (leftOk) {
-          playSideRef.current = 'left'
-        } else if (rightOk) {
-          playSideRef.current = 'right'
-        } else {
-          setPlayHand(null)
-          return
-        }
-        setDesignated(true)
-      }
-
-      const side = playSideRef.current
-      const ok = side === 'left' ? leftOk : rightOk
-      if (!ok) {
-        setPlayHand(null)
-        return
-      }
-      const wrist = side === 'left' ? lw : rw
-      const elbow = side === 'left' ? le : re
-
-      // 팔뚝 방향으로 손목에서 손끝 너머까지 검을 뻗는다.
-      const dx = wrist.x - elbow.x
-      const dy = wrist.y - elbow.y
-      const forearm = Math.hypot(dx, dy) || 0.0001
-      const ux = dx / forearm
-      const uy = dy / forearm
-      const reach = forearm * SWORD_REACH
-      const tipX = wrist.x + ux * reach
-      const tipY = wrist.y + uy * reach
-
-      let distance: DistanceHint = 'ok'
-      if (forearm > ARM_NEAR) distance = 'near'
-      else if (forearm < ARM_FAR) distance = 'far'
-
-      setPlayHand({
-        side,
-        box: {
-          minX: Math.min(elbow.x, wrist.x, tipX),
-          minY: Math.min(elbow.y, wrist.y, tipY),
-          maxX: Math.max(elbow.x, wrist.x, tipX),
-          maxY: Math.max(elbow.y, wrist.y, tipY),
-        },
-        pointer: { x: wrist.x, y: wrist.y },
-        blade: { ax: wrist.x, ay: wrist.y, bx: tipX, by: tipY },
-        distance,
-      })
+      setDesignated(true)
     }
 
-    const init = async () => {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(WASM_PATH)
-        if (cancelled) {
-          return
-        }
-        landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_PATH, delegate: 'GPU' },
-          numPoses: 1,
-          runningMode: 'VIDEO',
-        })
-        if (cancelled) {
-          landmarker.close()
-          landmarker = null
-          return
-        }
-        setModelReady(true)
-        rafId = requestAnimationFrame(detectLoop)
-      } catch {
-        if (!cancelled) {
-          setError('동작 인식을 준비하지 못했어요')
-        }
-      }
-    }
-
-    void init()
-
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(rafId)
-      landmarker?.close()
-      landmarker = null
-      playSideRef.current = null
-      setModelReady(false)
-      setDesignated(false)
+    const side = playSideRef.current
+    const ok = side === 'left' ? leftOk : rightOk
+    if (!ok) {
       setPlayHand(null)
+      return
     }
-  }, [enabled, videoRef])
+    const wrist = side === 'left' ? lw : rw
+    const elbow = side === 'left' ? le : re
+
+    // 팔뚝 방향으로 손목에서 손끝 너머까지 검을 뻗는다.
+    const dx = wrist.x - elbow.x
+    const dy = wrist.y - elbow.y
+    const forearm = Math.hypot(dx, dy) || 0.0001
+    const ux = dx / forearm
+    const uy = dy / forearm
+    const reach = forearm * SWORD_REACH
+    const tipX = wrist.x + ux * reach
+    const tipY = wrist.y + uy * reach
+
+    let distance: DistanceHint = 'ok'
+    if (forearm > ARM_NEAR) distance = 'near'
+    else if (forearm < ARM_FAR) distance = 'far'
+
+    setPlayHand({
+      side,
+      box: {
+        minX: Math.min(elbow.x, wrist.x, tipX),
+        minY: Math.min(elbow.y, wrist.y, tipY),
+        maxX: Math.max(elbow.x, wrist.x, tipX),
+        maxY: Math.max(elbow.y, wrist.y, tipY),
+      },
+      pointer: { x: wrist.x, y: wrist.y },
+      blade: { ax: wrist.x, ay: wrist.y, bx: tipX, by: tipY },
+      distance,
+    })
+  }, [])
+
+  const { modelReady, error } = usePoseLandmarker(
+    videoRef,
+    enabled,
+    handleResult,
+  )
+
+  // 추적이 꺼지면 플레이 팔 지정도 초기화한다.
+  useEffect(() => {
+    if (enabled) {
+      return
+    }
+    playSideRef.current = null
+    setDesignated(false)
+    setPlayHand(null)
+  }, [enabled])
 
   return { modelReady, designated, playHand, error, redesignate }
 }

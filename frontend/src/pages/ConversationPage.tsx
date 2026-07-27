@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
 import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
@@ -16,6 +16,7 @@ import diarySaveButtonUrl from '@/assets/images/diary/diary-save-btn.webp'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
+import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import { useFitScale } from '@/hooks/useFitScale'
 
 type ConversationStage = 'guide' | 'conversation' | 'complete'
@@ -82,12 +83,17 @@ const STATUS_COPY: Record<VoiceStatus, string> = {
 
 export function ConversationPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const canvasRef = useFitScale<HTMLDivElement>()
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const answerRef = useRef('')
   const advanceTimerRef = useRef<number | null>(null)
-  const [stage, setStage] = useState<ConversationStage>('guide')
+  const [stage, setStage] = useState<ConversationStage>(() =>
+    (location.state as { skipGuide?: boolean } | null)?.skipGuide
+      ? 'conversation'
+      : 'guide',
+  )
   const [status, setStatus] = useState<VoiceStatus>('ready')
   const [questionIndex, setQuestionIndex] = useState(0)
   const [transcript, setTranscript] = useState('')
@@ -321,7 +327,7 @@ export function ConversationPage() {
 
         <button
           aria-label="집으로 돌아가기"
-          className="absolute top-4 left-[78px] z-40 size-[58px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+          className="absolute top-[25px] left-[25px] z-60 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
           onClick={leaveConversation}
           type="button"
         >
@@ -331,13 +337,6 @@ export function ConversationPage() {
             src={backButtonUrl}
           />
         </button>
-        <h1
-          className="absolute top-[19px] left-[150px] z-30 text-[30px] text-white drop-shadow-lg [-webkit-text-stroke:5px_#7a5a2a] [paint-order:stroke_fill]"
-          style={jua}
-        >
-          대화하기
-        </h1>
-
         <div className="absolute top-4 right-[78px] z-30 flex flex-col gap-2">
           <button
             aria-label="오늘의 일기"
@@ -474,7 +473,7 @@ export function ConversationPage() {
 
         {stage === 'guide' ? (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(16,35,23,.58)] backdrop-blur-[2px]">
-            <section className="relative h-[534px] w-[700px] text-center drop-shadow-[0_24px_55px_rgba(0,0,0,.38)]">
+            <section className="relative -top-[25px] h-[534px] w-[700px] text-center drop-shadow-[0_24px_55px_rgba(0,0,0,.38)]">
               <img
                 alt=""
                 className="pointer-events-none absolute inset-0 size-full object-fill"
@@ -596,25 +595,24 @@ export function ConversationPage() {
 
         {isDiaryOpen ? (
           <div className="absolute inset-0 z-60 bg-[rgba(30,24,10,.48)]">
-            <button
-              aria-label="완료 화면으로 돌아가기"
-              className="absolute top-4 left-[78px] z-20 size-[58px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
-              onClick={() => setIsDiaryOpen(false)}
-              type="button"
-            >
-              <img
-                alt=""
-                className="size-full object-contain"
-                src={backButtonUrl}
-              />
-            </button>
-
             <section className="absolute top-[-10px] left-6/7 w-[860px] -translate-x-1/2 [animation:diary-pop-in_.38s_cubic-bezier(.2,1.2,.5,1)_both]">
               <img
                 alt=""
                 className="block w-full drop-shadow-[0_16px_30px_rgba(0,0,0,.35)]"
                 src={diaryNoteUrl}
               />
+              <button
+                aria-label="오늘의 일기 닫기"
+                className="absolute top-[9%] right-[17%] z-20 size-[52px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+                onClick={() => setIsDiaryOpen(false)}
+                type="button"
+              >
+                <img
+                  alt=""
+                  className="size-full object-contain"
+                  src={closeButtonUrl}
+                />
+              </button>
               <div className="absolute top-[15%] right-[15%] bottom-[12%] left-[15%] flex translate-y-[14px] flex-col items-center text-center">
                 <p className="text-[25px] text-[#b08a4e]" style={jua}>
                   {new Intl.DateTimeFormat('ko-KR', {

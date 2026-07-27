@@ -23,6 +23,11 @@ public interface ConversationTopicStateRepository
             String conversationId,
             ConversationTopic topicType);
 
+    List<ConversationTopicState>
+            findAllByConversationIdInAndTopicTypeOrderByCompletedAtAsc(
+                    List<String> conversationIds,
+                    ConversationTopic topicType);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select topic

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
+import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
 import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
 import diaryListButtonUrl from '@/assets/images/conversation/diary-list-btn.webp'
 import dinoUrl from '@/assets/images/conversation/dino.webp'
+import micOffButtonUrl from '@/assets/images/conversation/mic-off-btn.webp'
+import micOnButtonUrl from '@/assets/images/conversation/mic-on-btn.webp'
 import readyMicUrl from '@/assets/images/conversation/talk_ready_pic_1.webp'
 import readyEarUrl from '@/assets/images/conversation/talk_ready_pic_2.webp'
 import readyTalkUrl from '@/assets/images/conversation/talk_ready_pic_3.webp'
@@ -17,6 +20,9 @@ import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
+import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
+import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
+import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 type ConversationStage = 'guide' | 'conversation' | 'complete'
@@ -95,12 +101,16 @@ export function ConversationPage() {
       : 'guide',
   )
   const [status, setStatus] = useState<VoiceStatus>('ready')
+  const conversationBgmVolume =
+    status === 'listening' || status === 'speaking' ? 0.055 : 0.22
+  const { audioRef } = useBgmPlayer({ volume: conversationBgmVolume })
   const [questionIndex, setQuestionIndex] = useState(0)
   const [transcript, setTranscript] = useState('')
   const [micLevel, setMicLevel] = useState(0)
   const [guideMessage, setGuideMessage] = useState('')
   const [isDiaryOpen, setIsDiaryOpen] = useState(false)
   const [isDiaryAttached, setIsDiaryAttached] = useState(false)
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false)
   const [isSpeechSupported] = useState(
     () =>
       Boolean(window.SpeechRecognition || window.webkitSpeechRecognition) &&
@@ -302,12 +312,16 @@ export function ConversationPage() {
   }
 
   const leaveConversation = () => {
-    if (
-      stage === 'conversation' &&
-      !window.confirm('대화를 그만하고 집으로 돌아갈까요?')
-    ) {
+    if (stage === 'conversation') {
+      setIsLeaveConfirmOpen(true)
       return
     }
+    stopVoiceResources()
+    navigate('/child')
+  }
+
+  const confirmLeaveConversation = () => {
+    setIsLeaveConfirmOpen(false)
     stopVoiceResources()
     navigate('/child')
   }
@@ -318,6 +332,14 @@ export function ConversationPage() {
         className="relative h-[720px] w-[1280px] origin-top overflow-hidden"
         ref={canvasRef}
       >
+        <audio
+          aria-label="대화방 배경 음악"
+          autoPlay
+          loop
+          preload="auto"
+          ref={audioRef}
+          src={conversationBgmUrl}
+        />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"
@@ -337,7 +359,7 @@ export function ConversationPage() {
             src={backButtonUrl}
           />
         </button>
-        <div className="absolute top-4 right-[78px] z-30 flex flex-col gap-2">
+        <div className="absolute top-4 right-[25px] z-30 flex flex-col gap-2">
           <button
             aria-label="오늘의 일기"
             className="size-[58px] bg-transparent p-0 transition hover:scale-105"
@@ -363,6 +385,8 @@ export function ConversationPage() {
           </Link>
         </div>
 
+        <ChildProfileSwitchButton className="right-[100px]" />
+
         {stage === 'conversation' ? (
           <div
             aria-label={`대화 진행 ${questionIndex + 1}/${QUESTIONS.length}`}
@@ -387,7 +411,7 @@ export function ConversationPage() {
 
         <img
           alt="공룡 친구 빵긋"
-          className="absolute bottom-[72px] left-3/4 h-[530px] w-auto max-w-none -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
+          className="absolute bottom-[72px] left-5/7 h-[530px] w-auto max-w-none -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
           src={dinoUrl}
         />
 
@@ -423,7 +447,7 @@ export function ConversationPage() {
 
             <div className="absolute right-[95px] bottom-[94px] z-30 flex w-[170px] flex-col items-center">
               <div
-                className={`mb-2 rounded-full px-3 py-1.5 text-center text-[15px] text-white shadow-md ${
+                className={`-mb-0 rounded-full px-3 py-1.5 text-center text-[15px] text-white shadow-md ${
                   status === 'error' ? 'bg-[#c85f50]' : 'bg-[#527542]/90'
                 }`}
                 role="status"
@@ -435,12 +459,8 @@ export function ConversationPage() {
                 aria-label={
                   status === 'listening' ? '말하기 마치기' : '마이크 켜기'
                 }
-                className={`relative flex size-[82px] items-center justify-center rounded-full border-[5px] border-white/90 shadow-[0_8px_18px_rgba(0,0,0,.3)] transition hover:scale-105 ${
-                  status === 'listening'
-                    ? 'bg-[#ef745f]'
-                    : status === 'thinking'
-                      ? 'cursor-wait bg-[#d6a950]'
-                      : 'bg-[#72a950]'
+                className={`relative flex size-[96px] items-center justify-center border-0 bg-transparent p-0 drop-shadow-[0_8px_12px_rgba(0,0,0,.3)] transition hover:scale-105 ${
+                  status === 'thinking' ? 'cursor-wait' : ''
                 }`}
                 disabled={status === 'thinking'}
                 onClick={
@@ -448,18 +468,20 @@ export function ConversationPage() {
                 }
                 type="button"
               >
+                <img
+                  alt=""
+                  className={`block size-full object-contain ${
+                    status === 'thinking' ? 'opacity-70' : ''
+                  }`}
+                  decoding="async"
+                  draggable={false}
+                  src={
+                    status === 'listening' ? micOffButtonUrl : micOnButtonUrl
+                  }
+                />
                 {status === 'thinking' ? (
-                  <span className="size-9 animate-spin rounded-full border-4 border-white/40 border-t-white" />
-                ) : (
-                  <svg
-                    aria-hidden="true"
-                    className="size-10 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M12 15.5a3.5 3.5 0 0 0 3.5-3.5V5a3.5 3.5 0 1 0-7 0v7a3.5 3.5 0 0 0 3.5 3.5Zm-1.5-10.5a1.5 1.5 0 1 1 3 0v7a1.5 1.5 0 1 1-3 0V5Zm-5 6a1 1 0 0 1 1 1 5.5 5.5 0 0 0 11 0 1 1 0 1 1 2 0 7.5 7.5 0 0 1-6.5 7.43V22h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A7.5 7.5 0 0 1 4.5 12a1 1 0 0 1 1-1Z" />
-                  </svg>
-                )}
+                  <span className="absolute size-8 animate-spin rounded-full border-4 border-white/45 border-t-white" />
+                ) : null}
                 {status === 'listening' ? (
                   <span
                     className="absolute inset-[-10px] -z-10 rounded-full border-4 border-[#ff9d88]/70"
@@ -688,6 +710,18 @@ export function ConversationPage() {
               </div>
             </section>
           </div>
+        ) : null}
+
+        {isLeaveConfirmOpen ? (
+          <ParentNoticeDialog
+            cancelLabel="취소"
+            compact
+            confirmLabel="확인"
+            message="대화를 그만하고 집으로 돌아갈까요?"
+            onCancel={() => setIsLeaveConfirmOpen(false)}
+            onConfirm={confirmLeaveConversation}
+            title="대화를 마칠까요?"
+          />
         ) : null}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
+import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
 import dinoUrl from '@/assets/images/child-home/dino-2.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -9,6 +10,7 @@ import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
 import gameMenuPanelUrl from '@/assets/images/game-entry/game-menu-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { GAMES } from '@/features/games/games'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
@@ -60,14 +62,7 @@ export function GameEntryPage() {
           />
         </button>
 
-        <button
-          className="absolute top-[16px] right-[78px] z-40 rounded-full border-2 border-white/70 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur-sm transition hover:scale-105"
-          onClick={() => navigate('/profiles')}
-          style={jua}
-          type="button"
-        >
-          프로필 바꾸기
-        </button>
+        <ChildProfileSwitchButton />
 
         {GAMES.map((game) => {
           const isFlipped = hoveredGameId === game.id
@@ -141,10 +136,16 @@ export function GameEntryPage() {
           )
         })}
 
-        <div className="absolute top-[200px] left-1/2 z-20 -translate-x-1/2">
-          <div className="relative flex h-[88px] w-[258px] items-center justify-center rounded-[28px] bg-white px-8 text-center shadow-[0_10px_22px_rgba(35,80,35,0.22)] after:absolute after:right-[94px] after:bottom-[-24px] after:h-0 after:w-0 after:border-x-[18px] after:border-t-[26px] after:border-x-transparent after:border-t-white">
+        <div className="absolute top-[150px] left-1/2 z-20 -translate-x-6/11">
+          <div className="relative h-[122px] w-[270px]">
+            <img
+              alt=""
+              className="absolute inset-0 size-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
+              decoding="async"
+              src={bubbleBigUrl}
+            />
             <span
-              className="text-[28px] leading-none whitespace-nowrap text-[#526d4c]"
+              className="absolute top-[41%] right-0 left-0 -translate-y-1/2 text-center text-[28px] whitespace-nowrap text-[#2f6d3a]"
               style={jua}
             >
               무슨 게임 할까?
@@ -154,13 +155,13 @@ export function GameEntryPage() {
 
         <div
           aria-label="공룡"
-          className="absolute bottom-[90px] left-1/2 z-10 h-[310px] w-[330px] -translate-x-1/2 [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
+          className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2 [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
           role="img"
         >
-          <div className="absolute bottom-0 left-1/2 h-12 w-[230px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(45,90,35,0.32),rgba(45,90,35,0)_100%)]" />
+          <div className="absolute bottom-2 left-1/2 h-10 w-[210px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,_rgba(60,110,50,0.42),_rgba(60,110,50,0)_100%)]" />
           <img
             alt=""
-            className="absolute bottom-0 left-1/2 h-[330px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_16px_18px_rgba(25,54,25,0.26)]"
+            className="absolute bottom-0 left-1/2 h-[340px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_12px_12px_rgba(0,0,0,0.22)]"
             decoding="async"
             src={dinoUrl}
           />

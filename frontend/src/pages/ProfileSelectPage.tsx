@@ -13,6 +13,12 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import {
+  loadActiveChildProfileId,
+  loadChildProfiles,
+  saveActiveChildProfileId,
+  type ChildProfile,
+} from '@/lib/childProfiles'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
@@ -34,12 +40,22 @@ const KEYPAD_DIGITS = [
   '⌫',
 ]
 
-const childProfiles = [{ name: '하린' }, { name: '도윤' }]
+const DEMO_CHILD_PROFILES: ChildProfile[] = [
+  { id: 'demo-harin', name: '하린', photoUrl: null },
+  { id: 'demo-doyun', name: '도윤', photoUrl: null },
+]
 
 export function ProfileSelectPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const [childProfiles] = useState(() => {
+    const storedProfiles = loadChildProfiles()
+    return storedProfiles.length ? storedProfiles : DEMO_CHILD_PROFILES
+  })
+  const [activeChildProfileId, setActiveChildProfileId] = useState(
+    loadActiveChildProfileId,
+  )
   const pinTimersRef = useRef<number[]>([])
   const [showPin, setShowPin] = useState(false)
   const [pin, setPin] = useState('')
@@ -211,33 +227,56 @@ export function ProfileSelectPage() {
         </div>
 
         <div className="absolute top-[262px] right-0 left-0 z-10 flex items-start justify-center gap-8">
-          {childProfiles.map((profile) => (
-            <button
-              className="flex flex-col items-center gap-4 border-none bg-none p-0 transition hover:-translate-y-1.5"
-              key={profile.name}
-              onClick={() => navigate('/child')}
-              type="button"
-            >
-              <div className="size-[184px] overflow-hidden rounded-full border-[7px] border-white bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105">
-                <img
-                  alt={profile.name}
-                  className="h-full w-full object-cover"
-                  decoding="async"
-                  src={childAvatarUrl}
-                />
-              </div>
-              <span
-                className="text-[28px] text-white"
-                style={{
-                  ...jua,
-                  paintOrder: 'stroke fill',
-                  WebkitTextStroke: '5px #3c7d38',
+          {childProfiles.map((profile) => {
+            const isActive = activeChildProfileId === profile.id
+
+            return (
+              <button
+                aria-pressed={isActive}
+                className="relative flex flex-col items-center gap-4 border-none bg-none p-0 transition hover:-translate-y-1.5"
+                key={profile.id}
+                onClick={() => {
+                  saveActiveChildProfileId(profile.id)
+                  setActiveChildProfileId(profile.id)
+                  navigate('/child')
                 }}
+                type="button"
               >
-                {profile.name}
-              </span>
-            </button>
-          ))}
+                <div
+                  className={`size-[184px] overflow-hidden rounded-full border-[7px] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105 ${
+                    isActive
+                      ? 'border-[#dfff76] ring-[7px] ring-[#6eaa3f]'
+                      : 'border-white'
+                  }`}
+                >
+                  <img
+                    alt={profile.name}
+                    className="h-full w-full object-cover"
+                    decoding="async"
+                    src={profile.photoUrl ?? childAvatarUrl}
+                  />
+                </div>
+                {isActive ? (
+                  <span
+                    className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#65983e] px-4 py-1 text-[17px] whitespace-nowrap text-white shadow-md"
+                    style={jua}
+                  >
+                    현재 프로필
+                  </span>
+                ) : null}
+                <span
+                  className="text-[28px] text-white"
+                  style={{
+                    ...jua,
+                    paintOrder: 'stroke fill',
+                    WebkitTextStroke: '5px #3c7d38',
+                  }}
+                >
+                  {profile.name}
+                </span>
+              </button>
+            )
+          })}
 
           <div className="mx-1 h-[196px] w-0.5 bg-[linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,0.5),rgba(255,255,255,0))]" />
 

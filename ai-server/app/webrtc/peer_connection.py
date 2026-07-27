@@ -13,6 +13,9 @@ from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Protocol
 
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.sdp import candidate_from_sdp
+
 
 class PeerConnectionState(StrEnum):
     NEW = "new"
@@ -86,3 +89,57 @@ class FakePeerConnectionFactory:
         peer_connection = FakePeerConnection()
         self.created.append(peer_connection)
         return peer_connection
+
+
+_AIORTC_STATE_MAP: dict[str, PeerConnectionState] = {
+    "connected": PeerConnectionState.CONNECTED,
+    "failed": PeerConnectionState.FAILED,
+    "closed": PeerConnectionState.CLOSED,
+}
+
+
+class AiortcPeerConnection:
+    """Real WebRTC PeerConnection backed by aiortc.
+
+    aiortc has no incremental "local candidate gathered" event: unlike a
+    browser, ``setLocalDescription()`` awaits full ICE gathering before
+    returning (confirmed against aiortc 1.15 — jira/plan/DIARY-2-W03.md
+    §11-B), so the Answer SDP returned by ``accept_offer()`` already carries
+    every local candidate. Only the remote (React) side's trickled candidates
+    need ``add_ice_candidate()``.
+    """
+
+    def __init__(self) -> None:
+        self._pc = RTCPeerConnection()
+        self._pc.on("connectionstatechange", self._handle_state_change)
+        self._callback: StateChangeCallback | None = None
+
+    async def accept_offer(self, sdp: str) -> str:
+        await self._pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
+        answer = await self._pc.createAnswer()
+        await self._pc.setLocalDescription(answer)
+        return self._pc.localDescription.sdp
+
+    async def add_ice_candidate(
+        self, candidate: str, sdp_mid: str | None, sdp_mline_index: int | None
+    ) -> None:
+        parsed = candidate_from_sdp(candidate.removeprefix("candidate:"))
+        parsed.sdpMid = sdp_mid
+        parsed.sdpMLineIndex = sdp_mline_index
+        await self._pc.addIceCandidate(parsed)
+
+    def on_state_change(self, callback: StateChangeCallback) -> None:
+        self._callback = callback
+
+    async def close(self) -> None:
+        await self._pc.close()
+
+    async def _handle_state_change(self) -> None:
+        state = _AIORTC_STATE_MAP.get(self._pc.connectionState)
+        if state is not None and self._callback is not None:
+            await self._callback(state)
+
+
+class AiortcPeerConnectionFactory:
+    def create(self) -> AiortcPeerConnection:
+        return AiortcPeerConnection()

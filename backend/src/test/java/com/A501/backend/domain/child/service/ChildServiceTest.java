@@ -66,6 +66,18 @@ class ChildServiceTest {
     }
 
     @Test
+    void softDeleteChildrenOf_softDeletesAllActiveChildren() {
+        Child first = Child.create(1L, "chorong", 1);
+        Child second = Child.create(1L, "banjjak", 2);
+        when(childRepository.findAllByParentIdAndDeletedAtIsNull(1L)).thenReturn(List.of(first, second));
+
+        childService.softDeleteChildrenOf(1L);
+
+        assertThat(first.isDeleted()).isTrue();
+        assertThat(second.isDeleted()).isTrue();
+    }
+
+    @Test
     void createChild_savesChildWhenPinSetAndUnderLimitAndNameAvailable() {
         when(pinService.hasPin(1L)).thenReturn(true);
         when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);

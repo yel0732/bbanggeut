@@ -16,6 +16,7 @@ import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
+import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 
 @SpringBootTest
@@ -24,6 +25,9 @@ class AuthServiceIntegrationTest {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private PinService pinService;
 
     @Autowired
     private ParentRepository parentRepository;
@@ -67,5 +71,35 @@ class AuthServiceIntegrationTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.REFRESH_TOKEN_REUSED));
+    }
+
+    // withdraw()가 자신의 트랜잭션 안에서 pinService.verifyPin(...)을 호출하는 조합을 실제 HTTP 요청과
+    // 동일한 트랜잭션 조건으로 검증한다. noRollbackFor를 빼먹으면 PIN 실패 카운트 증가가 withdraw의
+    // 롤백에 같이 취소되어 몇 번을 틀려도 잠기지 않는다(deleteChild에서 겪은 것과 같은 버그).
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void withdraw_persistsPinFailureCountAcrossRealTransactions() {
+        Parent parent = authService.signup(
+                new SignupRequest("withdraw-lock@example.com", "Abcdef1!", LocalDate.of(2000, 1, 1)));
+        pinService.setPin(parent.getParentId(), "1234");
+
+        for (int i = 0; i < 4; i++) {
+            assertThatThrownBy(() -> authService.withdraw(parent.getParentId(), "0000"))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                            .isEqualTo(PinErrorCode.PIN_MISMATCH));
+        }
+
+        Parent reloaded = parentRepository.findById(parent.getParentId()).orElseThrow();
+        assertThat(reloaded.getPinFailedAttempts()).isEqualTo(4);
+
+        assertThatThrownBy(() -> authService.withdraw(parent.getParentId(), "0000"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_LOCKED));
+
+        Parent lockedParent = parentRepository.findById(parent.getParentId()).orElseThrow();
+        assertThat(lockedParent.getPinFailedAttempts()).isEqualTo(5);
+        assertThat(lockedParent.isDeleted()).isFalse();
     }
 }

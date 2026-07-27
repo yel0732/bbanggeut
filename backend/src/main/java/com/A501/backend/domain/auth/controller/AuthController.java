@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +25,7 @@ import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
 import com.A501.backend.domain.auth.dto.request.LoginRequest;
 import com.A501.backend.domain.auth.dto.request.SignupRequest;
+import com.A501.backend.domain.auth.dto.request.WithdrawRequest;
 import com.A501.backend.domain.auth.dto.response.AuthTokenResponse;
 import com.A501.backend.domain.auth.dto.response.EmailCheckResponse;
 import com.A501.backend.domain.auth.dto.response.GoogleAuthResponse;
@@ -95,6 +97,17 @@ public class AuthController {
             @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken) {
         Long parentId = (Long) authentication.getPrincipal();
         authService.logout(parentId, refreshToken);
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString())
+                .build();
+    }
+
+    @Operation(summary = "회원 탈퇴")
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(
+            Authentication authentication, @Valid @RequestBody WithdrawRequest request) {
+        Long parentId = (Long) authentication.getPrincipal();
+        authService.withdraw(parentId, request.pin());
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, buildExpiredRefreshTokenCookie().toString())
                 .build();

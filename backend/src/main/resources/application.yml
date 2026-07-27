@@ -19,6 +19,12 @@ report:
   retry:
     max-attempts: ${REPORT_RETRY_MAX_ATTEMPTS:3}
     interval: ${REPORT_RETRY_INTERVAL:PT5S}
+  recovery:
+    enabled: ${REPORT_RECOVERY_ENABLED:false}
+    interval: ${REPORT_RECOVERY_INTERVAL:PT1M}
+    initial-delay: ${REPORT_RECOVERY_INITIAL_DELAY:PT30S}
+    stale-processing-threshold: ${REPORT_STALE_PROCESSING_THRESHOLD:PT10M}
+    batch-size: ${REPORT_RECOVERY_BATCH_SIZE:100}
   notification:
     sse:
       # SseEmitter 생성 시 타임아웃으로 사용되어 서블릿 async 타임아웃과 일치시킨다.
@@ -142,4 +148,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics
+
+report:
+  ai:
+    enabled: ${REPORT_AI_ENABLED:true}
+    base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
+    timeout: ${REPORT_AI_TIMEOUT:PT12S}
+  schedule:
+    enabled: ${REPORT_SCHEDULE_ENABLED:true}
+  recovery:
+    enabled: ${REPORT_RECOVERY_ENABLED:true}

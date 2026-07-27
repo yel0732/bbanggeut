@@ -2,6 +2,8 @@ package com.A501.backend.domain.conversation.repository;
 
 import java.util.Collection;
 import java.util.Optional;
+import java.time.LocalDateTime;
+import java.util.List;
 
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,6 +22,13 @@ public interface ConversationSessionRepository extends JpaRepository<Conversatio
     Optional<ConversationSession> findFirstByChildIdAndStatusInOrderByCreatedAtDesc(
             Long childId,
             Collection<ConversationStatus> statuses);
+
+    List<ConversationSession>
+            findAllByChildIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAsc(
+                    Long childId,
+                    ConversationStatus status,
+                    LocalDateTime startedAt,
+                    LocalDateTime endedAt);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select session from ConversationSession session where session.conversationId = :conversationId")

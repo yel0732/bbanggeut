@@ -20,6 +20,7 @@ class AppSettings:
     )
     gms_analysis_model: str = "gpt-5.4-nano"
     gms_response_model: str = "gpt-5.4-mini"
+    gms_report_model: str = "gpt-5.4-mini"
     gms_timeout_seconds: float = 10.0
     gms_max_attempts: int = 2
 
@@ -35,6 +36,7 @@ class AppSettings:
         for name, model in (
             ("GMS_ANALYSIS_MODEL", self.gms_analysis_model),
             ("GMS_RESPONSE_MODEL", self.gms_response_model),
+            ("GMS_REPORT_MODEL", self.gms_report_model),
         ):
             if not isinstance(model, str) or not model.strip():
                 raise ValueError(f"{name} must contain non-whitespace text")
@@ -78,6 +80,10 @@ class AppSettings:
             ),
             gms_response_model=values.get(
                 "GMS_RESPONSE_MODEL",
+                "gpt-5.4-mini",
+            ),
+            gms_report_model=values.get(
+                "GMS_REPORT_MODEL",
                 "gpt-5.4-mini",
             ),
             gms_timeout_seconds=_parse_float(

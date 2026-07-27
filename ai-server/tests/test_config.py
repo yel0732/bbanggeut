@@ -58,6 +58,23 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.realtime_ticket_audience == "ai-realtime"
     assert settings.realtime_heartbeat_interval_seconds == 5.0
     assert settings.realtime_lease_ttl_seconds == 15.0
+    # 기본은 STUN 미사용 — 로컬 MVP에는 host 후보로 충분하고, 외부 STUN 의존은
+    # 도달 불가 네트워크에서 ICE gathering을 ~5초씩 지연시킨다.
+    assert settings.realtime_stun_urls == ()
+    assert settings.stt_model == "whisper-1"
+    assert settings.stt_language == "ko"
+    assert settings.stt_timeout_seconds == 10.0
+    assert settings.stt_max_utterance_seconds == 30.0
+    assert settings.stt_min_utterance_seconds == 0.5
+    assert settings.stt_no_speech_prob_threshold == 0.6
+    assert settings.stt_vad_aggressiveness == 2
+    assert settings.stt_min_speech_ms == 250
+    assert settings.stt_trailing_silence_seconds == 3.0
+    assert settings.stt_preroll_ms == 300
+    assert settings.stt_no_speech_timeout_seconds == 10.0
+    assert settings.tts_model == "gpt-4o-mini-tts"
+    assert settings.tts_voice == "alloy"
+    assert settings.tts_timeout_seconds == 10.0
 
 
 def test_reads_realtime_settings_from_environment() -> None:
@@ -71,6 +88,21 @@ def test_reads_realtime_settings_from_environment() -> None:
             "REALTIME_TICKET_AUDIENCE": "custom-audience",
             "REALTIME_HEARTBEAT_INTERVAL_SECONDS": "7.5",
             "REALTIME_LEASE_TTL_SECONDS": "20",
+            "REALTIME_STUN_URLS": "stun:stun.internal:3478, turns:turn.internal:5349",
+            "STT_MODEL": "whisper-large",
+            "STT_LANGUAGE": "en",
+            "STT_TIMEOUT_SECONDS": "6",
+            "STT_MAX_UTTERANCE_SECONDS": "20",
+            "STT_MIN_UTTERANCE_SECONDS": "1",
+            "STT_NO_SPEECH_PROB_THRESHOLD": "0.75",
+            "STT_VAD_AGGRESSIVENESS": "3",
+            "STT_MIN_SPEECH_MS": "300",
+            "STT_TRAILING_SILENCE_SECONDS": "2.5",
+            "STT_PREROLL_MS": "200",
+            "STT_NO_SPEECH_TIMEOUT_SECONDS": "8",
+            "TTS_MODEL": "tts-x",
+            "TTS_VOICE": "verse",
+            "TTS_TIMEOUT_SECONDS": "7",
         }
     )
 
@@ -83,6 +115,24 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.realtime_ticket_audience == "custom-audience"
     assert settings.realtime_heartbeat_interval_seconds == 7.5
     assert settings.realtime_lease_ttl_seconds == 20.0
+    assert settings.realtime_stun_urls == (
+        "stun:stun.internal:3478",
+        "turns:turn.internal:5349",
+    )
+    assert settings.stt_model == "whisper-large"
+    assert settings.stt_language == "en"
+    assert settings.stt_timeout_seconds == 6.0
+    assert settings.stt_max_utterance_seconds == 20.0
+    assert settings.stt_min_utterance_seconds == 1.0
+    assert settings.stt_no_speech_prob_threshold == 0.75
+    assert settings.stt_vad_aggressiveness == 3
+    assert settings.stt_min_speech_ms == 300
+    assert settings.stt_trailing_silence_seconds == 2.5
+    assert settings.stt_preroll_ms == 200
+    assert settings.stt_no_speech_timeout_seconds == 8.0
+    assert settings.tts_model == "tts-x"
+    assert settings.tts_voice == "verse"
+    assert settings.tts_timeout_seconds == 7.0
 
 
 def test_supports_legacy_model_for_analysis_only() -> None:
@@ -116,6 +166,25 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
         {"GMS_KEY": "key", "GMS_REPORT_MODEL": " "},
         {"GMS_KEY": "key", "GMS_CHILD_DIARY_MODEL": " "},
+        {"GMS_KEY": "key", "REALTIME_STUN_URLS": "not-a-stun-url"},
+        {"GMS_KEY": "key", "REALTIME_STUN_URLS": "http://stun.internal:3478"},
+        {"GMS_KEY": "key", "STT_MODEL": " "},
+        {"GMS_KEY": "key", "STT_LANGUAGE": " "},
+        {"GMS_KEY": "key", "STT_TIMEOUT_SECONDS": "0"},
+        {"GMS_KEY": "key", "STT_MIN_UTTERANCE_SECONDS": "-1"},
+        {"GMS_KEY": "key", "STT_NO_SPEECH_PROB_THRESHOLD": "0"},
+        {"GMS_KEY": "key", "STT_NO_SPEECH_PROB_THRESHOLD": "1.5"},
+        # 최소가 최대보다 크면 어떤 발화도 인식되지 않는다
+        {"GMS_KEY": "key", "STT_MIN_UTTERANCE_SECONDS": "40"},
+        {"GMS_KEY": "key", "STT_VAD_AGGRESSIVENESS": "4"},
+        {"GMS_KEY": "key", "STT_VAD_AGGRESSIVENESS": "-1"},
+        {"GMS_KEY": "key", "STT_MIN_SPEECH_MS": "0"},
+        {"GMS_KEY": "key", "STT_TRAILING_SILENCE_SECONDS": "0"},
+        {"GMS_KEY": "key", "STT_PREROLL_MS": "-1"},
+        {"GMS_KEY": "key", "STT_NO_SPEECH_TIMEOUT_SECONDS": "0"},
+        {"GMS_KEY": "key", "TTS_MODEL": " "},
+        {"GMS_KEY": "key", "TTS_VOICE": " "},
+        {"GMS_KEY": "key", "TTS_TIMEOUT_SECONDS": "0"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

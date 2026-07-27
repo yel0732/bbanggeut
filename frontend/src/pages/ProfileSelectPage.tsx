@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { logout } from '@/api/auth'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
@@ -9,6 +10,7 @@ import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
 import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
 import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
 import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
+import logoutButtonUrl from '@/assets/images/profile/profile-switch-button.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
@@ -24,7 +26,15 @@ const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
 const DEMO_PIN = '1234'
 const MAX_PIN_FAILS = 5
-const PIN_LOCK_SECONDS = 30
+const PIN_LOCK_SECONDS = 5 * 60
+
+function formatPinLockTime(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}초`
+  if (seconds === 0) return `${minutes}분`
+  return `${minutes}분 ${seconds}초`
+}
 const KEYPAD_DIGITS = [
   '1',
   '2',
@@ -56,6 +66,7 @@ export function ProfileSelectPage() {
   const [activeChildProfileId, setActiveChildProfileId] = useState(
     loadActiveChildProfileId,
   )
+  const hasTwoChildRows = childProfiles.length > 5
   const pinTimersRef = useRef<number[]>([])
   const [showPin, setShowPin] = useState(false)
   const [pin, setPin] = useState('')
@@ -63,7 +74,27 @@ export function ProfileSelectPage() {
   const [isPinError, setIsPinError] = useState(false)
   const [pinFailCount, setPinFailCount] = useState(0)
   const [isPinLocked, setIsPinLocked] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
   const lockTimerRef = useRef<number | null>(null)
+  const pinLockUntilRef = useRef(0)
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return
+    setIsLoggingOut(true)
+    setLogoutError('')
+
+    try {
+      await logout()
+      navigate('/', { replace: true })
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error ? error.message : '로그아웃에 실패했어요.',
+      )
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -90,41 +121,48 @@ export function ProfileSelectPage() {
   const openPin = () => {
     clearPinTimers()
     setPin('')
-    setPinMessage('')
-    setIsPinError(false)
+    const secondsLeft = Math.ceil(
+      (pinLockUntilRef.current - Date.now()) / 1000,
+    )
+    if (secondsLeft > 0) {
+      setPinMessage(
+        `5번 틀렸어요. ${formatPinLockTime(secondsLeft)} 후에 다시 시도할 수 있어요.`,
+      )
+      setIsPinError(true)
+    } else {
+      setPinMessage('')
+      setIsPinError(false)
+    }
     setShowPin(true)
   }
 
   const closePin = () => {
-    clearLockTimer()
     clearPinTimers()
     setShowPin(false)
     setPin('')
-    setPinMessage('')
-    setIsPinError(false)
-    setIsPinLocked(false)
-    setPinFailCount(0)
   }
 
   const startPinLock = () => {
     setIsPinLocked(true)
     setPin('')
     setIsPinError(true)
-    setPinMessage(
-      `${MAX_PIN_FAILS}번 틀렸어요. ${PIN_LOCK_SECONDS}초 뒤에 다시 시도해 주세요.`,
-    )
+    setPinMessage('5번 틀렸어요. 5분 동안 입력할 수 없어요.')
 
     const lockUntil = Date.now() + PIN_LOCK_SECONDS * 1000
+    pinLockUntilRef.current = lockUntil
     lockTimerRef.current = window.setInterval(() => {
       const secondsLeft = Math.ceil((lockUntil - Date.now()) / 1000)
       if (secondsLeft <= 0) {
         clearLockTimer()
+        pinLockUntilRef.current = 0
         setIsPinLocked(false)
         setPinFailCount(0)
         setIsPinError(false)
         setPinMessage('')
       } else {
-        setPinMessage(`${secondsLeft}초 뒤에 다시 시도할 수 있어요.`)
+        setPinMessage(
+          `5번 틀렸어요. ${formatPinLockTime(secondsLeft)} 후에 다시 시도할 수 있어요.`,
+        )
       }
     }, 1000)
   }
@@ -215,6 +253,35 @@ export function ProfileSelectPage() {
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_55%,rgba(20,45,20,0.35)_100%)]" />
 
+        <button
+          aria-label="로그아웃"
+          className="absolute top-[21px] right-[25px] z-40 flex h-[46px] w-[210px] items-center justify-center border-0 bg-transparent p-0 text-[22px] text-white drop-shadow-[0_4px_8px_rgba(0,0,0,.25)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-[.98] disabled:cursor-wait disabled:opacity-70"
+          disabled={isLoggingOut}
+          onClick={() => void handleLogout()}
+          style={jua}
+          type="button"
+        >
+          <img
+            alt=""
+            className="pointer-events-none absolute inset-0 size-full object-fill"
+            decoding="async"
+            draggable={false}
+            src={logoutButtonUrl}
+          />
+          <span className="relative z-[1] pb-[1px] drop-shadow-[0_2px_2px_rgba(62,83,23,.55)]">
+            {isLoggingOut ? '나가는 중...' : '로그아웃'}
+          </span>
+        </button>
+        {logoutError ? (
+          <p
+            className="absolute top-[72px] right-[25px] z-40 w-[210px] rounded-xl bg-[#8d453d]/90 px-3 py-2 text-center text-[14px] text-white shadow-lg"
+            role="alert"
+            style={jua}
+          >
+            {logoutError}
+          </p>
+        ) : null}
+
         <div
           className="absolute top-[118px] right-0 left-0 z-10 text-center text-[44px] text-white [text-shadow:0_6px_14px_rgba(0,0,0,0.28)]"
           style={{
@@ -226,14 +293,21 @@ export function ProfileSelectPage() {
           누가 놀러 왔어요?
         </div>
 
-        <div className="absolute top-[262px] right-0 left-0 z-10 flex items-start justify-center gap-8">
-          {childProfiles.map((profile) => {
+        <div className="absolute top-[190px] right-[120px] bottom-[78px] left-[120px] z-10 flex items-center justify-center gap-7">
+          <div
+            className={
+              hasTwoChildRows
+                ? 'grid grid-cols-5 gap-x-6 gap-y-5'
+                : 'grid grid-flow-col auto-cols-[150px] gap-x-6'
+            }
+          >
+            {childProfiles.map((profile) => {
             const isActive = activeChildProfileId === profile.id
 
             return (
               <button
                 aria-pressed={isActive}
-                className="relative flex flex-col items-center gap-4 border-none bg-none p-0 transition hover:-translate-y-1.5"
+                className="relative flex w-[150px] flex-col items-center gap-3.5 border-none bg-none p-0 transition hover:-translate-y-1.5"
                 key={profile.id}
                 onClick={() => {
                   saveActiveChildProfileId(profile.id)
@@ -243,7 +317,7 @@ export function ProfileSelectPage() {
                 type="button"
               >
                 <div
-                  className={`size-[184px] overflow-hidden rounded-full border-[7px] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105 ${
+                  className={`size-[130px] overflow-hidden rounded-full border-[7px] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105 ${
                     isActive
                       ? 'border-[#dfff76] ring-[7px] ring-[#6eaa3f]'
                       : 'border-white'
@@ -258,14 +332,14 @@ export function ProfileSelectPage() {
                 </div>
                 {isActive ? (
                   <span
-                    className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#65983e] px-4 py-1 text-[17px] whitespace-nowrap text-white shadow-md"
+                    className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#65983e] px-3 py-0.5 text-[14px] whitespace-nowrap text-white shadow-md"
                     style={jua}
                   >
                     현재 프로필
                   </span>
                 ) : null}
                 <span
-                  className="text-[28px] text-white"
+                  className="text-[26px] text-white"
                   style={{
                     ...jua,
                     paintOrder: 'stroke fill',
@@ -275,17 +349,16 @@ export function ProfileSelectPage() {
                   {profile.name}
                 </span>
               </button>
-            )
-          })}
-
-          <div className="mx-1 h-[196px] w-0.5 bg-[linear-gradient(180deg,rgba(255,255,255,0),rgba(255,255,255,0.5),rgba(255,255,255,0))]" />
+              )
+            })}
+          </div>
 
           <button
-            className="flex flex-col items-center gap-4 border-none bg-none p-0 transition hover:-translate-y-1.5"
+            className="flex w-[150px] shrink-0 flex-col items-center gap-3.5 border-none bg-none p-0 transition hover:-translate-y-1.5"
             onClick={openPin}
             type="button"
           >
-            <div className="size-[184px] overflow-hidden rounded-full border-[7px] border-[#ffe6a6] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105">
+            <div className="size-[130px] overflow-hidden rounded-full border-[7px] border-[#ffe6a6] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105">
               <img
                 alt="부모"
                 className="h-full w-full object-cover"
@@ -294,7 +367,7 @@ export function ProfileSelectPage() {
               />
             </div>
             <span
-              className="flex items-center gap-1.5 text-[28px] text-white"
+              className="flex items-center gap-1.5 text-[26px] text-white"
               style={{
                 ...jua,
                 paintOrder: 'stroke fill',

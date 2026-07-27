@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { loginWithEmail, storeLoginSession } from '@/api/auth'
+import {
+  consumeNewSignup,
+  loginWithEmail,
+  storeLoginSession,
+} from '@/api/auth'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
+import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
 import loginBoardUrl from '@/assets/images/auth/login-board.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
@@ -19,8 +24,11 @@ const boardSize = {
 
 export function EmailLoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(
+    () => (location.state as { email?: string } | null)?.email ?? '',
+  )
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
@@ -39,7 +47,9 @@ export function EmailLoginPage() {
         password,
       })
       storeLoginSession(response, remember)
-      navigate('/profiles', { replace: true })
+      navigate(consumeNewSignup(response.email) ? '/profiles/new' : '/profiles', {
+        replace: true,
+      })
     } catch (loginError) {
       setError(
         loginError instanceof Error
@@ -73,26 +83,21 @@ export function EmailLoginPage() {
 
       <Link
         aria-label="뒤로"
-        className="absolute top-4 left-[clamp(16px,6vw,78px)] z-30 grid h-[58px] w-[58px] place-items-center rounded-full border-2 border-white/70 bg-black/35 drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105"
+        className="absolute top-[25px] left-[25px] z-30 block size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
         to="/"
       >
-        <svg
-          aria-hidden="true"
-          className="ml-[-2px] size-6"
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={3}
-          viewBox="0 0 24 24"
-        >
-          <path d="M15 19l-7-7 7-7" />
-        </svg>
+        <img
+          alt=""
+          className="block size-full object-contain"
+          decoding="async"
+          draggable={false}
+          src={leftButtonUrl}
+        />
       </Link>
 
       <button
         aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="absolute bottom-6 left-[clamp(16px,6vw,78px)] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+        className="absolute bottom-[25px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
         onClick={() => {
           void toggleBgm()
         }}

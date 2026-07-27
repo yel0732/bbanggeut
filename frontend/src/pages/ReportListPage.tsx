@@ -12,6 +12,7 @@ import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
 import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
+import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import backButtonUrl from '@/assets/images/report/left-btn.webp'
@@ -50,7 +51,9 @@ export function ReportListPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedDate, setSelectedDate] = useState('')
+  const [selectedDate, setSelectedDate] = useState(
+    () => searchParams.get('reportDate') ?? '',
+  )
   const [selectedReport, setSelectedReport] =
     useState<ReportDetailResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -363,7 +366,7 @@ export function ReportListPage() {
               label="이전 페이지"
               onClick={() => setPage((current) => Math.max(0, current - 1))}
             />
-            {Array.from({ length: totalPages }, (_, index) => (
+            {getVisiblePageIndices(page, totalPages).map((index) => (
               <button
                 aria-current={index === page ? 'page' : undefined}
                 className={`size-14 bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#3a7d2c] ${index === page ? 'opacity-100' : 'opacity-55'}`}

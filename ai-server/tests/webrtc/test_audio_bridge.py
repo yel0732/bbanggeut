@@ -1,4 +1,8 @@
-"""Tests for SessionAudioBridge/EchoAudioTrack (T13)."""
+"""Tests for SessionAudioBridge — inbound consume + STT sink fan-out.
+
+The echo track was removed in DIARY-3-W04 (replaced by the real AI voice), so
+this bridge now only consumes the child's inbound audio and feeds the sink.
+"""
 
 import asyncio
 import logging
@@ -45,36 +49,33 @@ class BlockingInboundAudioTrack(MediaStreamTrack):
         raise AssertionError("unreachable")  # pragma: no cover
 
 
+class RecordingSink:
+    """Fake AudioSink capturing the fan-out."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.frames: list[AudioFrame] = []
+        self.closed = 0
+        self._fail = fail
+
+    def on_frame(self, frame: AudioFrame) -> None:
+        if self._fail:
+            raise RuntimeError("sink is broken")
+        self.frames.append(frame)
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
 @pytest.mark.asyncio
-async def test_outbound_track_replays_frames_with_own_pts_timeline() -> None:
-    frames = [_make_frame(samples=960), _make_frame(samples=960)]
-    bridge = SessionAudioBridge(_LOGGER)
-    bridge.start(FakeInboundAudioTrack(frames))
-    outbound = bridge.create_outbound_track()
+async def test_inbound_frames_reach_the_sink() -> None:
+    sink = RecordingSink()
+    bridge = SessionAudioBridge(_LOGGER, sink=sink)
+    bridge.start(FakeInboundAudioTrack([_make_frame(), _make_frame()]))
 
-    first = await outbound.recv()
-    second = await outbound.recv()
+    for _ in range(5):
+        await asyncio.sleep(0)  # let the consume task drain the fake track
 
-    assert first.pts == 0
-    assert second.pts == 960
-    assert first.sample_rate == 48000
-    await bridge.stop()
-
-
-@pytest.mark.asyncio
-async def test_backpressure_drops_oldest_frames_when_queue_full() -> None:
-    frames = [_make_frame() for _ in range(5)]
-    bridge = SessionAudioBridge(_LOGGER, max_queue_size=2)
-    bridge.start(FakeInboundAudioTrack(frames))
-    await asyncio.sleep(0)  # let the consume task drain the fake (non-pacing) track
-
-    outbound = bridge.create_outbound_track()
-    first = await outbound.recv()
-    second = await outbound.recv()
-
-    # Only the last 2 of 5 frames survive backpressure (drop-oldest).
-    assert first is frames[3]
-    assert second is frames[4]
+    assert len(sink.frames) == 2
     await bridge.stop()
 
 
@@ -115,9 +116,91 @@ async def test_stop_is_idempotent() -> None:
 async def test_inbound_track_ending_naturally_does_not_crash_the_consume_task() -> None:
     bridge = SessionAudioBridge(_LOGGER)
     bridge.start(FakeInboundAudioTrack([_make_frame()]))
-    outbound = bridge.create_outbound_track()
 
-    await outbound.recv()
-    await asyncio.sleep(0)  # let the consume task observe MediaStreamError and exit cleanly
+    for _ in range(5):
+        await asyncio.sleep(0)  # consume task observes MediaStreamError and exits cleanly
 
     await bridge.stop()  # must still be safe to call
+
+
+@pytest.mark.asyncio
+async def test_no_sink_bridge_still_consumes_without_error() -> None:
+    bridge = SessionAudioBridge(_LOGGER)
+    bridge.start(FakeInboundAudioTrack([_make_frame()]))
+
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    assert bridge.has_sink is False
+    await bridge.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_closes_the_attached_sink() -> None:
+    sink = RecordingSink()
+    bridge = SessionAudioBridge(_LOGGER, sink=sink)
+    bridge.start(BlockingInboundAudioTrack())
+
+    await bridge.stop()
+
+    assert sink.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_stop_closes_the_sink_only_once() -> None:
+    sink = RecordingSink()
+    bridge = SessionAudioBridge(_LOGGER, sink=sink)
+    bridge.start(BlockingInboundAudioTrack())
+
+    await bridge.stop()
+    await bridge.stop()
+
+    assert sink.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_stop_closes_the_sink_even_if_the_bridge_never_started() -> None:
+    sink = RecordingSink()
+    bridge = SessionAudioBridge(_LOGGER, sink=sink)
+
+    await bridge.stop()
+
+    assert sink.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failing_sink_does_not_kill_the_media_loop() -> None:
+    """Losing STT is recoverable; losing the receive loop drops the call."""
+
+    bridge = SessionAudioBridge(_LOGGER, sink=RecordingSink(fail=True))
+    bridge.start(FakeInboundAudioTrack([_make_frame(), _make_frame()]))
+
+    for _ in range(5):
+        await asyncio.sleep(0)  # consume task survives the raising sink
+
+    assert bridge.is_running
+    await bridge.stop()
+
+
+@pytest.mark.asyncio
+async def test_sink_can_be_attached_after_construction() -> None:
+    """aiortc raises "track" before the DataChannel exists, so the sink -
+    which publishes through that channel - is attached later."""
+
+    bridge = SessionAudioBridge(_LOGGER)
+    bridge.start(BlockingInboundAudioTrack())
+    sink = RecordingSink()
+
+    bridge.attach_sink(sink)
+
+    assert bridge.has_sink is True
+    await bridge.stop()
+    assert sink.closed == 1
+
+
+@pytest.mark.asyncio
+async def test_attaching_two_sinks_raises() -> None:
+    bridge = SessionAudioBridge(_LOGGER, sink=RecordingSink())
+
+    with pytest.raises(RuntimeError):
+        bridge.attach_sink(RecordingSink())

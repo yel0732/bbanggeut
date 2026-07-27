@@ -11,6 +11,7 @@ import frameUrl from '@/assets/images/parent-profile/frame-square.webp'
 import kidCellUrl from '@/assets/images/parent-profile/kid-cell.webp'
 import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
 import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
+import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
@@ -181,7 +182,7 @@ export function ChildProfileListPage() {
 
         <Link
           aria-label="뒤로"
-          className="absolute top-4 left-[78px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+          className="absolute top-[25px] left-[25px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
           to="/parent"
         >
           <img
@@ -192,7 +193,7 @@ export function ChildProfileListPage() {
         </Link>
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-3 left-[78px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105"
+          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105"
           onClick={() => void toggleBgm()}
           type="button"
         >
@@ -203,7 +204,7 @@ export function ChildProfileListPage() {
           />
         </button>
 
-        <main className="absolute top-6 left-1/2 z-10 h-[672px] w-[640px] -translate-x-1/2">
+        <main className="absolute -top-4 left-1/2 z-10 h-[672px] w-[640px] -translate-x-1/2">
           <img
             alt=""
             className="pointer-events-none absolute inset-0 size-full"
@@ -327,7 +328,7 @@ export function ChildProfileListPage() {
                 src={pagerLeftUrl}
               />
             </button>
-            {Array.from({ length: pageCount }).map((_, index) => (
+            {getVisiblePageIndices(currentPage, pageCount).map((index) => (
               <button
                 className="relative size-[54px] bg-transparent p-0 transition hover:scale-105"
                 key={index}

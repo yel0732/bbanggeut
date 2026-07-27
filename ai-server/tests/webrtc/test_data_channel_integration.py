@@ -11,7 +11,7 @@ import asyncio
 import json
 
 import pytest
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 
 from app.webrtc.data_channel import DataChannel
 from app.webrtc.peer_connection import AiortcPeerConnectionFactory
@@ -27,7 +27,7 @@ async def _wait_until(predicate, timeout: float = 10.0, interval: float = 0.01) 
 
 @pytest.mark.asyncio
 async def test_client_created_data_channel_is_received_and_exchanges_json() -> None:
-    client = RTCPeerConnection()
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     client_channel = client.createDataChannel("conversation-events", ordered=True)
 
     client_received: list[dict] = []

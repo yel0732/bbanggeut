@@ -21,6 +21,10 @@ from app.dialogue.question.fallback import (
 from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.policy.termination import DialogueTerminationPolicy
 from app.providers.gms_chat import GmsChatClient
+from app.realtime.context_snapshot import (
+    RedisContextSnapshotReader,
+    default_context_snapshot,
+)
 from app.realtime.jwks_cache import RealtimeJwksCache
 from app.realtime.redis_client import create_redis_client
 from app.realtime.session_epoch_registry import SessionEpochRegistry
@@ -32,8 +36,16 @@ from app.realtime.ticket_verification import (
 )
 from app.report.generator import DailyReportGenerator
 from app.session.realtime_connection_registry import RealtimeConnectionRegistry
+from app.session.realtime_dialogue import create_realtime_dialogue_session
 from app.signaling.error_mapping import map_ticket_failure_code
 from app.signaling.router import router as signaling_router
+from app.speech.hallucination import HallucinationGuard
+from app.speech.stt_pipeline import SessionSttPipeline
+from app.speech.synthesis import SpeechSynthesisService
+from app.speech.tts_client import GmsSpeechSynthesizer
+from app.speech.turn_detector import TurnDetectionConfig
+from app.speech.vad import WebrtcVoiceActivityDetector
+from app.speech.whisper_client import WhisperSpeechRecognizer
 from app.webrtc.peer_connection import AiortcPeerConnectionFactory
 
 
@@ -121,7 +133,9 @@ def create_app(
             resolved_settings.realtime_ticket_audience,
             logging.getLogger("app.realtime.ticket_verification"),
         )
-        app.state.peer_connection_factory = AiortcPeerConnectionFactory()
+        app.state.peer_connection_factory = AiortcPeerConnectionFactory(
+            resolved_settings.realtime_stun_urls
+        )
         app.state.realtime_connection_registry = RealtimeConnectionRegistry()
         app.state.realtime_heartbeat_factory = lambda: SessionLeaseHeartbeat(
             redis_client,
@@ -130,6 +144,84 @@ def create_app(
             logging.getLogger("app.realtime.session_lease_heartbeat"),
         )
         app.state.map_ticket_failure_code = map_ticket_failure_code
+
+        # STT: one recognizer shared (stateless HTTP), one pipeline per
+        # connection (owns that session's converter/buffer/turn state, §8).
+        speech_recognizer = WhisperSpeechRecognizer(
+            http_client,
+            api_key=resolved_settings.gms_key,
+            model=resolved_settings.stt_model,
+            language=resolved_settings.stt_language,
+            timeout_seconds=resolved_settings.stt_timeout_seconds,
+        )
+        hallucination_guard = HallucinationGuard(
+            min_audio_seconds=resolved_settings.stt_min_utterance_seconds,
+            no_speech_prob_threshold=resolved_settings.stt_no_speech_prob_threshold,
+        )
+        turn_detection_config = TurnDetectionConfig(
+            min_speech_ms=resolved_settings.stt_min_speech_ms,
+            trailing_silence_seconds=resolved_settings.stt_trailing_silence_seconds,
+            no_speech_timeout_seconds=resolved_settings.stt_no_speech_timeout_seconds,
+            preroll_ms=resolved_settings.stt_preroll_ms,
+        )
+
+        def stt_pipeline_factory(publisher, *, turn_sequencer, on_final, on_no_speech):
+            return SessionSttPipeline(
+                speech_recognizer,
+                publisher,
+                logging.getLogger("app.speech.stt_pipeline"),
+                guard=hallucination_guard,
+                max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
+                # VAD 자체는 세션별 인스턴스(webrtcvad가 내부 상태를 가짐, §8).
+                vad=WebrtcVoiceActivityDetector(resolved_settings.stt_vad_aggressiveness),
+                turn_detection=turn_detection_config,
+                turn_sequencer=turn_sequencer,
+                on_final=on_final,
+                on_no_speech=on_no_speech,
+            )
+
+        context_snapshot_reader = RedisContextSnapshotReader(
+            redis_client, logging.getLogger("app.realtime.context_snapshot")
+        )
+        # TTS synthesizer는 상태 비저장(HTTP)이라 연결 간 공유. 합성 서비스는
+        # speaker·publisher·registry가 연결별이라 세션마다 새로 만든다(§8).
+        speech_synthesizer = GmsSpeechSynthesizer(
+            http_client,
+            api_key=resolved_settings.gms_key,
+            model=resolved_settings.tts_model,
+            voice=resolved_settings.tts_voice,
+            first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
+        )
+
+        def synthesis_service_factory(speaker, publisher, response_registry):
+            return SpeechSynthesisService(
+                speech_synthesizer,
+                speaker,
+                publisher,
+                response_registry.is_cancelled,
+                logging.getLogger("app.speech.synthesis"),
+            )
+
+        async def realtime_session_factory(publisher, conversation_id, speaker):
+            return await create_realtime_dialogue_session(
+                publisher=publisher,
+                conversation_id=conversation_id,
+                read_snapshot=context_snapshot_reader.read,
+                default_snapshot=default_context_snapshot,
+                dialogue_pipeline=app.state.dialogue_pipeline,
+                termination_policy=DialogueTerminationPolicy(
+                    required_targets=frozenset(QuestionTarget)
+                ),
+                is_epoch_current=lambda: session_epoch_registry.is_current(
+                    conversation_id, publisher.session_epoch
+                ),
+                stt_pipeline_factory=stt_pipeline_factory,
+                logger=logging.getLogger("app.session.realtime_dialogue"),
+                speaker=speaker,
+                synthesis_service_factory=synthesis_service_factory,
+            )
+
+        app.state.realtime_session_factory = realtime_session_factory
 
         try:
             yield

@@ -1,8 +1,8 @@
 """PeerConnection abstraction for WebRTC SDP/ICE, Audio Track, and DataChannel.
 
-SDP/ICE/connection-state handling landed in W03 (T11); Audio Track (W04/T13,
-see app/webrtc/audio_bridge.py) and DataChannel (W04/T14, see
-app/webrtc/data_channel.py) are wired in here. ``FakePeerConnection`` lets
+SDP/ICE/connection-state handling landed in DIARY-2-W03; inbound Audio Track
+and DataChannel in DIARY-2-W04; the outbound AI voice track (``speaker``,
+app/speech/speaker.py) in DIARY-3-W04. ``FakePeerConnection`` lets
 signaling/connection.py's state machine be unit tested without a real
 PeerConnection.
 """
@@ -14,11 +14,12 @@ from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Protocol
 
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import MediaStreamTrack
 from aiortc.sdp import candidate_from_sdp
 
-from app.webrtc.audio_bridge import SessionAudioBridge
+from app.speech.speaker import SpeakerAudioTrack, SpeakerHandle
+from app.webrtc.audio_bridge import AudioSink, SessionAudioBridge
 from app.webrtc.data_channel import AiortcDataChannel, DataChannel
 
 
@@ -56,6 +57,23 @@ class PeerConnection(Protocol):
         """
         ...
 
+    def attach_audio_sink(self, sink: AudioSink) -> None:
+        """Route inbound Audio Frames to the STT sink.
+
+        Called once the ``conversation-events`` DataChannel exists, because the
+        sink publishes through it (see ``SessionAudioBridge.attach_sink``).
+        """
+        ...
+
+    @property
+    def speaker(self) -> SpeakerHandle | None:
+        """The outbound AI voice, or ``None`` for an audio-less offer.
+
+        aiortc only creates an audio transceiver when the offer carried an
+        audio m-line, so a DataChannel-only client has nowhere to play audio.
+        """
+        ...
+
     async def close(self) -> None: ...
 
 
@@ -75,10 +93,17 @@ class FakePeerConnection:
         self.closed = False
         self._state_change_callback: StateChangeCallback | None = None
         self._data_channel_callback: DataChannelReceivedCallback | None = None
+        self.attached_sink: AudioSink | None = None
+        self._speaker: SpeakerHandle | None = None
 
     async def accept_offer(self, sdp: str) -> str:
         self.accepted_offer_sdp = sdp
         return self.answer_sdp
+
+    def set_speaker(self, speaker: SpeakerHandle | None) -> None:
+        """Test helper: hand the state machine a speaker as the real backend would."""
+
+        self._speaker = speaker
 
     async def add_ice_candidate(
         self, candidate: str, sdp_mid: str | None, sdp_mline_index: int | None
@@ -90,6 +115,13 @@ class FakePeerConnection:
 
     def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
         self._data_channel_callback = callback
+
+    def attach_audio_sink(self, sink: AudioSink) -> None:
+        self.attached_sink = sink
+
+    @property
+    def speaker(self) -> SpeakerHandle | None:
+        return self._speaker
 
     async def close(self) -> None:
         self.closed = True
@@ -135,14 +167,26 @@ class AiortcPeerConnection:
     need ``add_ice_candidate()``.
     """
 
-    def __init__(self) -> None:
-        self._pc = RTCPeerConnection()
+    def __init__(
+        self, stun_urls: tuple[str, ...] = (), *, speaker_queue_frames: int = 250
+    ) -> None:
+        # aiortc treats iceServers=None as "use the built-in Google STUN
+        # default" — an unwanted external network dependency that stalls ICE
+        # gathering ~5s per PeerConnection when STUN is unreachable (measured,
+        # jira/plan/DIARY-3-W01.md). An explicit empty list disables STUN
+        # lookups entirely; production injects real URLs via
+        # AppSettings.realtime_stun_urls when a deployment actually needs
+        # srflx candidates (NAT traversal — INFRA epic scope).
+        ice_servers = [RTCIceServer(urls=list(stun_urls))] if stun_urls else []
+        self._pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers))
         self._pc.on("connectionstatechange", self._handle_state_change)
         self._pc.on("track", self._handle_track)
         self._pc.on("datachannel", self._handle_data_channel)
         self._callback: StateChangeCallback | None = None
         self._data_channel_callback: DataChannelReceivedCallback | None = None
         self._audio_bridge = SessionAudioBridge(logging.getLogger("app.webrtc.audio_bridge"))
+        self._speaker_queue_frames = speaker_queue_frames
+        self._speaker: SpeakerHandle | None = None
 
     async def accept_offer(self, sdp: str) -> str:
         # setRemoteDescription() processes the offer's m-lines synchronously,
@@ -155,12 +199,14 @@ class AiortcPeerConnection:
         # adding a track with no matching transceiver crashes createAnswer()/
         # setLocalDescription() with "None is not in list" (found while wiring
         # this up — a test client offering only a DataChannel, no audio,
-        # reproduced it). So the outbound echo track is only added when an
-        # inbound audio track was actually received (§11-C correction: no
-        # AudioStreamTrack() fallback for a genuinely audio-less offer).
+        # reproduced it). So the outbound speaker track is only added when an
+        # inbound audio track was actually received (§11-C: no track fallback
+        # for a genuinely audio-less offer).
         await self._pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
         if self._audio_bridge.is_running:
-            self._pc.addTrack(self._audio_bridge.create_outbound_track())
+            track = SpeakerAudioTrack()
+            self._speaker = SpeakerHandle(track, self._speaker_queue_frames)
+            self._pc.addTrack(track)
         answer = await self._pc.createAnswer()
         await self._pc.setLocalDescription(answer)
         return self._pc.localDescription.sdp
@@ -183,6 +229,13 @@ class AiortcPeerConnection:
     def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
         self._data_channel_callback = callback
 
+    def attach_audio_sink(self, sink: AudioSink) -> None:
+        self._audio_bridge.attach_sink(sink)
+
+    @property
+    def speaker(self) -> SpeakerHandle | None:
+        return self._speaker
+
     async def close(self) -> None:
         await self._audio_bridge.stop()
         await self._pc.close()
@@ -198,5 +251,8 @@ class AiortcPeerConnection:
 
 
 class AiortcPeerConnectionFactory:
+    def __init__(self, stun_urls: tuple[str, ...] = ()) -> None:
+        self._stun_urls = stun_urls
+
     def create(self) -> AiortcPeerConnection:
-        return AiortcPeerConnection()
+        return AiortcPeerConnection(self._stun_urls)

@@ -33,6 +33,26 @@ class AppSettings:
     realtime_ticket_audience: str = "ai-realtime"
     realtime_heartbeat_interval_seconds: float = 5.0
     realtime_lease_ttl_seconds: float = 15.0
+    # 빈 tuple이면 PeerConnection이 STUN 조회 없이 host 후보만 사용한다(로컬 MVP 기본).
+    # NAT 통과가 필요한 배포에서만 REALTIME_STUN_URLS로 주입한다(INFRA Epic).
+    realtime_stun_urls: tuple[str, ...] = ()
+    # STT(DEC-04: whisper-1 배치). 기본값 근거는 jira/plan/DIARY-3-W01.md §1 실측.
+    stt_model: str = "whisper-1"
+    stt_language: str = "ko"
+    stt_timeout_seconds: float = 10.0
+    stt_max_utterance_seconds: float = 30.0  # whisper 처리 창과 동일, 초과 시 턴 강제 종료
+    stt_min_utterance_seconds: float = 0.5  # 미만이면 호출하지 않음(0.4초 → "you" 환각)
+    stt_no_speech_prob_threshold: float = 0.6  # 실제 발화 0.00 vs 환각 0.82~0.94
+    # Turn Detection(W02). 기본값 근거는 jira/plan/DIARY-3-W02.md §5.
+    stt_vad_aggressiveness: int = 2  # 3은 저음량 아동 발화를 놓칠 위험(§11-D)
+    stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
+    stt_trailing_silence_seconds: float = 3.0  # 종료 판정 침묵(권고 2.5~3의 상단)
+    stt_preroll_ms: int = 300  # 발화 확정 전 보존할 선행 오디오
+    stt_no_speech_timeout_seconds: float = 10.0  # 무응답 신호(정책 연결은 W03)
+    # Streaming TTS(W04). 기본값 근거는 jira/plan/DIARY-3-W04.md §4.
+    tts_model: str = "gpt-4o-mini-tts"  # GMS의 유일한 TTS 모델
+    tts_voice: str = "alloy"  # §11-B: 캐릭터 목소리는 제품 결정 — 임시 기본값
+    tts_timeout_seconds: float = 10.0  # 첫 바이트까지(실측 TTFB 1.89s의 5배 여유)
 
     def __post_init__(self) -> None:
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
@@ -107,6 +127,78 @@ class AppSettings:
                 or value <= 0
             ):
                 raise ValueError(f"{name} must be a positive finite number")
+        for name, text in (
+            ("STT_MODEL", self.stt_model),
+            ("STT_LANGUAGE", self.stt_language),
+            ("TTS_MODEL", self.tts_model),
+            ("TTS_VOICE", self.tts_voice),
+        ):
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"{name} must contain non-whitespace text")
+        if (
+            isinstance(self.tts_timeout_seconds, bool)
+            or not isinstance(self.tts_timeout_seconds, (int, float))
+            or not math.isfinite(self.tts_timeout_seconds)
+            or self.tts_timeout_seconds <= 0
+        ):
+            raise ValueError("TTS_TIMEOUT_SECONDS must be a positive finite number")
+        for name, value in (
+            ("STT_TIMEOUT_SECONDS", self.stt_timeout_seconds),
+            ("STT_MAX_UTTERANCE_SECONDS", self.stt_max_utterance_seconds),
+            ("STT_MIN_UTTERANCE_SECONDS", self.stt_min_utterance_seconds),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a positive finite number")
+        if self.stt_min_utterance_seconds >= self.stt_max_utterance_seconds:
+            raise ValueError(
+                "STT_MIN_UTTERANCE_SECONDS must be below STT_MAX_UTTERANCE_SECONDS"
+            )
+        if (
+            isinstance(self.stt_vad_aggressiveness, bool)
+            or not isinstance(self.stt_vad_aggressiveness, int)
+            or self.stt_vad_aggressiveness not in range(4)
+        ):
+            raise ValueError("STT_VAD_AGGRESSIVENESS must be an integer from 0 to 3")
+        for name, value in (
+            ("STT_MIN_SPEECH_MS", self.stt_min_speech_ms),
+            ("STT_PREROLL_MS", self.stt_preroll_ms),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.stt_min_speech_ms == 0:
+            raise ValueError("STT_MIN_SPEECH_MS must be positive")
+        for name, value in (
+            ("STT_TRAILING_SILENCE_SECONDS", self.stt_trailing_silence_seconds),
+            ("STT_NO_SPEECH_TIMEOUT_SECONDS", self.stt_no_speech_timeout_seconds),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a positive finite number")
+        if (
+            isinstance(self.stt_no_speech_prob_threshold, bool)
+            or not isinstance(self.stt_no_speech_prob_threshold, (int, float))
+            or not 0 < self.stt_no_speech_prob_threshold <= 1
+        ):
+            raise ValueError("STT_NO_SPEECH_PROB_THRESHOLD must be within (0, 1]")
+        if not isinstance(self.realtime_stun_urls, tuple):
+            raise ValueError("REALTIME_STUN_URLS must be a tuple of URLs")
+        for url in self.realtime_stun_urls:
+            if not isinstance(url, str) or not url.startswith(
+                ("stun:", "stuns:", "turn:", "turns:")
+            ):
+                raise ValueError(
+                    "REALTIME_STUN_URLS entries must start with "
+                    "stun:, stuns:, turn: or turns:"
+                )
 
     @classmethod
     def from_environment(
@@ -175,6 +267,53 @@ class AppSettings:
                 values.get("REALTIME_LEASE_TTL_SECONDS", "15"),
                 "REALTIME_LEASE_TTL_SECONDS",
             ),
+            realtime_stun_urls=_parse_url_list(
+                values.get("REALTIME_STUN_URLS", "")
+            ),
+            stt_model=values.get("STT_MODEL", "whisper-1"),
+            stt_language=values.get("STT_LANGUAGE", "ko"),
+            stt_timeout_seconds=_parse_float(
+                values.get("STT_TIMEOUT_SECONDS", "10"),
+                "STT_TIMEOUT_SECONDS",
+            ),
+            stt_max_utterance_seconds=_parse_float(
+                values.get("STT_MAX_UTTERANCE_SECONDS", "30"),
+                "STT_MAX_UTTERANCE_SECONDS",
+            ),
+            stt_min_utterance_seconds=_parse_float(
+                values.get("STT_MIN_UTTERANCE_SECONDS", "0.5"),
+                "STT_MIN_UTTERANCE_SECONDS",
+            ),
+            stt_no_speech_prob_threshold=_parse_float(
+                values.get("STT_NO_SPEECH_PROB_THRESHOLD", "0.6"),
+                "STT_NO_SPEECH_PROB_THRESHOLD",
+            ),
+            stt_vad_aggressiveness=_parse_int(
+                values.get("STT_VAD_AGGRESSIVENESS", "2"),
+                "STT_VAD_AGGRESSIVENESS",
+            ),
+            stt_min_speech_ms=_parse_int(
+                values.get("STT_MIN_SPEECH_MS", "250"),
+                "STT_MIN_SPEECH_MS",
+            ),
+            stt_trailing_silence_seconds=_parse_float(
+                values.get("STT_TRAILING_SILENCE_SECONDS", "3.0"),
+                "STT_TRAILING_SILENCE_SECONDS",
+            ),
+            stt_preroll_ms=_parse_int(
+                values.get("STT_PREROLL_MS", "300"),
+                "STT_PREROLL_MS",
+            ),
+            stt_no_speech_timeout_seconds=_parse_float(
+                values.get("STT_NO_SPEECH_TIMEOUT_SECONDS", "10"),
+                "STT_NO_SPEECH_TIMEOUT_SECONDS",
+            ),
+            tts_model=values.get("TTS_MODEL", "gpt-4o-mini-tts"),
+            tts_voice=values.get("TTS_VOICE", "alloy"),
+            tts_timeout_seconds=_parse_float(
+                values.get("TTS_TIMEOUT_SECONDS", "10"),
+                "TTS_TIMEOUT_SECONDS",
+            ),
         )
 
 
@@ -190,3 +329,7 @@ def _parse_int(value: str, name: str) -> int:
         return int(value)
     except (TypeError, ValueError):
         raise ValueError(f"{name} must be an integer") from None
+
+
+def _parse_url_list(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())

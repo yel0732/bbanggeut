@@ -9,6 +9,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.realtime.jwks_cache import JwksKeyNotFoundError
+from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import (
     LeaseSnapshot,
     RealtimeTicketVerifier,
@@ -100,12 +101,17 @@ def _issue_ticket(
     return jwt.encode(payload, private_key, algorithm="RS256", headers=headers)
 
 
-def _build_verifier(public_key, *, ticket_store=None, lease_reader=None):
+def _build_verifier(
+    public_key, *, ticket_store=None, lease_reader=None, epoch_registry=None
+):
     jwks_cache = FakeJwksCache({"kid-1": public_key})
     ticket_store = ticket_store if ticket_store is not None else FakeTicketConsumptionStore()
     lease_reader = lease_reader if lease_reader is not None else FakeSessionLeaseReader()
+    epoch_registry = epoch_registry if epoch_registry is not None else SessionEpochRegistry()
     logger = logging.getLogger("test.realtime.ticket_verification")
-    return RealtimeTicketVerifier(jwks_cache, ticket_store, lease_reader, ISSUER, AUDIENCE, logger)
+    return RealtimeTicketVerifier(
+        jwks_cache, ticket_store, lease_reader, epoch_registry, ISSUER, AUDIENCE, logger
+    )
 
 
 def _issued_ticket_store() -> FakeTicketConsumptionStore:
@@ -137,6 +143,37 @@ async def test_valid_ticket_is_verified_and_consumed() -> None:
     assert result.session_epoch == 1
     assert result.failure_code is None
     assert ticket_store.calls == ["ticket_1"]
+
+
+@pytest.mark.asyncio
+async def test_successful_verification_registers_the_epoch() -> None:
+    private_key, public_key = _generate_key_pair()
+    ticket = _issue_ticket(private_key, "kid-1")
+    lease_reader = FakeSessionLeaseReader({"conv_1": LeaseSnapshot("rt_1", 1)})
+    epoch_registry = SessionEpochRegistry()
+    verifier = _build_verifier(
+        public_key,
+        ticket_store=_issued_ticket_store(),
+        lease_reader=lease_reader,
+        epoch_registry=epoch_registry,
+    )
+
+    await verifier.verify_and_consume(ticket)
+
+    assert epoch_registry.is_current("conv_1", 1) is True
+    assert epoch_registry.is_current("conv_1", 0) is False
+
+
+@pytest.mark.asyncio
+async def test_failed_verification_does_not_register_the_epoch() -> None:
+    private_key, public_key = _generate_key_pair()
+    ticket = _issue_ticket(private_key, "kid-1", expires_delta_seconds=-10)
+    epoch_registry = SessionEpochRegistry()
+    verifier = _build_verifier(public_key, epoch_registry=epoch_registry)
+
+    await verifier.verify_and_consume(ticket)
+
+    assert epoch_registry.is_current("conv_1", 0) is True
 
 
 @pytest.mark.asyncio

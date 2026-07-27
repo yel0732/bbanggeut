@@ -17,6 +17,7 @@ from typing import Protocol
 import jwt
 
 from app.realtime.jwks_cache import JwksFetchError, JwksKeyNotFoundError, RealtimeJwksCache
+from app.realtime.session_epoch_registry import SessionEpochRegistry
 
 _TICKET_KEY_PREFIX = "realtime:ticket:"
 _SESSION_KEY_PREFIX = "realtime:session:"
@@ -170,6 +171,7 @@ class RealtimeTicketVerifier:
         jwks_cache: RealtimeJwksCache,
         ticket_store: TicketConsumptionStore,
         lease_reader: SessionLeaseReader,
+        epoch_registry: SessionEpochRegistry,
         issuer: str,
         audience: str,
         logger: logging.Logger,
@@ -177,6 +179,7 @@ class RealtimeTicketVerifier:
         self._jwks_cache = jwks_cache
         self._ticket_store = ticket_store
         self._lease_reader = lease_reader
+        self._epoch_registry = epoch_registry
         self._issuer = issuer
         self._audience = audience
         self._logger = logger
@@ -241,6 +244,7 @@ class RealtimeTicketVerifier:
                 conversation_id=outcome.conversation_id,
             )
 
+        self._epoch_registry.register(outcome.conversation_id, outcome.session_epoch)
         self._logger.info(
             "realtime ticket consumed",
             extra={

@@ -1,5 +1,7 @@
 package com.A501.backend.domain.child.service;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -19,6 +21,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ChildService {
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final ChildRepository childRepository;
     private final ChildProperties childProperties;
@@ -55,6 +59,16 @@ public class ChildService {
         child.rename(name);
         child.changeProfileImage(profileImageNum);
         return child;
+    }
+
+    @Transactional
+    public void deleteChild(Long parentId, Long childId, String pin) {
+        // 소유권 검증(404)을 PIN 검증보다 먼저 한다 — 어차피 404로 끝날 요청 때문에
+        // PIN 실패 카운터를 소모하지 않기 위함이다. PIN 검증은 대상 자녀와 무관하게 호출자
+        // 본인 계정만 보므로, 순서를 바꿔도 자녀 존재 여부가 새어나가지는 않는다.
+        Child child = findOwnedChild(parentId, childId);
+        pinService.verifyPin(parentId, pin);
+        child.softDelete(LocalDateTime.now(KST));
     }
 
     // childId 경로 변수를 받는 모든 엔드포인트가 공유하는 소유권 검증. 존재하지 않거나 다른

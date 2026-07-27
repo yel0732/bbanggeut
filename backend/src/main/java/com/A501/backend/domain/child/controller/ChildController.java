@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.child.dto.request.CreateChildRequest;
+import com.A501.backend.domain.child.dto.request.DeleteChildRequest;
 import com.A501.backend.domain.child.dto.request.UpdateChildRequest;
 import com.A501.backend.domain.child.dto.response.ChildNameCheckResponse;
 import com.A501.backend.domain.child.dto.response.ChildResponse;
@@ -74,5 +76,16 @@ public class ChildController {
         Long parentId = (Long) authentication.getPrincipal();
         Child child = childService.updateChild(parentId, childId, request.name(), request.profileImageNum());
         return ResponseEntity.ok(ChildResponse.from(child));
+    }
+
+    @Operation(summary = "자녀 프로필 삭제")
+    @DeleteMapping("/{childId}")
+    public ResponseEntity<Void> delete(
+            Authentication authentication,
+            @PathVariable Long childId,
+            @Valid @RequestBody DeleteChildRequest request) {
+        Long parentId = (Long) authentication.getPrincipal();
+        childService.deleteChild(parentId, childId, request.pin());
+        return ResponseEntity.noContent().build();
     }
 }

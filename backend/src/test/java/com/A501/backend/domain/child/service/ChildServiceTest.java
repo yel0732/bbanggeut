@@ -3,6 +3,7 @@ package com.A501.backend.domain.child.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -169,5 +170,53 @@ class ChildServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
         assertThat(child.getName()).isEqualTo("chorong");
+    }
+
+    @Test
+    void deleteChild_softDeletesWhenOwnedAndPinCorrect() {
+        Child child = Child.create(1L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+
+        childService.deleteChild(1L, 10L, "1234");
+
+        verify(pinService).verifyPin(1L, "1234");
+        assertThat(child.isDeleted()).isTrue();
+    }
+
+    @Test
+    void deleteChild_throwsNotFoundBeforeCheckingPinWhenChildMissing() {
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> childService.deleteChild(1L, 10L, "1234"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
+        // 존재하지 않는/소유하지 않은 자녀 요청은 PIN 실패 카운터를 소모하면 안 된다.
+        verify(pinService, never()).verifyPin(any(), any());
+    }
+
+    @Test
+    void deleteChild_throwsNotFoundWhenChildBelongsToAnotherParent() {
+        Child child = Child.create(2L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+
+        assertThatThrownBy(() -> childService.deleteChild(1L, 10L, "1234"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
+        verify(pinService, never()).verifyPin(any(), any());
+    }
+
+    @Test
+    void deleteChild_propagatesPinMismatchAndLeavesChildAlive() {
+        Child child = Child.create(1L, "chorong", 1);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH)).when(pinService).verifyPin(1L, "0000");
+
+        assertThatThrownBy(() -> childService.deleteChild(1L, 10L, "0000"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_MISMATCH));
+        assertThat(child.isDeleted()).isFalse();
     }
 }

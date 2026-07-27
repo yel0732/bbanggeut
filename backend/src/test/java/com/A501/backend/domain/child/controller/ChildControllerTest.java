@@ -2,6 +2,7 @@ package com.A501.backend.domain.child.controller;
 
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -247,6 +248,75 @@ class ChildControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"banjjak\",\"profileImageNum\":2}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void delete_returnsUnauthorizedWithoutBearerToken() throws Exception {
+        mockMvc.perform(delete("/api/children/10")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void delete_returnsNoContentOnSuccess() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(delete("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void delete_returnsBadRequestForNonFourDigitPin() throws Exception {
+        String accessToken = generateAccessToken();
+
+        mockMvc.perform(delete("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"12a4\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void delete_returnsNotFoundWhenChildNotOwnedOrMissing() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(ChildErrorCode.CHILD_NOT_FOUND))
+                .when(childService).deleteChild(1L, 10L, "1234");
+
+        mockMvc.perform(delete("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void delete_returnsUnauthorizedWhenPinMismatch() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH))
+                .when(childService).deleteChild(1L, 10L, "0000");
+
+        mockMvc.perform(delete("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void delete_returnsLockedWhenPinLockedOut() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_LOCKED))
+                .when(childService).deleteChild(1L, 10L, "0000");
+
+        mockMvc.perform(delete("/api/children/10")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isLocked());
     }
 
     private String generateAccessToken() {

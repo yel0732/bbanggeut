@@ -57,6 +57,34 @@ class RealtimeTicketProviderTest {
         assertThat(claims.getId()).isEqualTo(result.jti());
         assertThat(claims.getExpiration()).isEqualTo(
                 Date.from(result.expiresAt().toInstant(ZoneOffset.UTC)));
+        assertThat(parsed.getHeader().get("kid")).isEqualTo(provider.kid());
+    }
+
+    @Test
+    void 같은_Public_Key면_kid가_항상_같다() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair keyPair = generator.generateKeyPair();
+        String privateKeyPem = toPem("PRIVATE KEY", keyPair.getPrivate().getEncoded());
+        String publicKeyPem = toPem("PUBLIC KEY", keyPair.getPublic().getEncoded());
+        RealtimeTicketProperties properties = new RealtimeTicketProperties(
+                "spring-backend", "ai-realtime", Duration.ofMinutes(5), privateKeyPem, publicKeyPem);
+
+        RealtimeTicketProvider first = new RealtimeTicketProvider(properties, FIXED_CLOCK);
+        RealtimeTicketProvider second = new RealtimeTicketProvider(properties, FIXED_CLOCK);
+
+        assertThat(first.kid()).isEqualTo(second.kid());
+    }
+
+    @Test
+    void 자동_생성된_키페어끼리는_kid가_서로_다르다() {
+        RealtimeTicketProperties properties = new RealtimeTicketProperties(
+                "spring-backend", "ai-realtime", Duration.ofMinutes(5), null, null);
+
+        RealtimeTicketProvider first = new RealtimeTicketProvider(properties, FIXED_CLOCK);
+        RealtimeTicketProvider second = new RealtimeTicketProvider(properties, FIXED_CLOCK);
+
+        assertThat(first.kid()).isNotEqualTo(second.kid());
     }
 
     @Test
@@ -92,6 +120,7 @@ class RealtimeTicketProviderTest {
                 .parseSignedClaims(result.ticket());
         assertThat(parsed.getPayload().get("conversationId", String.class)).isEqualTo("conv_1");
         assertThat(provider.publicKey()).isEqualTo(externalKeyPair.getPublic());
+        assertThat(parsed.getHeader().get("kid")).isEqualTo(provider.kid());
     }
 
     @Test

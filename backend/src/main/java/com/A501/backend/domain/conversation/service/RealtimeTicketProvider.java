@@ -4,6 +4,7 @@ import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.Date;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,11 +42,15 @@ public class RealtimeTicketProvider {
     private static final String CLAIM_REALTIME_SESSION_ID = "realtimeSessionId";
     private static final String CLAIM_SESSION_EPOCH = "sessionEpoch";
     private static final String CLAIM_SCOPE = "scope";
+    private static final String HEADER_KID = "kid";
+    private static final String FINGERPRINT_ALGORITHM = "SHA-256";
+    private static final int KID_LENGTH_BYTES = 8;
 
     private final RealtimeTicketProperties properties;
     private final Clock utcClock;
     private final PrivateKey privateKey;
     private final PublicKey publicKey;
+    private final String kid;
 
     public RealtimeTicketProvider(
             RealtimeTicketProperties properties,
@@ -54,6 +60,7 @@ public class RealtimeTicketProvider {
         KeyPair keyPair = resolveKeyPair(properties);
         this.privateKey = keyPair.getPrivate();
         this.publicKey = keyPair.getPublic();
+        this.kid = computeKid(this.publicKey);
     }
 
     public RealtimeTicketIssueResult issue(
@@ -65,6 +72,7 @@ public class RealtimeTicketProvider {
         LocalDateTime expiresAt = issuedAt.plus(properties.ttl());
 
         String ticket = Jwts.builder()
+                .header().add(HEADER_KID, kid).and()
                 .issuer(properties.issuer())
                 .audience().add(properties.audience()).and()
                 .claim(CLAIM_CONVERSATION_ID, conversationId)
@@ -80,13 +88,31 @@ public class RealtimeTicketProvider {
         return new RealtimeTicketIssueResult(ticket, jti, expiresAt);
     }
 
-    /** W03에서 FastAPI에 JWKS 형태로 노출할 검증용 Public Key. */
+    /** FastAPI가 JWKS로 가져갈 검증용 Public Key. */
     public PublicKey publicKey() {
         return publicKey;
     }
 
+    /**
+     * Public Key 지문 기반 키 식별자. 같은 키면 항상 같은 값이고, 키가 바뀌면(local
+     * 재부팅으로 키페어가 재생성되는 경우 포함) 값도 바뀐다.
+     */
+    public String kid() {
+        return kid;
+    }
+
     private static Date toDate(LocalDateTime utc) {
         return Date.from(utc.toInstant(ZoneOffset.UTC));
+    }
+
+    private static String computeKid(PublicKey publicKey) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance(FINGERPRINT_ALGORITHM);
+            byte[] hash = digest.digest(publicKey.getEncoded());
+            return HexFormat.of().formatHex(hash, 0, KID_LENGTH_BYTES);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("Public Key 지문을 계산할 수 없습니다.", exception);
+        }
     }
 
     private static KeyPair resolveKeyPair(RealtimeTicketProperties properties) {

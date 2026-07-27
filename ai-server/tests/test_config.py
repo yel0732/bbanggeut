@@ -42,6 +42,45 @@ def test_loads_local_dotenv_without_overriding_environment(
     assert settings.gms_response_model == "environment-model"
 
 
+def test_reads_realtime_settings_with_defaults() -> None:
+    settings = AppSettings.from_environment({"GMS_KEY": "key"})
+
+    assert settings.realtime_redis_host == "127.0.0.1"
+    assert settings.realtime_redis_port == 6379
+    assert settings.realtime_jwks_url == (
+        "http://127.0.0.1:8080/internal/v1/realtime/jwks"
+    )
+    assert settings.realtime_ticket_issuer == "spring-backend"
+    assert settings.realtime_ticket_audience == "ai-realtime"
+    assert settings.realtime_heartbeat_interval_seconds == 5.0
+    assert settings.realtime_lease_ttl_seconds == 15.0
+
+
+def test_reads_realtime_settings_from_environment() -> None:
+    settings = AppSettings.from_environment(
+        {
+            "GMS_KEY": "key",
+            "REALTIME_REDIS_HOST": "redis.internal",
+            "REALTIME_REDIS_PORT": "16379",
+            "REALTIME_JWKS_URL": "http://spring.internal:8080/internal/v1/realtime/jwks",
+            "REALTIME_TICKET_ISSUER": "custom-issuer",
+            "REALTIME_TICKET_AUDIENCE": "custom-audience",
+            "REALTIME_HEARTBEAT_INTERVAL_SECONDS": "7.5",
+            "REALTIME_LEASE_TTL_SECONDS": "20",
+        }
+    )
+
+    assert settings.realtime_redis_host == "redis.internal"
+    assert settings.realtime_redis_port == 16379
+    assert settings.realtime_jwks_url == (
+        "http://spring.internal:8080/internal/v1/realtime/jwks"
+    )
+    assert settings.realtime_ticket_issuer == "custom-issuer"
+    assert settings.realtime_ticket_audience == "custom-audience"
+    assert settings.realtime_heartbeat_interval_seconds == 7.5
+    assert settings.realtime_lease_ttl_seconds == 20.0
+
+
 def test_supports_legacy_model_for_analysis_only() -> None:
     settings = AppSettings.from_environment(
         {
@@ -63,6 +102,14 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "GMS_BASE_URL": "not-a-url"},
         {"GMS_KEY": "key", "GMS_ANALYSIS_MODEL": " "},
         {"GMS_KEY": "key", "GMS_RESPONSE_MODEL": " "},
+        {"GMS_KEY": "key", "REALTIME_REDIS_HOST": " "},
+        {"GMS_KEY": "key", "REALTIME_REDIS_PORT": "0"},
+        {"GMS_KEY": "key", "REALTIME_REDIS_PORT": "70000"},
+        {"GMS_KEY": "key", "REALTIME_JWKS_URL": "not-a-url"},
+        {"GMS_KEY": "key", "REALTIME_TICKET_ISSUER": " "},
+        {"GMS_KEY": "key", "REALTIME_TICKET_AUDIENCE": " "},
+        {"GMS_KEY": "key", "REALTIME_HEARTBEAT_INTERVAL_SECONDS": "0"},
+        {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

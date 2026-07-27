@@ -29,6 +29,7 @@ import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.port.ConversationSummaryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort;
+import com.A501.backend.domain.report.port.ReportNotificationRecipientPort.ReportNotificationRecipient;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportConversationSummaryRepository;
 import com.A501.backend.domain.report.repository.ReportGameResultRepository;
@@ -46,6 +47,7 @@ class ReportNotificationGenerationTest {
 
     private static final Long PARENT_ID = 1L;
     private static final Long CHILD_ID = 15L;
+    private static final String CHILD_NAME = "하준";
     private static final LocalDate REPORT_DATE = LocalDate.of(2026, 7, 23);
     private static final LocalDateTime STARTED_AT =
             LocalDateTime.of(2026, 7, 22, 19, 0);
@@ -97,7 +99,9 @@ class ReportNotificationGenerationTest {
         attemptRepository.deleteAll();
         manualRegenerationRepository.deleteAll();
         dailyReportRepository.deleteAll();
-        when(recipientPort.findParentId(CHILD_ID)).thenReturn(PARENT_ID);
+        when(recipientPort.findRecipient(CHILD_ID))
+                .thenReturn(new ReportNotificationRecipient(
+                        PARENT_ID, CHILD_NAME));
     }
 
     @Test
@@ -126,9 +130,7 @@ class ReportNotificationGenerationTest {
                     assertThat(notification.getNotificationStatus())
                             .isEqualTo(ReportNotificationStatus.UNREAD);
                     assertThat(notification.getMessage())
-                            .isEqualTo(
-                                    ReportNotificationPersistenceService
-                                            .COMPLETED_MESSAGE)
+                            .isEqualTo("하준의 일일 리포트가 준비되었습니다.")
                             .doesNotContain("DOBBLE", "3500", "conversation");
                 });
         assertThat(failureRepository.findAll()).isEmpty();
@@ -180,9 +182,7 @@ class ReportNotificationGenerationTest {
                     assertThat(notification.getNotificationType())
                             .isEqualTo(ReportNotificationType.REPORT_FAILED);
                     assertThat(notification.getMessage())
-                            .isEqualTo(
-                                    ReportNotificationPersistenceService
-                                            .FAILED_MESSAGE)
+                            .isEqualTo("하준의 일일 리포트를 생성하지 못했습니다. 다시 생성할 수 있습니다.")
                             .doesNotContain(
                                     "private generation failure detail");
                 });
@@ -197,7 +197,7 @@ class ReportNotificationGenerationTest {
         when(conversationSummaryPort.generateSummary(
                 CHILD_ID, STARTED_AT, ENDED_AT))
                 .thenReturn(Optional.empty());
-        when(recipientPort.findParentId(CHILD_ID))
+        when(recipientPort.findRecipient(CHILD_ID))
                 .thenThrow(new IllegalStateException(
                         "recipient service unavailable"));
 

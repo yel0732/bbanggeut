@@ -19,8 +19,8 @@ import lombok.RequiredArgsConstructor;
 public class JdbcReportChildOwnershipAdapter
         implements ReportChildAccessVerifier, ReportNotificationRecipientPort {
 
-    private static final String FIND_OWNER_SQL = """
-            select parent_id
+    private static final String FIND_CHILD_SQL = """
+            select parent_id, name
             from child
             where child_id = ?
               and deleted_at is null
@@ -33,29 +33,32 @@ public class JdbcReportChildOwnershipAdapter
         if (parentId == null || parentId < 1 || childId == null || childId < 1) {
             throw childNotFound();
         }
-        List<Long> owners = findOwners(childId);
-        if (owners.size() != 1 || !parentId.equals(owners.getFirst())) {
+        List<ReportNotificationRecipient> recipients = findRecipients(childId);
+        if (recipients.size() != 1
+                || !parentId.equals(recipients.getFirst().parentId())) {
             throw childNotFound();
         }
     }
 
     @Override
-    public Long findParentId(Long childId) {
+    public ReportNotificationRecipient findRecipient(Long childId) {
         if (childId == null || childId < 1) {
             throw new IllegalArgumentException("Child ID must be positive.");
         }
-        List<Long> owners = findOwners(childId);
-        if (owners.size() != 1) {
+        List<ReportNotificationRecipient> recipients = findRecipients(childId);
+        if (recipients.size() != 1) {
             throw new IllegalArgumentException(
                     "An active child must have exactly one parent owner.");
         }
-        return owners.getFirst();
+        return recipients.getFirst();
     }
 
-    private List<Long> findOwners(Long childId) {
+    private List<ReportNotificationRecipient> findRecipients(Long childId) {
         return jdbcTemplate.query(
-                FIND_OWNER_SQL,
-                (resultSet, rowNumber) -> resultSet.getLong("parent_id"),
+                FIND_CHILD_SQL,
+                (resultSet, rowNumber) -> new ReportNotificationRecipient(
+                        resultSet.getLong("parent_id"),
+                        resultSet.getString("name")),
                 childId);
     }
 

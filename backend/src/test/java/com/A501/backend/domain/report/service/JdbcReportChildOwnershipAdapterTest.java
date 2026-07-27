@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.report.port.ReportNotificationRecipientPort.ReportNotificationRecipient;
 
 class JdbcReportChildOwnershipAdapterTest {
 
@@ -22,15 +23,18 @@ class JdbcReportChildOwnershipAdapterTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.query(
                 anyString(),
-                org.mockito.ArgumentMatchers.<RowMapper<Long>>any(),
+                org.mockito.ArgumentMatchers
+                        .<RowMapper<ReportNotificationRecipient>>any(),
                 eq(15L)))
-                .thenReturn(List.of(3L));
+                .thenReturn(List.of(
+                        new ReportNotificationRecipient(3L, "하준")));
         JdbcReportChildOwnershipAdapter adapter =
                 new JdbcReportChildOwnershipAdapter(jdbcTemplate);
 
         adapter.verifyOwnership(3L, 15L);
 
-        assertThat(adapter.findParentId(15L)).isEqualTo(3L);
+        assertThat(adapter.findRecipient(15L))
+                .isEqualTo(new ReportNotificationRecipient(3L, "하준"));
     }
 
     @Test
@@ -38,9 +42,11 @@ class JdbcReportChildOwnershipAdapterTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.query(
                 anyString(),
-                org.mockito.ArgumentMatchers.<RowMapper<Long>>any(),
+                org.mockito.ArgumentMatchers
+                        .<RowMapper<ReportNotificationRecipient>>any(),
                 eq(15L)))
-                .thenReturn(List.of(3L));
+                .thenReturn(List.of(
+                        new ReportNotificationRecipient(3L, "하준")));
         JdbcReportChildOwnershipAdapter adapter =
                 new JdbcReportChildOwnershipAdapter(jdbcTemplate);
 

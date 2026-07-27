@@ -12,16 +12,12 @@ import com.A501.backend.domain.report.entity.ReportNotification;
 import com.A501.backend.domain.report.entity.ReportNotificationType;
 import com.A501.backend.domain.report.event.ReportNotificationCreatedEvent;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort;
+import com.A501.backend.domain.report.port.ReportNotificationRecipientPort.ReportNotificationRecipient;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
 
 @Service
 public class ReportNotificationPersistenceService {
-
-    static final String COMPLETED_MESSAGE =
-            "새로운 일일 리포트가 준비되었습니다.";
-    static final String FAILED_MESSAGE =
-            "일일 리포트를 생성하지 못했습니다. 다시 생성할 수 있습니다.";
 
     private final DailyReportRepository dailyReportRepository;
     private final ReportNotificationRepository notificationRepository;
@@ -63,16 +59,17 @@ public class ReportNotificationPersistenceService {
             throw new IllegalStateException(
                     "ReportNotificationRecipientPort is not connected.");
         }
-        Long parentId = recipientPort.findParentId(report.getChildId());
+        ReportNotificationRecipient recipient =
+                recipientPort.findRecipient(report.getChildId());
 
         ReportNotification saved = notificationRepository.saveAndFlush(
                 ReportNotification.create(
-                        parentId,
+                        recipient.parentId(),
                         report.getId(),
                         report.getChildId(),
                         report.getReportDate(),
                         notificationType,
-                        messageOf(notificationType)));
+                        messageOf(notificationType, recipient.childName())));
 
         // 저장 트랜잭션(REQUIRES_NEW) 커밋 이후에만 SSE 전송이 일어나도록
         // AFTER_COMMIT 리스너용 이벤트만 발행한다. 실제 전송은 리스너가 맡는다.
@@ -98,9 +95,12 @@ public class ReportNotificationPersistenceService {
         }
     }
 
-    private String messageOf(ReportNotificationType notificationType) {
+    private String messageOf(
+            ReportNotificationType notificationType,
+            String childName
+    ) {
         return notificationType == ReportNotificationType.REPORT_COMPLETED
-                ? COMPLETED_MESSAGE
-                : FAILED_MESSAGE;
+                ? childName + "의 일일 리포트가 준비되었습니다."
+                : childName + "의 일일 리포트를 생성하지 못했습니다. 다시 생성할 수 있습니다.";
     }
 }

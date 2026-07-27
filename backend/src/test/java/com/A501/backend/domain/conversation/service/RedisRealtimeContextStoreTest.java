@@ -75,7 +75,7 @@ class RedisRealtimeContextStoreTest {
     private ContextSnapshot snapshot() {
         return ContextSnapshot.create(
                 "conv_redis_test",
-                new RealtimeChildContext("하준", "6_9", List.of()),
+                new RealtimeChildContext("하준"),
                 new RealtimeConversationContext(ConversationGoal.DIARY, "ko-KR", ConversationTopic.DAILY, 6),
                 null,
                 List.of(),

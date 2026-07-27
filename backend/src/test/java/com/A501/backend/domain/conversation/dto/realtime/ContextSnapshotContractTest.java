@@ -23,7 +23,7 @@ class ContextSnapshotContractTest {
     void Context_Snapshot은_realtime_context_계약으로_직렬화된다() throws Exception {
         ContextSnapshot snapshot = ContextSnapshot.create(
                 "conv_01JZ123ABC",
-                new RealtimeChildContext("하준", "6_9", List.of("공룡", "블록")),
+                new RealtimeChildContext("하준"),
                 new RealtimeConversationContext(
                         ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12),
                 null,
@@ -48,8 +48,6 @@ class ContextSnapshotContractTest {
                 .contains("\"contextVersion\":1")
                 .contains("\"conversationId\":\"conv_01JZ123ABC\"")
                 .contains("\"displayName\":\"하준\"")
-                .contains("\"ageBand\":\"6_9\"")
-                .contains("\"interests\":[\"공룡\",\"블록\"]")
                 .contains("\"goal\":\"DIARY\"")
                 .contains("\"language\":\"ko-KR\"")
                 .contains("\"currentTopic\":\"GAME\"")
@@ -68,9 +66,7 @@ class ContextSnapshotContractTest {
                   "contextVersion": 1,
                   "conversationId": "conv_01JZ123ABC",
                   "child": {
-                    "displayName": "하준",
-                    "ageBand": "6_9",
-                    "interests": ["공룡", "블록"]
+                    "displayName": "하준"
                   },
                   "conversation": {
                     "goal": "DIARY",

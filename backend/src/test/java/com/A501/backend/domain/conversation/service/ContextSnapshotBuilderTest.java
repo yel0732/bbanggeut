@@ -2,10 +2,14 @@ package com.A501.backend.domain.conversation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,9 +26,14 @@ import com.A501.backend.domain.conversation.dto.realtime.RealtimeChildContext;
 import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.ConversationTopicState;
+import com.A501.backend.domain.conversation.entity.ConversationTurn;
+import com.A501.backend.domain.conversation.entity.Speaker;
+import com.A501.backend.domain.conversation.entity.TurnStatus;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
+import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -32,7 +41,13 @@ import tools.jackson.databind.ObjectMapper;
 class ContextSnapshotBuilderTest {
 
     @Mock
+    private ConversationSessionRepository conversationSessionRepository;
+
+    @Mock
     private ConversationTopicStateRepository topicStateRepository;
+
+    @Mock
+    private ConversationTurnRepository conversationTurnRepository;
 
     @Mock
     private RealtimeChildProfileProvider childProfileProvider;
@@ -43,14 +58,19 @@ class ContextSnapshotBuilderTest {
 
     @BeforeEach
     void setUp() {
-        builder = new ContextSnapshotBuilder(topicStateRepository, childProfileProvider, objectMapper);
+        builder = new ContextSnapshotBuilder(
+                conversationSessionRepository,
+                topicStateRepository,
+                conversationTurnRepository,
+                childProfileProvider,
+                objectMapper);
     }
 
     @Test
     void GAME과_DAILY_주제를_topics_배열로_조립한다() {
         ConversationSession session = ConversationSession.create(
                 "conv_snapshot_test", 15L, ConversationTopic.GAME, 12);
-        RealtimeChildContext childContext = new RealtimeChildContext("하준", "6_9", List.of("공룡"));
+        RealtimeChildContext childContext = new RealtimeChildContext("하준");
         when(childProfileProvider.getProfile(15L)).thenReturn(childContext);
         when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc("conv_snapshot_test"))
                 .thenReturn(List.of(
@@ -75,8 +95,7 @@ class ContextSnapshotBuilderTest {
     void 게임이_없으면_DAILY_단일_주제로_조립한다() {
         ConversationSession session = ConversationSession.create(
                 "conv_daily_only", 15L, ConversationTopic.DAILY, 6);
-        when(childProfileProvider.getProfile(15L))
-                .thenReturn(new RealtimeChildContext("하준", "6_9", List.of()));
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
         when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc("conv_daily_only"))
                 .thenReturn(List.of(dailyTopic()));
 
@@ -90,8 +109,7 @@ class ContextSnapshotBuilderTest {
     void 주제_슬롯이_이미_채워졌으면_현재_값을_그대로_반영한다() {
         ConversationSession session = ConversationSession.create(
                 "conv_in_progress", 15L, ConversationTopic.DAILY, 6);
-        when(childProfileProvider.getProfile(15L))
-                .thenReturn(new RealtimeChildContext("하준", "6_9", List.of()));
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
         ConversationTopicState topicInProgress = ConversationTopicState.create(
                 "topic_daily_in_progress",
                 "conv_in_progress",
@@ -107,6 +125,46 @@ class ContextSnapshotBuilderTest {
 
         assertThat(snapshot.topics().get(0).initialSlots().event()).isEqualTo("놀이공원");
         assertThat(snapshot.topics().get(0).initialSlots().people()).containsExactly("엄마");
+    }
+
+    @Test
+    void 이전에_종료된_대화가_있으면_최근_아이_답변을_참고_정보로_담는다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_with_history", 15L, ConversationTopic.DAILY, 6);
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc("conv_with_history"))
+                .thenReturn(List.of(dailyTopic()));
+        ConversationSession previousSession = ConversationSession.create(
+                "conv_previous", 15L, ConversationTopic.DAILY, 6);
+        when(conversationSessionRepository.findFirstByChildIdAndStatusInOrderByCreatedAtDesc(
+                        eq(15L), any()))
+                .thenReturn(Optional.of(previousSession));
+        when(conversationTurnRepository.findTop5ByConversationIdAndSpeakerAndStatusOrderByTurnSeqDesc(
+                        "conv_previous", Speaker.CHILD, TurnStatus.COMPLETED))
+                .thenReturn(List.of(
+                        childTurn("conv_previous", 3, "그다음 낮잠도 잤어"),
+                        childTurn("conv_previous", 1, "오늘 놀이터에서 놀았어")));
+
+        ContextSnapshot snapshot = builder.build(session);
+
+        assertThat(snapshot.recentConversationSummary())
+                .isEqualTo("오늘 놀이터에서 놀았어 그다음 낮잠도 잤어");
+    }
+
+    @Test
+    void 이전에_종료된_대화가_없으면_참고_정보는_null이다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_no_history", 15L, ConversationTopic.DAILY, 6);
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc("conv_no_history"))
+                .thenReturn(List.of(dailyTopic()));
+        when(conversationSessionRepository.findFirstByChildIdAndStatusInOrderByCreatedAtDesc(
+                        eq(15L), any()))
+                .thenReturn(Optional.empty());
+
+        ContextSnapshot snapshot = builder.build(session);
+
+        assertThat(snapshot.recentConversationSummary()).isNull();
     }
 
     @Test
@@ -165,6 +223,17 @@ class ContextSnapshotBuilderTest {
                 6,
                 serialize(DialogueSlotsPayload.empty()),
                 serialize(DialogueTopicContextPayload.empty(ConversationTopic.DAILY)));
+    }
+
+    private ConversationTurn childTurn(String conversationId, int turnSeq, String content) {
+        return ConversationTurn.createChildCompleted(
+                "turn_" + conversationId + "_" + turnSeq,
+                conversationId,
+                turnSeq,
+                content,
+                (BigDecimal) null,
+                LocalDateTime.of(2026, 7, 20, 9, 0),
+                LocalDateTime.of(2026, 7, 20, 9, 1));
     }
 
     private String serialize(Object value) {

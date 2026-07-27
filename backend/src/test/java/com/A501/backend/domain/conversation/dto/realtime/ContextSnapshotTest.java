@@ -36,7 +36,7 @@ class ContextSnapshotTest {
 
         assertThat(snapshot.contextVersion()).isEqualTo(ContextSnapshot.CURRENT_VERSION);
         assertThat(snapshot.conversationId()).isEqualTo("conv_context_test");
-        assertThat(snapshot.child().interests()).containsExactly("공룡", "블록");
+        assertThat(snapshot.child().displayName()).isEqualTo("하준");
         assertThat(snapshot.topics()).hasSize(2);
     }
 
@@ -121,13 +121,6 @@ class ContextSnapshotTest {
     }
 
     @Test
-    void interests가_null이면_빈_목록으로_대체한다() {
-        RealtimeChildContext child = new RealtimeChildContext("하준", "6_9", null);
-
-        assertThat(child.interests()).isEmpty();
-    }
-
-    @Test
     void games가_null이면_빈_목록으로_대체한다() {
         RealtimeTopicSnapshot topic = new RealtimeTopicSnapshot(
                 ConversationTopic.GAME, 1, 6, null, DialogueSlotsPayload.empty());
@@ -159,7 +152,7 @@ class ContextSnapshotTest {
     }
 
     private RealtimeChildContext childContext() {
-        return new RealtimeChildContext("하준", "6_9", List.of("공룡", "블록"));
+        return new RealtimeChildContext("하준");
     }
 
     private RealtimeConversationContext conversationContext() {

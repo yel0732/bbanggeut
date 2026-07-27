@@ -44,6 +44,23 @@ class PinServiceTest {
     }
 
     @Test
+    void hasPin_returnsTrueWhenPinAlreadySet() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThat(pinService.hasPin(1L)).isTrue();
+    }
+
+    @Test
+    void hasPin_returnsFalseWhenPinNotSet() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThat(pinService.hasPin(1L)).isFalse();
+    }
+
+    @Test
     void setPin_setsHashedPinWhenNotAlreadySet() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));

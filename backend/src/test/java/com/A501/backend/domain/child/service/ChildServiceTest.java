@@ -1,6 +1,10 @@
 package com.A501.backend.domain.child.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -9,19 +13,30 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.domain.auth.exception.PinErrorCode;
+import com.A501.backend.domain.auth.service.PinService;
+import com.A501.backend.domain.child.entity.Child;
+import com.A501.backend.domain.child.exception.ChildErrorCode;
 import com.A501.backend.domain.child.repository.ChildRepository;
+import com.A501.backend.domain.child.security.ChildProperties;
 
 @ExtendWith(MockitoExtension.class)
 class ChildServiceTest {
 
+    private static final ChildProperties CHILD_PROPERTIES = new ChildProperties(10);
+
     @Mock
     private ChildRepository childRepository;
+
+    @Mock
+    private PinService pinService;
 
     private ChildService childService;
 
     @BeforeEach
     void setUp() {
-        childService = new ChildService(childRepository);
+        childService = new ChildService(childRepository, CHILD_PROPERTIES, pinService);
     }
 
     @Test
@@ -36,5 +51,55 @@ class ChildServiceTest {
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(true);
 
         assertThat(childService.isNameAvailable(1L, "chorong")).isFalse();
+    }
+
+    @Test
+    void createChild_savesChildWhenPinSetAndUnderLimitAndNameAvailable() {
+        when(pinService.hasPin(1L)).thenReturn(true);
+        when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
+        when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(false);
+        when(childRepository.save(any(Child.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Child child = childService.createChild(1L, "chorong", 3);
+
+        assertThat(child.getName()).isEqualTo("chorong");
+        assertThat(child.getProfileImageNum()).isEqualTo(3);
+    }
+
+    @Test
+    void createChild_throwsWhenPinNotSet() {
+        when(pinService.hasPin(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", 1))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_NOT_SET));
+        verify(childRepository, never()).save(any());
+    }
+
+    @Test
+    void createChild_throwsWhenChildLimitReached() {
+        when(pinService.hasPin(1L)).thenReturn(true);
+        when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(10L);
+
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", 1))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_LIMIT_EXCEEDED));
+        verify(childRepository, never()).save(any());
+    }
+
+    @Test
+    void createChild_throwsWhenNameAlreadyExists() {
+        when(pinService.hasPin(1L)).thenReturn(true);
+        when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
+        when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(true);
+
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", 1))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
+        verify(childRepository, never()).save(any());
     }
 }

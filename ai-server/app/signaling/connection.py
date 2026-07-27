@@ -267,6 +267,7 @@ class SignalingConnection:
                     session_epoch=self._session_epoch,
                     peer_connection=self._peer_connection,
                     heartbeat=self._heartbeat,
+                    data_channel=self._data_channel,
                 )
             )
             if not registered:
@@ -305,8 +306,10 @@ class SignalingConnection:
         self._state = ConnectionState.CLOSED
         if self._heartbeat is not None:
             await self._heartbeat.stop()
+        if self._data_channel is not None:
+            self._data_channel.close()
         if self._peer_connection is not None:
-            await self._peer_connection.close()
+            await self._peer_connection.close()  # also stops this connection's SessionAudioBridge (T13)
         if self._conversation_id is not None and self._realtime_session_id is not None:
             await self._registry.remove(self._conversation_id, self._realtime_session_id)
 

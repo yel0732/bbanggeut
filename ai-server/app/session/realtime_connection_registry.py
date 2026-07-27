@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.webrtc.data_channel import DataChannel
 from app.webrtc.peer_connection import PeerConnection
 
 
@@ -32,6 +33,10 @@ class RealtimeConnectionEntry:
     session_epoch: int
     peer_connection: PeerConnection
     heartbeat: Heartbeat
+    data_channel: DataChannel | None = None
+    # Audio Track cleanup is NOT tracked here: AiortcPeerConnection owns its
+    # SessionAudioBridge internally and stops it from its own close() (T13) —
+    # closing peer_connection below is already sufficient.
 
 
 class RealtimeConnectionRegistry:
@@ -61,6 +66,8 @@ class RealtimeConnectionRegistry:
             if stale.session_epoch > entry.session_epoch:
                 return False
             await stale.heartbeat.stop()
+            if stale.data_channel is not None:
+                stale.data_channel.close()
             await stale.peer_connection.close()
         self._entries[entry.conversation_id] = entry
         return True

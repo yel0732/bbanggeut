@@ -516,3 +516,21 @@ async def test_duplicate_event_id_is_discarded_on_second_delivery(caplog) -> Non
         await channel.simulate_message(envelope)
 
     assert any("discarded" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_closes_data_channel() -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, registry, heartbeat = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await factory.created[0].simulate_data_channel_received(channel)
+    await factory.created[0].simulate_state_change(PeerConnectionState.CONNECTED)
+
+    await connection._cleanup()
+
+    assert channel.closed

@@ -6,6 +6,8 @@ import {
   ChildProfileListPage,
   ConversationPage,
   DiaryListPage,
+  DobblePlayPage,
+  DobbleResultPage,
   EmailLoginPage,
   EmailSignupPage,
   GameEntryPage,
@@ -47,6 +49,15 @@ export const router = createBrowserRouter([
   {
     path: '/games/:gameId/guide',
     element: <GameGuidePage />,
+  },
+  // 도블은 양손 포인터/카드 판정이라 플레이·결과 화면을 따로 쓴다.
+  {
+    path: '/games/dobble/play',
+    element: <DobblePlayPage />,
+  },
+  {
+    path: '/games/dobble/result',
+    element: <DobbleResultPage />,
   },
   {
     path: '/games/:gameId/play',

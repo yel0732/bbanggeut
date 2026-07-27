@@ -9,6 +9,7 @@ import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { DobbleTutorialDemo } from '@/features/games/dobble/DobbleTutorialDemo'
 import { getGameById } from '@/features/games/games'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
@@ -101,12 +102,18 @@ export function GameGuidePage() {
               게임 방법
             </h2>
 
-            <div
-              className="mt-5 flex w-full flex-1 items-center justify-center rounded-[24px] border-[3px] border-dashed border-[#c39a5d] bg-[#fffaec]/70 text-[28px] text-[#9a6a34] shadow-[inset_0_2px_10px_rgba(120,80,30,0.12)]"
-              style={jua}
-            >
-              게임 플레이 예시 영상
-            </div>
+            {game.id === 'dobble' ? (
+              <div className="mt-5 flex w-full flex-1">
+                <DobbleTutorialDemo />
+              </div>
+            ) : (
+              <div
+                className="mt-5 flex w-full flex-1 items-center justify-center rounded-[24px] border-[3px] border-dashed border-[#c39a5d] bg-[#fffaec]/70 text-[28px] text-[#9a6a34] shadow-[inset_0_2px_10px_rgba(120,80,30,0.12)]"
+                style={jua}
+              >
+                게임 플레이 예시 영상
+              </div>
+            )}
 
             <p
               className="mt-5 max-w-[640px] text-center text-[25px] leading-snug text-[#6f4a1f]"

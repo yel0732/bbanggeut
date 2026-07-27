@@ -36,11 +36,12 @@ export const GAMES: GameInfo[] = [
     id: 'dobble',
     label: '그림 맞추기',
     tagline: '같은 그림을 찾아 반짝이는 카드를 맞춰요.',
-    howTo: '두 카드에서 똑같이 생긴 그림을 하나 찾아 콕 짚어 보세요!',
+    howTo:
+      '두 카드에 똑같이 있는 그림은 하나예요. 왼손과 오른손으로 각각 그 그림을 짚고 잠깐 멈추면 정답!',
     cardImageUrl: dobbleCardUrl,
     floatClassName: '[animation-delay:-1.7s]',
     positionClassName: 'top-[98px] right-[154px]',
-    playable: false,
+    playable: true,
   },
 ]
 

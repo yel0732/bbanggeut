@@ -53,6 +53,14 @@ conversation:
       enabled: ${REALTIME_RECONCILER_ENABLED:false}
       interval: ${REALTIME_RECONCILER_INTERVAL:PT10S}
 
+child-diary:
+  ai:
+    base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
+    timeout: ${CHILD_DIARY_AI_TIMEOUT:PT12S}
+  preview:
+    secret: ${CHILD_DIARY_PREVIEW_SECRET:${JWT_SECRET:local-child-diary-preview-secret-change-me}}
+    ttl: ${CHILD_DIARY_PREVIEW_TTL:PT10M}
+
 app:
   jwt:
     access-token-expiry-minutes: 30

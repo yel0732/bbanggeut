@@ -10,8 +10,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.dialogue import router as dialogue_router
+from app.api.child_diary import router as child_diary_router
 from app.api.report import router as report_router
 from app.config import AppSettings
+from app.child_diary.generator import ChildDiaryGenerator
 from app.dialogue.pipeline import DialogueTurnPipeline
 from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
@@ -70,6 +72,11 @@ def create_app(
             api_key=resolved_settings.gms_key,
             model=resolved_settings.gms_report_model,
         )
+        child_diary_client = GmsChatClient(
+            http_client,
+            api_key=resolved_settings.gms_key,
+            model=resolved_settings.gms_child_diary_model,
+        )
         app.state.dialogue_pipeline = DialogueTurnPipeline(
             analysis_client=analysis_client,
             response_client=response_client,
@@ -84,6 +91,11 @@ def create_app(
         )
         app.state.report_generator = DailyReportGenerator(
             provider=report_client,
+            timeout_seconds=resolved_settings.gms_timeout_seconds,
+            max_attempts=resolved_settings.gms_max_attempts,
+        )
+        app.state.child_diary_generator = ChildDiaryGenerator(
+            provider=child_diary_client,
             timeout_seconds=resolved_settings.gms_timeout_seconds,
             max_attempts=resolved_settings.gms_max_attempts,
         )
@@ -128,6 +140,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.include_router(dialogue_router)
+    app.include_router(child_diary_router)
     app.include_router(report_router)
     app.include_router(signaling_router)
 
@@ -136,9 +149,14 @@ def create_app(
         request: Request,
         error: RequestValidationError,
     ) -> JSONResponse:
+        error_code = "DIALOGUE_REQUEST_INVALID"
+        if request.url.path.startswith("/internal/v1/child-diaries"):
+            error_code = "CHILD_DIARY_REQUEST_INVALID"
+        elif request.url.path.startswith("/internal/v1/reports"):
+            error_code = "REPORT_REQUEST_INVALID"
         return JSONResponse(
             status_code=422,
-            content={"error": "DIALOGUE_REQUEST_INVALID"},
+            content={"error": error_code},
         )
 
     return app

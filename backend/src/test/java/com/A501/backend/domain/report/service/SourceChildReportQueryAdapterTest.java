@@ -47,10 +47,12 @@ class SourceChildReportQueryAdapterTest {
 
     private void saveChild(Long childId, String deletedAt) {
         jdbcTemplate.update(
-                "insert into child (child_id, parent_id, deleted_at) "
-                        + "values (?, ?, ?)",
+                "insert into child (child_id, parent_id, name, profile_image_num, "
+                        + "deleted_at, created_at, updated_at) values (?, ?, ?, ?, ?, current_timestamp, current_timestamp)",
                 childId,
                 1L,
+                "child-" + childId,
+                1,
                 deletedAt);
     }
 }

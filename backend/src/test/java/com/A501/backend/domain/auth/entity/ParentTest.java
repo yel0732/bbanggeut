@@ -20,11 +20,12 @@ class ParentTest {
     @Test
     void setPin_marksPinAsSetAndClearsFailures() {
         Parent parent = createParent();
+        LocalDateTime now = LocalDateTime.now();
 
-        parent.setPin("hashed-pin");
+        parent.setPin("hashed-pin", now);
 
         assertThat(parent.hasPin()).isTrue();
-        assertThat(parent.getPinSetAt()).isNotNull();
+        assertThat(parent.getPinSetAt()).isEqualTo(now);
         assertThat(parent.getPinFailedAttempts()).isZero();
         assertThat(parent.getPinLockedUntil()).isNull();
     }

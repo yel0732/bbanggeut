@@ -1,5 +1,7 @@
 package com.A501.backend.domain.child.controller;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -48,5 +50,15 @@ public class ChildController {
         Long parentId = (Long) authentication.getPrincipal();
         Child child = childService.createChild(parentId, request.name(), request.profileImageNum());
         return ResponseEntity.status(HttpStatus.CREATED).body(ChildResponse.from(child));
+    }
+
+    @Operation(summary = "자녀 프로필 목록 조회")
+    @GetMapping
+    public ResponseEntity<List<ChildResponse>> list(Authentication authentication) {
+        Long parentId = (Long) authentication.getPrincipal();
+        List<ChildResponse> children = childService.listChildren(parentId).stream()
+                .map(ChildResponse::from)
+                .toList();
+        return ResponseEntity.ok(children);
     }
 }

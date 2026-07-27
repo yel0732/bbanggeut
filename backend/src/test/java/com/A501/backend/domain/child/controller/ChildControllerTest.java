@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -158,6 +159,33 @@ class ChildControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"chorong\",\"profileImageNum\":1}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void list_returnsUnauthorizedWithoutBearerToken() throws Exception {
+        mockMvc.perform(get("/api/children")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void list_returnsChildrenForAuthenticatedParent() throws Exception {
+        String accessToken = generateAccessToken();
+        Child child = Child.create(1L, "chorong", 1);
+        ReflectionTestUtils.setField(child, "childId", 10L);
+        when(childService.listChildren(1L)).thenReturn(List.of(child));
+
+        mockMvc.perform(get("/api/children").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[{\"childId\":10,\"name\":\"chorong\",\"profileImageNum\":1}]"));
+    }
+
+    @Test
+    void list_returnsEmptyArrayWhenNoChildren() throws Exception {
+        String accessToken = generateAccessToken();
+        when(childService.listChildren(1L)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/children").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[]"));
     }
 
     private String generateAccessToken() {

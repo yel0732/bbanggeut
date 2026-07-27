@@ -1,5 +1,7 @@
 package com.A501.backend.domain.child.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,10 @@ public class ChildService {
 
     public boolean isNameAvailable(Long parentId, String name) {
         return !childRepository.existsByParentIdAndNameAndDeletedAtIsNull(parentId, name);
+    }
+
+    public List<Child> listChildren(Long parentId) {
+        return childRepository.findAllByParentIdAndDeletedAtIsNull(parentId);
     }
 
     @Transactional

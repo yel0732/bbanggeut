@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +53,14 @@ class ChildServiceTest {
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(true);
 
         assertThat(childService.isNameAvailable(1L, "chorong")).isFalse();
+    }
+
+    @Test
+    void listChildren_returnsChildrenOwnedByParent() {
+        Child child = Child.create(1L, "chorong", 1);
+        when(childRepository.findAllByParentIdAndDeletedAtIsNull(1L)).thenReturn(List.of(child));
+
+        assertThat(childService.listChildren(1L)).containsExactly(child);
     }
 
     @Test

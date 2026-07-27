@@ -4,6 +4,15 @@ FastAPI is the sole Heartbeat sender (Spring only writes the initial Lease at
 issuance; see docs/diary/DECISIONS.md ADR-009). This class has no dependency
 on a real PeerConnection — W03/W04 call start()/stop() at the points where a
 PeerConnection actually becomes active/inactive.
+
+IMPORTANT for W03/W04 wiring: a ``SessionLeaseHeartbeat`` instance manages at
+most ONE heartbeat loop at a time (``start()`` raises if already running,
+regardless of which ``conversation_id`` is passed). Do NOT wire this up as a
+single shared/singleton service reused across concurrent conversations —
+create one instance per realtime connection (e.g. stored alongside that
+connection's PeerConnection in the T12 Registry). The constructor only takes
+process-wide config (client/interval/ttl/logger), which can look like a
+singleton shape; it is not one.
 """
 
 from __future__ import annotations

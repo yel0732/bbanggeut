@@ -15,6 +15,7 @@ from app.realtime.ticket_verification import (
     RealtimeTicketVerifier,
     TicketConsumeOutcome,
     TicketConsumeStatus,
+    TicketPeekStatus,
     TicketVerificationFailureCode,
     TicketVerificationResult,
 )
@@ -38,6 +39,18 @@ class FakeTicketConsumptionStore:
         self._records = dict(records or {})
         self._lock = asyncio.Lock()
         self.calls: list[str] = []
+        self.peek_calls: list[str] = []
+
+    async def peek(self, jti: str) -> TicketPeekStatus:
+        self.peek_calls.append(jti)
+        record = self._records.get(jti)
+        if record is None:
+            return TicketPeekStatus.NOT_FOUND
+        return (
+            TicketPeekStatus.ISSUED
+            if record["state"] == "ISSUED"
+            else TicketPeekStatus.ALREADY_CONSUMED
+        )
 
     async def consume(self, jti: str) -> TicketConsumeOutcome:
         self.calls.append(jti)
@@ -75,9 +88,9 @@ def _issue_ticket(
     private_key,
     kid: str | None,
     *,
-    conversation_id: str = "conv_1",
-    realtime_session_id: str = "rt_1",
-    session_epoch: int = 1,
+    conversation_id: str | None = "conv_1",
+    realtime_session_id: str | None = "rt_1",
+    session_epoch: int | None = 1,
     jti: str | None = "ticket_1",
     scope=("realtime:connect",),
     issuer: str = ISSUER,
@@ -88,13 +101,16 @@ def _issue_ticket(
     payload = {
         "iss": issuer,
         "aud": audience,
-        "conversationId": conversation_id,
-        "realtimeSessionId": realtime_session_id,
-        "sessionEpoch": session_epoch,
         "scope": list(scope),
         "iat": now,
         "exp": now + expires_delta_seconds,
     }
+    if conversation_id is not None:
+        payload["conversationId"] = conversation_id
+    if realtime_session_id is not None:
+        payload["realtimeSessionId"] = realtime_session_id
+    if session_epoch is not None:
+        payload["sessionEpoch"] = session_epoch
     if jti is not None:
         payload["jti"] = jti
     headers = {"kid": kid} if kid else {}
@@ -266,6 +282,39 @@ async def test_missing_jti_is_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_missing_conversation_id_claim_is_rejected() -> None:
+    private_key, public_key = _generate_key_pair()
+    ticket = _issue_ticket(private_key, "kid-1", conversation_id=None)
+    verifier = _build_verifier(public_key)
+
+    result = await verifier.verify_and_consume(ticket)
+
+    assert result.failure_code == TicketVerificationFailureCode.MALFORMED_TICKET
+
+
+@pytest.mark.asyncio
+async def test_missing_realtime_session_id_claim_is_rejected() -> None:
+    private_key, public_key = _generate_key_pair()
+    ticket = _issue_ticket(private_key, "kid-1", realtime_session_id=None)
+    verifier = _build_verifier(public_key)
+
+    result = await verifier.verify_and_consume(ticket)
+
+    assert result.failure_code == TicketVerificationFailureCode.MALFORMED_TICKET
+
+
+@pytest.mark.asyncio
+async def test_missing_session_epoch_claim_is_rejected() -> None:
+    private_key, public_key = _generate_key_pair()
+    ticket = _issue_ticket(private_key, "kid-1", session_epoch=None)
+    verifier = _build_verifier(public_key)
+
+    result = await verifier.verify_and_consume(ticket)
+
+    assert result.failure_code == TicketVerificationFailureCode.MALFORMED_TICKET
+
+
+@pytest.mark.asyncio
 async def test_malformed_ticket_string_is_rejected() -> None:
     _, public_key = _generate_key_pair()
     verifier = _build_verifier(public_key)
@@ -294,6 +343,8 @@ async def test_already_consumed_ticket_is_rejected() -> None:
     result = await verifier.verify_and_consume(ticket)
 
     assert result.failure_code == TicketVerificationFailureCode.ALREADY_CONSUMED
+    # Detected by the read-only peek() before ever attempting to consume.
+    assert ticket_store.calls == []
 
 
 @pytest.mark.asyncio
@@ -311,13 +362,18 @@ async def test_ticket_missing_from_redis_is_rejected() -> None:
 async def test_missing_lease_is_rejected() -> None:
     private_key, public_key = _generate_key_pair()
     ticket = _issue_ticket(private_key, "kid-1")
+    ticket_store = _issued_ticket_store()
     verifier = _build_verifier(
-        public_key, ticket_store=_issued_ticket_store(), lease_reader=FakeSessionLeaseReader()
+        public_key, ticket_store=ticket_store, lease_reader=FakeSessionLeaseReader()
     )
 
     result = await verifier.verify_and_consume(ticket)
 
     assert result.failure_code == TicketVerificationFailureCode.LEASE_MISMATCH
+    # Lease is checked before consumption: a rejected ticket stays ISSUED and can
+    # still be retried (e.g. against a freshly issued Lease) instead of being burned.
+    assert ticket_store.calls == []
+    assert await ticket_store.peek("ticket_1") is TicketPeekStatus.ISSUED
 
 
 @pytest.mark.asyncio
@@ -332,6 +388,32 @@ async def test_lease_epoch_mismatch_is_rejected() -> None:
     result = await verifier.verify_and_consume(ticket)
 
     assert result.failure_code == TicketVerificationFailureCode.LEASE_MISMATCH
+
+
+@pytest.mark.asyncio
+async def test_consumed_record_diverging_from_signed_claims_is_rejected() -> None:
+    """Defensive cross-check: even though the JWT signature already guarantees the
+    claims are unmodified, the consumed Redis record is still compared against
+    them before trusting it (catches a hypothetical Spring-side write bug rather
+    than a real attack — see DIARY-2-W02 review)."""
+    private_key, public_key = _generate_key_pair()
+    ticket = _issue_ticket(private_key, "kid-1")
+    ticket_store = FakeTicketConsumptionStore(
+        {
+            "ticket_1": {
+                "state": "ISSUED",
+                "conversationId": "conv_1",
+                "realtimeSessionId": "rt_DIFFERENT",
+                "sessionEpoch": 1,
+            }
+        }
+    )
+    lease_reader = FakeSessionLeaseReader({"conv_1": LeaseSnapshot("rt_1", 1)})
+    verifier = _build_verifier(public_key, ticket_store=ticket_store, lease_reader=lease_reader)
+
+    result = await verifier.verify_and_consume(ticket)
+
+    assert result.failure_code == TicketVerificationFailureCode.MALFORMED_TICKET
 
 
 @pytest.mark.asyncio

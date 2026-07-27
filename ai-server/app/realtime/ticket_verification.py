@@ -34,6 +34,14 @@ return cjson.encode(record)
 """
 
 
+class TicketPeekStatus(StrEnum):
+    """Read-only observation of a ticket's current state (no side effect)."""
+
+    ISSUED = "issued"
+    ALREADY_CONSUMED = "alreadyConsumed"
+    NOT_FOUND = "notFound"
+
+
 class TicketConsumeStatus(StrEnum):
     CONSUMED = "consumed"
     ALREADY_CONSUMED = "alreadyConsumed"
@@ -61,6 +69,7 @@ class TicketConsumeOutcome:
 
 
 class TicketConsumptionStore(Protocol):
+    async def peek(self, jti: str) -> TicketPeekStatus: ...
     async def consume(self, jti: str) -> TicketConsumeOutcome: ...
 
 
@@ -80,6 +89,17 @@ class RedisTicketConsumptionStore:
     def __init__(self, redis_client) -> None:
         self._redis = redis_client
         self._consume_script = redis_client.register_script(_CONSUME_SCRIPT)
+
+    async def peek(self, jti: str) -> TicketPeekStatus:
+        raw = await self._redis.get(f"{_TICKET_KEY_PREFIX}{jti}")
+        if raw is None:
+            return TicketPeekStatus.NOT_FOUND
+        record = json.loads(raw)
+        return (
+            TicketPeekStatus.ISSUED
+            if record.get("state") == "ISSUED"
+            else TicketPeekStatus.ALREADY_CONSUMED
+        )
 
     async def consume(self, jti: str) -> TicketConsumeOutcome:
         key = f"{_TICKET_KEY_PREFIX}{jti}"
@@ -223,40 +243,84 @@ class RealtimeTicketVerifier:
             return self._reject(TicketVerificationFailureCode.MISSING_SCOPE, kid=kid)
 
         jti = claims.get("jti")
-        if not jti:
+        conversation_id = claims.get("conversationId")
+        realtime_session_id = claims.get("realtimeSessionId")
+        session_epoch = claims.get("sessionEpoch")
+        if (
+            not jti
+            or not conversation_id
+            or not realtime_session_id
+            or session_epoch is None
+        ):
             return self._reject(TicketVerificationFailureCode.MALFORMED_TICKET, kid=kid)
 
-        outcome = await self._ticket_store.consume(jti)
-        if outcome.status is TicketConsumeStatus.NOT_FOUND:
-            return self._reject(TicketVerificationFailureCode.NOT_FOUND, kid=kid)
-        if outcome.status is TicketConsumeStatus.ALREADY_CONSUMED:
-            return self._reject(TicketVerificationFailureCode.ALREADY_CONSUMED, kid=kid)
+        # Redis Ticket 상태 검증 (읽기 전용 — REALTIME_EVENT_CONTRACT.md §5.1 순서상
+        # 원자적 소비보다 먼저 온다). 서명된 claim을 신뢰 소스로 사용해 Lease를 조회한다.
+        peek_status = await self._ticket_store.peek(jti)
+        if peek_status is TicketPeekStatus.NOT_FOUND:
+            return self._reject(
+                TicketVerificationFailureCode.NOT_FOUND, kid=kid, conversation_id=conversation_id
+            )
+        if peek_status is TicketPeekStatus.ALREADY_CONSUMED:
+            return self._reject(
+                TicketVerificationFailureCode.ALREADY_CONSUMED,
+                kid=kid,
+                conversation_id=conversation_id,
+            )
 
-        lease = await self._lease_reader.get_current(outcome.conversation_id)
+        # Session Lease·Epoch 검증. 아직 Ticket을 소비하지 않았으므로 검증에 실패해도
+        # Ticket은 ISSUED 상태로 남아 재시도(예: 새 Lease로 재발급 후)가 가능하다.
+        lease = await self._lease_reader.get_current(conversation_id)
         if (
             lease is None
-            or lease.realtime_session_id != outcome.realtime_session_id
-            or lease.session_epoch != outcome.session_epoch
+            or lease.realtime_session_id != realtime_session_id
+            or lease.session_epoch != session_epoch
         ):
             return self._reject(
                 TicketVerificationFailureCode.LEASE_MISMATCH,
                 kid=kid,
-                conversation_id=outcome.conversation_id,
+                conversation_id=conversation_id,
             )
 
-        self._epoch_registry.register(outcome.conversation_id, outcome.session_epoch)
+        # Ticket 원자적 소비 (마지막 단계). peek 이후 경쟁 상태로 다른 요청이 먼저
+        # 소비했을 가능성을 여기서 다시 확인한다.
+        outcome = await self._ticket_store.consume(jti)
+        if outcome.status is TicketConsumeStatus.NOT_FOUND:
+            return self._reject(
+                TicketVerificationFailureCode.NOT_FOUND, kid=kid, conversation_id=conversation_id
+            )
+        if outcome.status is TicketConsumeStatus.ALREADY_CONSUMED:
+            return self._reject(
+                TicketVerificationFailureCode.ALREADY_CONSUMED,
+                kid=kid,
+                conversation_id=conversation_id,
+            )
+
+        # 방어적 교차검증: 소비된 Redis 레코드가 서명된 claim과 반드시 같아야 한다.
+        # 정상 발급 경로에서는 항상 같지만(Spring이 같은 지역 변수로 둘 다 기록),
+        # 신뢰 경계를 claim에 두고 Redis 레코드는 그 claim과 일치할 때만 신뢰한다.
+        if (
+            outcome.conversation_id != conversation_id
+            or outcome.realtime_session_id != realtime_session_id
+            or outcome.session_epoch != session_epoch
+        ):
+            return self._reject(
+                TicketVerificationFailureCode.MALFORMED_TICKET,
+                kid=kid,
+                conversation_id=conversation_id,
+            )
+
+        self._epoch_registry.register(conversation_id, session_epoch)
         self._logger.info(
             "realtime ticket consumed",
             extra={
-                "conversation_id": outcome.conversation_id,
-                "realtime_session_id": outcome.realtime_session_id,
-                "session_epoch": outcome.session_epoch,
+                "conversation_id": conversation_id,
+                "realtime_session_id": realtime_session_id,
+                "session_epoch": session_epoch,
             },
         )
         return TicketVerificationResult.success(
-            outcome.conversation_id,
-            outcome.realtime_session_id,
-            outcome.session_epoch,
+            conversation_id, realtime_session_id, session_epoch
         )
 
     def _reject(

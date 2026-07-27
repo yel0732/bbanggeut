@@ -12,7 +12,11 @@ import os
 import pytest
 
 from app.realtime.redis_client import create_redis_client
-from app.realtime.ticket_verification import RedisTicketConsumptionStore, TicketConsumeStatus
+from app.realtime.ticket_verification import (
+    RedisTicketConsumptionStore,
+    TicketConsumeStatus,
+    TicketPeekStatus,
+)
 
 
 def _skip_unless_enabled() -> None:
@@ -49,6 +53,38 @@ async def test_atomic_consume_against_real_redis() -> None:
         assert statuses == sorted(
             [TicketConsumeStatus.CONSUMED, TicketConsumeStatus.ALREADY_CONSUMED]
         )
+    finally:
+        await redis_client.delete(key)
+        await redis_client.aclose()
+
+
+@pytest.mark.redis
+@pytest.mark.asyncio
+async def test_peek_does_not_mutate_state_against_real_redis() -> None:
+    _skip_unless_enabled()
+
+    redis_client = create_redis_client(
+        host=os.getenv("REALTIME_REDIS_HOST", "127.0.0.1"),
+        port=int(os.getenv("REALTIME_REDIS_PORT", "6379")),
+    )
+    store = RedisTicketConsumptionStore(redis_client)
+    key = "realtime:ticket:test_peek_no_mutate"
+    record = {
+        "conversationId": "conv_test",
+        "realtimeSessionId": "rt_test",
+        "sessionEpoch": 1,
+        "state": "ISSUED",
+    }
+    try:
+        await redis_client.set(key, json.dumps(record), ex=30)
+
+        first_peek = await store.peek("test_peek_no_mutate")
+        second_peek = await store.peek("test_peek_no_mutate")
+        consume_result = await store.consume("test_peek_no_mutate")
+
+        assert first_peek is TicketPeekStatus.ISSUED
+        assert second_peek is TicketPeekStatus.ISSUED
+        assert consume_result.status is TicketConsumeStatus.CONSUMED
     finally:
         await redis_client.delete(key)
         await redis_client.aclose()

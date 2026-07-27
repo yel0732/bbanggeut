@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -15,9 +16,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.security.PinProperties;
@@ -55,7 +58,7 @@ class PinServiceTest {
     @Test
     void setPin_throwsWhenPinAlreadySet() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("existing-hash");
+        parent.setPin("existing-hash", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
 
         assertThatThrownBy(() -> pinService.setPin(1L, "1234"))
@@ -69,7 +72,23 @@ class PinServiceTest {
         when(parentRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> pinService.setPin(99L, "1234"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
+    }
+
+    @Test
+    void setPin_throwsWhenParentIsSoftDeleted() {
+        // 탈퇴(소프트 삭제) API는 아직 없어 엔티티에 별도 setter가 없다 — 필드를 직접 세팅해
+        // "이미 삭제된 계정의 access token으로 요청이 들어온" 상황만 재현한다.
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> pinService.setPin(1L, "1234"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
     }
 
     @Test
@@ -86,7 +105,7 @@ class PinServiceTest {
     @Test
     void verifyPin_succeedsAndResetsFailuresOnMatch() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("hashed-pin");
+        parent.setPin("hashed-pin", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches("1234", "hashed-pin")).thenReturn(true);
 
@@ -99,7 +118,7 @@ class PinServiceTest {
     @Test
     void verifyPin_throwsMismatchAndIncrementsFailuresBelowThreshold() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("hashed-pin");
+        parent.setPin("hashed-pin", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches("wrong", "hashed-pin")).thenReturn(false);
 
@@ -113,7 +132,7 @@ class PinServiceTest {
     @Test
     void verifyPin_locksOnFifthConsecutiveMismatch() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("hashed-pin");
+        parent.setPin("hashed-pin", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches("wrong", "hashed-pin")).thenReturn(false);
 
@@ -133,7 +152,7 @@ class PinServiceTest {
     @Test
     void verifyPin_throwsLockedImmediatelyWhileLockActive() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("hashed-pin");
+        parent.setPin("hashed-pin", LocalDateTime.now());
         parent.registerPinFailure(LocalDateTime.now(), 1, Duration.ofMinutes(5));
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
 
@@ -146,7 +165,7 @@ class PinServiceTest {
     @Test
     void changePin_succeedsWhenCurrentPinMatchesAndConfirmMatches() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("old-hash");
+        parent.setPin("old-hash", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches("1234", "old-hash")).thenReturn(true);
         when(passwordEncoder.encode("5678")).thenReturn("new-hash");
@@ -159,7 +178,7 @@ class PinServiceTest {
     @Test
     void changePin_throwsWhenCurrentPinWrongAndIncrementsFailures() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("old-hash");
+        parent.setPin("old-hash", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches("wrong", "old-hash")).thenReturn(false);
 
@@ -185,7 +204,7 @@ class PinServiceTest {
     @Test
     void changePin_throwsWhenNewPinConfirmationDoesNotMatch() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("old-hash");
+        parent.setPin("old-hash", LocalDateTime.now());
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(passwordEncoder.matches("1234", "old-hash")).thenReturn(true);
 
@@ -194,5 +213,31 @@ class PinServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(PinErrorCode.PIN_CONFIRMATION_MISMATCH));
         assertThat(parent.getPinHash()).isEqualTo("old-hash");
+    }
+
+    // 스펙 4.3절이 별도로 경고하는 지점: 잠금이 자연 만료된 뒤 실패 횟수를 리셋하지 않으면,
+    // 만료 후 첫 시도(=1회차)가 틀렸을 뿐인데 이미 5였던 카운트 위에 쌓여 즉시 재잠금(423)된다.
+    // 정상 동작은 만료 후 첫 실패는 401(PIN_MISMATCH)이어야 하고 실패 횟수는 1이어야 한다.
+    @Test
+    void verifyPin_resetsFailureCountAfterLockExpiresBeforeCountingNewFailure() {
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now(kst));
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("wrong", "hashed-pin")).thenReturn(false);
+
+        LocalDateTime expiredLockStart = LocalDateTime.now(kst).minusMinutes(10);
+        for (int i = 0; i < 5; i++) {
+            parent.registerPinFailure(expiredLockStart, 5, Duration.ofMinutes(5));
+        }
+        assertThat(parent.getPinLockedUntil()).isBefore(LocalDateTime.now(kst));
+
+        assertThatThrownBy(() -> pinService.verifyPin(1L, "wrong"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_MISMATCH));
+
+        assertThat(parent.getPinFailedAttempts()).isEqualTo(1);
+        assertThat(parent.getPinLockedUntil()).isNull();
     }
 }

@@ -1,20 +1,25 @@
-"""PeerConnection abstraction for WebRTC SDP/ICE handling.
+"""PeerConnection abstraction for WebRTC SDP/ICE, Audio Track, and DataChannel.
 
-W03 only establishes the connection (Offer/Answer/ICE, T11) — Audio Track and
-DataChannel wiring is W04 scope (see jira/plan/DIARY-2-W03.md §0). The real
-aiortc-backed implementation is added alongside T11; this module also holds
-``FakePeerConnection`` so signaling/connection.py's state machine can be unit
-tested without a real PeerConnection.
+SDP/ICE/connection-state handling landed in W03 (T11); Audio Track (W04/T13,
+see app/webrtc/audio_bridge.py) and DataChannel (W04/T14, see
+app/webrtc/data_channel.py) are wired in here. ``FakePeerConnection`` lets
+signaling/connection.py's state machine be unit tested without a real
+PeerConnection.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Protocol
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.mediastreams import MediaStreamTrack
 from aiortc.sdp import candidate_from_sdp
+
+from app.webrtc.audio_bridge import SessionAudioBridge
+from app.webrtc.data_channel import AiortcDataChannel, DataChannel
 
 
 class PeerConnectionState(StrEnum):
@@ -25,6 +30,7 @@ class PeerConnectionState(StrEnum):
 
 
 StateChangeCallback = Callable[[PeerConnectionState], Awaitable[None]]
+DataChannelReceivedCallback = Callable[[DataChannel], Awaitable[None]]
 
 
 class PeerConnection(Protocol):
@@ -38,6 +44,16 @@ class PeerConnection(Protocol):
 
     def on_state_change(self, callback: StateChangeCallback) -> None:
         """Register the (single) callback invoked on every connection state change."""
+        ...
+
+    def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
+        """Register the (single) callback invoked when React's DataChannel arrives.
+
+        FastAPI never calls ``createDataChannel()`` itself — React (the
+        offerer) creates ``conversation-events``, and this side only receives
+        it (confirmed against aiortc's ``datachannel`` event, jira/plan/
+        DIARY-2-W04.md §1).
+        """
         ...
 
     async def close(self) -> None: ...
@@ -58,6 +74,7 @@ class FakePeerConnection:
         self.added_ice_candidates: list[tuple[str, str | None, int | None]] = []
         self.closed = False
         self._state_change_callback: StateChangeCallback | None = None
+        self._data_channel_callback: DataChannelReceivedCallback | None = None
 
     async def accept_offer(self, sdp: str) -> str:
         self.accepted_offer_sdp = sdp
@@ -71,6 +88,9 @@ class FakePeerConnection:
     def on_state_change(self, callback: StateChangeCallback) -> None:
         self._state_change_callback = callback
 
+    def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
+        self._data_channel_callback = callback
+
     async def close(self) -> None:
         self.closed = True
 
@@ -79,6 +99,12 @@ class FakePeerConnection:
 
         if self._state_change_callback is not None:
             await self._state_change_callback(state)
+
+    async def simulate_data_channel_received(self, channel: DataChannel) -> None:
+        """Test helper: invoke the registered callback as the real backend would."""
+
+        if self._data_channel_callback is not None:
+            await self._data_channel_callback(channel)
 
 
 class FakePeerConnectionFactory:
@@ -112,13 +138,36 @@ class AiortcPeerConnection:
     def __init__(self) -> None:
         self._pc = RTCPeerConnection()
         self._pc.on("connectionstatechange", self._handle_state_change)
+        self._pc.on("track", self._handle_track)
+        self._pc.on("datachannel", self._handle_data_channel)
         self._callback: StateChangeCallback | None = None
+        self._data_channel_callback: DataChannelReceivedCallback | None = None
+        self._audio_bridge = SessionAudioBridge(logging.getLogger("app.webrtc.audio_bridge"))
 
     async def accept_offer(self, sdp: str) -> str:
+        # setRemoteDescription() processes the offer's m-lines synchronously,
+        # so _handle_track() has already started self._audio_bridge (if the
+        # offer carried an audio track) by the time we reach the next line —
+        # confirmed against aiortc 1.15 source (jira/plan/DIARY-2-W04.md §1).
+        #
+        # addTrack() must NOT be called for an audio-less offer: aiortc only
+        # creates a transceiver per m-line actually present in the offer, and
+        # adding a track with no matching transceiver crashes createAnswer()/
+        # setLocalDescription() with "None is not in list" (found while wiring
+        # this up — a test client offering only a DataChannel, no audio,
+        # reproduced it). So the outbound echo track is only added when an
+        # inbound audio track was actually received (§11-C correction: no
+        # AudioStreamTrack() fallback for a genuinely audio-less offer).
         await self._pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
+        if self._audio_bridge.is_running:
+            self._pc.addTrack(self._audio_bridge.create_outbound_track())
         answer = await self._pc.createAnswer()
         await self._pc.setLocalDescription(answer)
         return self._pc.localDescription.sdp
+
+    def _handle_track(self, track: MediaStreamTrack) -> None:
+        if track.kind == "audio" and not self._audio_bridge.is_running:
+            self._audio_bridge.start(track)
 
     async def add_ice_candidate(
         self, candidate: str, sdp_mid: str | None, sdp_mline_index: int | None
@@ -131,13 +180,21 @@ class AiortcPeerConnection:
     def on_state_change(self, callback: StateChangeCallback) -> None:
         self._callback = callback
 
+    def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
+        self._data_channel_callback = callback
+
     async def close(self) -> None:
+        await self._audio_bridge.stop()
         await self._pc.close()
 
     async def _handle_state_change(self) -> None:
         state = _AIORTC_STATE_MAP.get(self._pc.connectionState)
         if state is not None and self._callback is not None:
             await self._callback(state)
+
+    async def _handle_data_channel(self, channel) -> None:
+        if self._data_channel_callback is not None:
+            await self._data_channel_callback(AiortcDataChannel(channel))
 
 
 class AiortcPeerConnectionFactory:

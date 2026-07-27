@@ -15,6 +15,7 @@ import logging
 import pytest
 from aiortc import RTCPeerConnection, RTCSessionDescription
 
+from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import TicketVerificationResult
 from app.session.realtime_connection_registry import RealtimeConnectionRegistry
 from app.signaling.connection import SignalingConnection
@@ -80,6 +81,7 @@ async def test_full_signaling_flow_reaches_connected_with_real_aiortc() -> None:
         registry=registry,
         heartbeat_factory=lambda: _FakeHeartbeat(),
         map_failure_code=map_ticket_failure_code,
+        epoch_registry=SessionEpochRegistry(),
         logger=_LOGGER,
     )
 

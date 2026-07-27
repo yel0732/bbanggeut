@@ -108,11 +108,15 @@ def create_app(
         # override까지 공유하면 테스트에서 GMS Mock이 JWKS 요청까지 가로채게 된다.
         realtime_http_client = httpx.AsyncClient(timeout=None, transport=realtime_http_transport)
         jwks_cache = RealtimeJwksCache(realtime_http_client, resolved_settings.realtime_jwks_url)
+        # 같은 인스턴스를 ticket_verifier(쓰기: 소비 성공 시 register())와 signaling
+        # 연결(읽기: DataChannel Envelope의 sessionEpoch 검사)이 함께 공유해야 한다.
+        session_epoch_registry = SessionEpochRegistry()
+        app.state.session_epoch_registry = session_epoch_registry
         app.state.ticket_verifier = RealtimeTicketVerifier(
             jwks_cache,
             RedisTicketConsumptionStore(redis_client),
             RedisSessionLeaseReader(redis_client),
-            SessionEpochRegistry(),
+            session_epoch_registry,
             resolved_settings.realtime_ticket_issuer,
             resolved_settings.realtime_ticket_audience,
             logging.getLogger("app.realtime.ticket_verification"),

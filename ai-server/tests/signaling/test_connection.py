@@ -10,6 +10,7 @@ import logging
 import pytest
 from fastapi import WebSocketDisconnect
 
+from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import (
     TicketVerificationFailureCode,
     TicketVerificationResult,
@@ -17,6 +18,7 @@ from app.realtime.ticket_verification import (
 from app.session.realtime_connection_registry import RealtimeConnectionRegistry
 from app.signaling.connection import ConnectionState, SignalingConnection
 from app.signaling.error_mapping import map_ticket_failure_code
+from app.webrtc.data_channel import FakeDataChannel
 from app.webrtc.peer_connection import FakePeerConnectionFactory, PeerConnectionState
 
 _LOGGER = logging.getLogger("test.signaling.connection")
@@ -87,6 +89,7 @@ def _build_connection(
         registry=registry,
         heartbeat_factory=lambda: heartbeat,
         map_failure_code=map_ticket_failure_code,
+        epoch_registry=SessionEpochRegistry(),
         logger=_LOGGER,
     )
     return connection, ticket_verifier, factory, registry, heartbeat
@@ -405,3 +408,129 @@ async def test_stale_reconnect_reaching_connected_after_newer_epoch_backs_off() 
     assert old_factory.created[0].closed
     assert old_websocket.closed
     assert old_websocket.close_code == 1008
+
+
+def _data_channel_envelope(**overrides) -> dict:
+    base = {
+        "type": "client.ready",
+        "eventId": "evt_1",
+        "conversationId": "conv_1",
+        "realtimeSessionId": "rt_1",
+        "sessionEpoch": 1,
+        "eventSeq": 1,
+        "occurredAt": "2026-07-22T10:00:10+09:00",
+        "payload": {"microphoneReady": True},
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_data_channel_received_wires_message_handler() -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    peer_connection = factory.created[0]
+    channel = FakeDataChannel()
+
+    await peer_connection.simulate_data_channel_received(channel)
+
+    assert connection._data_channel is channel
+    assert connection._event_guard is not None
+
+
+@pytest.mark.asyncio
+async def test_valid_data_channel_event_is_not_discarded(caplog) -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await factory.created[0].simulate_data_channel_received(channel)
+
+    with caplog.at_level(logging.INFO, logger=_LOGGER.name):
+        await channel.simulate_message(_data_channel_envelope())
+
+    assert not any("discarded" in record.message for record in caplog.records)
+    assert not any("malformed" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_data_channel_event_with_wrong_conversation_id_is_discarded(caplog) -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await factory.created[0].simulate_data_channel_received(channel)
+
+    with caplog.at_level(logging.INFO, logger=_LOGGER.name):
+        await channel.simulate_message(_data_channel_envelope(conversationId="conv_other"))
+
+    assert any("discarded" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_malformed_data_channel_event_is_dropped(caplog) -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await factory.created[0].simulate_data_channel_received(channel)
+
+    with caplog.at_level(logging.WARNING, logger=_LOGGER.name):
+        await channel.simulate_message({"type": "client.ready"})  # missing required fields
+
+    assert any("malformed" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_event_id_is_discarded_on_second_delivery(caplog) -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await factory.created[0].simulate_data_channel_received(channel)
+    envelope = _data_channel_envelope()
+
+    await channel.simulate_message(envelope)
+    with caplog.at_level(logging.INFO, logger=_LOGGER.name):
+        await channel.simulate_message(envelope)
+
+    assert any("discarded" in record.message for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_closes_data_channel() -> None:
+    websocket = FakeWebSocket()
+    connection, _, factory, registry, heartbeat = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await factory.created[0].simulate_data_channel_received(channel)
+    await factory.created[0].simulate_state_change(PeerConnectionState.CONNECTED)
+
+    await connection._cleanup()
+
+    assert channel.closed

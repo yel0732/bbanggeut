@@ -36,10 +36,29 @@ class _FakePeerConnection:
         self.close_call_count += 1
 
 
+class _FakeDataChannel:
+    def __init__(self) -> None:
+        self.close_call_count = 0
+
+    def send_json(self, payload) -> None:
+        pass
+
+    def on_message(self, callback) -> None:
+        pass
+
+    @property
+    def is_open(self) -> bool:
+        return self.close_call_count == 0
+
+    def close(self) -> None:
+        self.close_call_count += 1
+
+
 def _entry(
     conversation_id: str = "conv_1",
     realtime_session_id: str = "rt_1",
     session_epoch: int = 1,
+    data_channel: "_FakeDataChannel | None" = None,
 ) -> tuple[RealtimeConnectionEntry, _FakeHeartbeat, _FakePeerConnection]:
     heartbeat = _FakeHeartbeat()
     peer_connection = _FakePeerConnection()
@@ -49,6 +68,7 @@ def _entry(
         session_epoch=session_epoch,
         peer_connection=peer_connection,
         heartbeat=heartbeat,
+        data_channel=data_channel,
     )
     return entry, heartbeat, peer_connection
 
@@ -116,6 +136,26 @@ async def test_remove_missing_conversation_does_nothing() -> None:
 @pytest.mark.asyncio
 async def test_register_evicts_and_closes_stale_entry_for_same_conversation() -> None:
     registry = RealtimeConnectionRegistry()
+    stale_data_channel = _FakeDataChannel()
+    stale_entry, stale_heartbeat, stale_peer_connection = _entry(
+        realtime_session_id="rt_old", data_channel=stale_data_channel
+    )
+    await registry.register(stale_entry)
+
+    new_entry, _, _ = _entry(realtime_session_id="rt_new")
+    await registry.register(new_entry)
+
+    assert stale_heartbeat.stop_call_count == 1
+    assert stale_peer_connection.close_call_count == 1
+    assert stale_data_channel.close_call_count == 1
+    assert registry.find("conv_1") is new_entry
+
+
+@pytest.mark.asyncio
+async def test_register_evicts_stale_entry_with_no_data_channel_yet() -> None:
+    # A stale entry may not have a DataChannel yet (received after registration) —
+    # eviction must not fail just because there is nothing to close.
+    registry = RealtimeConnectionRegistry()
     stale_entry, stale_heartbeat, stale_peer_connection = _entry(realtime_session_id="rt_old")
     await registry.register(stale_entry)
 
@@ -124,7 +164,6 @@ async def test_register_evicts_and_closes_stale_entry_for_same_conversation() ->
 
     assert stale_heartbeat.stop_call_count == 1
     assert stale_peer_connection.close_call_count == 1
-    assert registry.find("conv_1") is new_entry
 
 
 @pytest.mark.asyncio

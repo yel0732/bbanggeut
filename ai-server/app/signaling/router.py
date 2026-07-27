@@ -32,5 +32,6 @@ async def signaling_endpoint(websocket: WebSocket) -> None:
         map_failure_code=state.map_ticket_failure_code,
         epoch_registry=state.session_epoch_registry,
         logger=_logger,
+        stt_sink_factory=getattr(state, "stt_sink_factory", None),
     )
     await connection.run()

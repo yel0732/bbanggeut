@@ -77,6 +77,7 @@ def _build_connection(
     ticket_result: TicketVerificationResult,
     registry: RealtimeConnectionRegistry | None = None,
     peer_connection_factory: FakePeerConnectionFactory | None = None,
+    stt_sink_factory=None,
 ) -> tuple[SignalingConnection, FakeTicketVerifier, FakePeerConnectionFactory, RealtimeConnectionRegistry, FakeHeartbeat]:
     ticket_verifier = FakeTicketVerifier(ticket_result)
     factory = peer_connection_factory or FakePeerConnectionFactory()
@@ -91,6 +92,7 @@ def _build_connection(
         map_failure_code=map_ticket_failure_code,
         epoch_registry=SessionEpochRegistry(),
         logger=_LOGGER,
+        stt_sink_factory=stt_sink_factory,
     )
     return connection, ticket_verifier, factory, registry, heartbeat
 
@@ -534,3 +536,83 @@ async def test_cleanup_closes_data_channel() -> None:
     await connection._cleanup()
 
     assert channel.closed
+
+
+class _RecordingSttSink:
+    """Fake AudioSink standing in for SessionSttPipeline (W01 wiring)."""
+
+    def __init__(self) -> None:
+        self.closed = 0
+
+    def on_frame(self, frame) -> None:  # pragma: no cover - not driven here
+        pass
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
+@pytest.mark.asyncio
+async def test_stt_sink_is_attached_when_the_data_channel_arrives() -> None:
+    """The sink publishes stt.final through the DataChannel, so it can only be
+    built once that channel exists (aiortc raises "track" earlier)."""
+
+    built: list = []
+
+    def factory(publisher):
+        built.append(publisher)
+        return _RecordingSttSink()
+
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+        stt_sink_factory=factory,
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    peer_connection = peer_factory.created[0]
+
+    assert peer_connection.attached_sink is None  # nothing before the channel
+
+    await peer_connection.simulate_data_channel_received(FakeDataChannel())
+
+    assert len(built) == 1
+    assert isinstance(peer_connection.attached_sink, _RecordingSttSink)
+
+
+@pytest.mark.asyncio
+async def test_the_publisher_given_to_the_sink_targets_this_session() -> None:
+    captured: list = []
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_9", "rt_9", 4),
+        stt_sink_factory=lambda publisher: captured.append(publisher) or _RecordingSttSink(),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await peer_factory.created[0].simulate_data_channel_received(channel)
+
+    captured[0].publish("stt.final", {"text": "응."}, turn_id="turn_1", turn_seq=1)
+
+    assert channel.sent[0]["conversationId"] == "conv_9"
+    assert channel.sent[0]["realtimeSessionId"] == "rt_9"
+    assert channel.sent[0]["sessionEpoch"] == 4
+
+
+@pytest.mark.asyncio
+async def test_no_sink_is_attached_when_stt_is_not_configured() -> None:
+    """Without a factory the server still runs — echo only, as before W01."""
+
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+
+    await peer_factory.created[0].simulate_data_channel_received(FakeDataChannel())
+
+    assert peer_factory.created[0].attached_sink is None

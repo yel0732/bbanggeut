@@ -18,7 +18,7 @@ from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSession
 from aiortc.mediastreams import MediaStreamTrack
 from aiortc.sdp import candidate_from_sdp
 
-from app.webrtc.audio_bridge import SessionAudioBridge
+from app.webrtc.audio_bridge import AudioSink, SessionAudioBridge
 from app.webrtc.data_channel import AiortcDataChannel, DataChannel
 
 
@@ -56,6 +56,14 @@ class PeerConnection(Protocol):
         """
         ...
 
+    def attach_audio_sink(self, sink: AudioSink) -> None:
+        """Route inbound Audio Frames to an STT sink as well as the echo path.
+
+        Called once the ``conversation-events`` DataChannel exists, because the
+        sink publishes through it (see ``SessionAudioBridge.attach_sink``).
+        """
+        ...
+
     async def close(self) -> None: ...
 
 
@@ -75,6 +83,7 @@ class FakePeerConnection:
         self.closed = False
         self._state_change_callback: StateChangeCallback | None = None
         self._data_channel_callback: DataChannelReceivedCallback | None = None
+        self.attached_sink: AudioSink | None = None
 
     async def accept_offer(self, sdp: str) -> str:
         self.accepted_offer_sdp = sdp
@@ -90,6 +99,9 @@ class FakePeerConnection:
 
     def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
         self._data_channel_callback = callback
+
+    def attach_audio_sink(self, sink: AudioSink) -> None:
+        self.attached_sink = sink
 
     async def close(self) -> None:
         self.closed = True
@@ -190,6 +202,9 @@ class AiortcPeerConnection:
 
     def on_data_channel_received(self, callback: DataChannelReceivedCallback) -> None:
         self._data_channel_callback = callback
+
+    def attach_audio_sink(self, sink: AudioSink) -> None:
+        self._audio_bridge.attach_sink(sink)
 
     async def close(self) -> None:
         await self._audio_bridge.stop()

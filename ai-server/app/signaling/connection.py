@@ -39,6 +39,7 @@ from fastapi import WebSocketDisconnect
 from pydantic import ValidationError
 
 from app.events.envelope import ConversationEventEnvelope, ConversationEventGuard
+from app.events.outbound import ConversationEventPublisher
 from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import TicketVerificationFailureCode, TicketVerificationResult
 from app.session.realtime_connection_registry import (
@@ -61,6 +62,7 @@ from app.signaling.messages import (
     UnknownMessageTypeError,
     parse_incoming_message,
 )
+from app.webrtc.audio_bridge import AudioSink
 from app.webrtc.data_channel import DataChannel
 from app.webrtc.peer_connection import PeerConnection, PeerConnectionFactory, PeerConnectionState
 
@@ -97,6 +99,7 @@ class SignalingConnection:
         map_failure_code: Callable[[TicketVerificationFailureCode], str],
         epoch_registry: SessionEpochRegistry,
         logger: logging.Logger,
+        stt_sink_factory: Callable[[ConversationEventPublisher], AudioSink] | None = None,
     ) -> None:
         self._websocket = websocket
         self._ticket_verifier = ticket_verifier
@@ -106,12 +109,14 @@ class SignalingConnection:
         self._map_failure_code = map_failure_code
         self._epoch_registry = epoch_registry
         self._logger = logger
+        self._stt_sink_factory = stt_sink_factory
 
         self._state = ConnectionState.AWAITING_AUTH
         self._peer_connection: PeerConnection | None = None
         self._heartbeat: Heartbeat | None = None
         self._data_channel: DataChannel | None = None
         self._event_guard: ConversationEventGuard | None = None
+        self._event_publisher: ConversationEventPublisher | None = None
         self._conversation_id: str | None = None
         self._realtime_session_id: str | None = None
         self._session_epoch: int | None = None
@@ -223,9 +228,24 @@ class SignalingConnection:
     async def _on_data_channel_received(self, channel: DataChannel) -> None:
         self._data_channel = channel
         assert self._conversation_id and self._realtime_session_id
+        assert self._session_epoch is not None
         self._event_guard = ConversationEventGuard(
             self._conversation_id, self._realtime_session_id, self._epoch_registry
         )
+        self._event_publisher = ConversationEventPublisher(
+            channel,
+            conversation_id=self._conversation_id,
+            realtime_session_id=self._realtime_session_id,
+            session_epoch=self._session_epoch,
+            logger=self._logger,
+        )
+        # STT can only start now: the pipeline publishes stt.final through this
+        # channel, and aiortc delivers the audio track earlier than the
+        # DataChannel (see SessionAudioBridge.attach_sink).
+        if self._stt_sink_factory is not None and self._peer_connection is not None:
+            self._peer_connection.attach_audio_sink(
+                self._stt_sink_factory(self._event_publisher)
+            )
         channel.on_message(self._on_data_channel_message)
 
     async def _on_data_channel_message(self, raw: dict) -> None:
@@ -244,8 +264,9 @@ class SignalingConnection:
             )
             return
 
-        # W04 범위: 계약 검증까지만 한다 — 실제 이벤트 처리(STT/Dialogue/TTS)는 DIARY-3가
-        # 이 지점에 이어서 구현한다(jira/plan/DIARY-2-W04.md §3 원칙 6).
+        # 수신 이벤트(client.ready / client.interrupt)의 실제 처리는 아직 없다.
+        # W01은 송신 방향(stt.final·error)만 배선했고, client.interrupt 처리는
+        # Barge-in을 다루는 DIARY-4 범위다.
 
     async def _on_peer_connection_state_change(self, state: PeerConnectionState) -> None:
         if self._state == ConnectionState.CLOSED:
@@ -306,6 +327,7 @@ class SignalingConnection:
         self._state = ConnectionState.CLOSED
         if self._heartbeat is not None:
             await self._heartbeat.stop()
+        self._event_publisher = None
         if self._data_channel is not None:
             self._data_channel.close()
         if self._peer_connection is not None:

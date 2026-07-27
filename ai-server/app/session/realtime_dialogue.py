@@ -51,11 +51,15 @@ from app.events.outbound import ConversationEventPublisher
 from app.realtime.context_snapshot import ContextSnapshot, TopicSnapshot
 from app.session.response_registry import ResponseRegistry
 from app.speech.recognizer import SttResult
+from app.speech.speaker import SpeakerHandle
 from app.speech.stt_pipeline import SessionSttPipeline
+from app.speech.synthesis import SpeechSynthesisService
 from app.speech.turn_state import SttTurn, TurnSequencer
 
 RequestIdFactory = Callable[[], str]
 EpochCurrentCheck = Callable[[], bool]
+# (turn_id, turn_seq, response_id, text) — 발행된 AI 질문을 음성으로 합성한다.
+SpeakCallback = Callable[[str, int, str, str], None]
 
 _RECENT_QUESTION_LIMIT = 5
 _LLM_ERROR_CODE = "LLM_TIMEOUT"  # §22의 LLM 계열 공개 코드(복구: Fallback)
@@ -138,6 +142,7 @@ class RealtimeDialogueManager:
         is_epoch_current: EpochCurrentCheck,
         logger: logging.Logger,
         request_id_factory: RequestIdFactory = _default_request_id_factory,
+        speak: SpeakCallback | None = None,
     ) -> None:
         self._pipeline = dialogue_pipeline
         self._termination_policy = termination_policy
@@ -148,6 +153,7 @@ class RealtimeDialogueManager:
         self._is_epoch_current = is_epoch_current
         self._logger = logger
         self._request_id_factory = request_id_factory
+        self._speak = speak
 
     # --- guard hooks (T13) -------------------------------------------------
 
@@ -324,6 +330,9 @@ class RealtimeDialogueManager:
             turn_seq=ai_turn.turn_seq,
             response_id=response_id,
         )
+        if self._speak is not None:
+            # 텍스트 발행 직후 음성 합성을 시작한다(W04). 미주입이면 텍스트 전용.
+            self._speak(ai_turn.turn_id, ai_turn.turn_seq, response_id, text)
         return True
 
 
@@ -344,10 +353,12 @@ class RealtimeDialogueSession:
         audio_sink: SessionSttPipeline,
         manager: RealtimeDialogueManager,
         state: DialogueSessionState,
+        synthesis: SpeechSynthesisService | None = None,
     ) -> None:
         self.audio_sink = audio_sink
         self.manager = manager
         self.state = state
+        self.synthesis = synthesis
 
     def is_response_cancelled(self, response_id: str) -> bool:
         return self.manager.is_response_cancelled(response_id)
@@ -358,11 +369,18 @@ class RealtimeDialogueSession:
     async def aclose(self) -> None:
         """Idempotent — the sink is also closed via the audio bridge path."""
 
+        if self.synthesis is not None:
+            await self.synthesis.aclose()
         await self.audio_sink.aclose()
 
 
 SttPipelineFactory = Callable[..., SessionSttPipeline]
 SnapshotReader = Callable[[str], Awaitable[ContextSnapshot | None]]
+# (speaker, publisher, response_registry) -> service. 음성 출력이 있을 때만 만든다.
+SynthesisServiceFactory = Callable[
+    [SpeakerHandle, ConversationEventPublisher, ResponseRegistry],
+    SpeechSynthesisService,
+]
 
 
 async def create_realtime_dialogue_session(
@@ -376,12 +394,17 @@ async def create_realtime_dialogue_session(
     is_epoch_current: EpochCurrentCheck,
     stt_pipeline_factory: SttPipelineFactory,
     logger: logging.Logger,
+    speaker: SpeakerHandle | None = None,
+    synthesis_service_factory: SynthesisServiceFactory | None = None,
 ) -> RealtimeDialogueSession:
     """Assemble one connection's dialogue session (T11 read-once included).
 
     ``stt_pipeline_factory(publisher, turn_sequencer, on_final, on_no_speech)``
     keeps the STT wiring (recognizer/VAD/config) where it already lives —
     ``main.py`` — instead of duplicating it here.
+
+    ``speaker`` is the outbound AI voice; it is ``None`` for an audio-less
+    offer, in which case the session runs text-only (no synthesis).
     """
 
     snapshot = await read_snapshot(conversation_id)
@@ -396,6 +419,11 @@ async def create_realtime_dialogue_session(
     state = DialogueSessionState(snapshot)
     turn_sequencer = TurnSequencer()  # 아이 턴과 AI 턴이 공유하는 단일 수열(§4)
     response_registry = ResponseRegistry()
+
+    synthesis: SpeechSynthesisService | None = None
+    if speaker is not None and synthesis_service_factory is not None:
+        synthesis = synthesis_service_factory(speaker, publisher, response_registry)
+
     manager = RealtimeDialogueManager(
         dialogue_pipeline=dialogue_pipeline,
         termination_policy=termination_policy,
@@ -405,6 +433,7 @@ async def create_realtime_dialogue_session(
         response_registry=response_registry,
         is_epoch_current=is_epoch_current,
         logger=logger,
+        speak=synthesis.speak if synthesis is not None else None,
     )
     audio_sink = stt_pipeline_factory(
         publisher,
@@ -412,4 +441,6 @@ async def create_realtime_dialogue_session(
         on_final=manager.handle_child_turn,
         on_no_speech=manager.handle_no_speech,
     )
-    return RealtimeDialogueSession(audio_sink=audio_sink, manager=manager, state=state)
+    return RealtimeDialogueSession(
+        audio_sink=audio_sink, manager=manager, state=state, synthesis=synthesis
+    )

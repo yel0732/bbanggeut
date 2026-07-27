@@ -459,3 +459,48 @@ class TestSessionAssembly:
             )
 
         assert "강아지" not in caplog.text
+
+
+class TestSpeakWiring:
+    """W04: 텍스트 발행 직후 음성 합성이 트리거되는지(주입된 speak 콜백)."""
+
+    @pytest.mark.asyncio
+    async def test_speak_is_called_after_text_final_with_matching_ids(self) -> None:
+        spoken: list = []
+        manager, _, channel, _, _, sequencer = _build_manager()
+        manager._speak = lambda t, s, r, text: spoken.append((t, s, r, text))  # noqa: SLF001
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        text_final = channel.sent[1]
+        assert len(spoken) == 1
+        turn_id, turn_seq, response_id, text = spoken[0]
+        assert turn_id == text_final["turnId"]
+        assert turn_seq == text_final["turnSeq"]
+        assert response_id == text_final["responseId"]
+        assert text == text_final["payload"]["text"]
+
+    @pytest.mark.asyncio
+    async def test_speak_is_not_called_when_response_is_discarded(self) -> None:
+        """취소·낮은 epoch로 발행이 막히면 합성도 시작하지 않는다."""
+
+        spoken: list = []
+        manager, _, channel, _, _, sequencer = _build_manager(epoch_current=False)
+        manager._speak = lambda *a: spoken.append(a)  # noqa: SLF001
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert channel.sent == []
+        assert spoken == []
+
+    def test_no_speak_callback_keeps_text_only_behaviour(self) -> None:
+        """speak 미주입 시 기존 텍스트 전용 동작(회귀)."""
+
+        manager, _, channel, _, _, sequencer = _build_manager()
+        # _speak은 기본 None
+        manager.handle_no_speech()
+
+        assert [e["type"] for e in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+        ]

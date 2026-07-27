@@ -41,6 +41,7 @@ from pydantic import ValidationError
 from app.events.envelope import ConversationEventEnvelope, ConversationEventGuard
 from app.events.outbound import ConversationEventPublisher
 from app.session.realtime_dialogue import RealtimeDialogueSession
+from app.speech.speaker import SpeakerHandle
 from app.realtime.session_epoch_registry import SessionEpochRegistry
 from app.realtime.ticket_verification import TicketVerificationFailureCode, TicketVerificationResult
 from app.session.realtime_connection_registry import (
@@ -100,7 +101,10 @@ class SignalingConnection:
         epoch_registry: SessionEpochRegistry,
         logger: logging.Logger,
         realtime_session_factory: (
-            Callable[[ConversationEventPublisher, str], Awaitable[RealtimeDialogueSession]]
+            Callable[
+                [ConversationEventPublisher, str, SpeakerHandle | None],
+                Awaitable[RealtimeDialogueSession],
+            ]
             | None
         ) = None,
     ) -> None:
@@ -246,7 +250,9 @@ class SignalingConnection:
         if self._realtime_session_factory is not None and self._peer_connection is not None:
             try:
                 self._dialogue_session = await self._realtime_session_factory(
-                    self._event_publisher, self._conversation_id
+                    self._event_publisher,
+                    self._conversation_id,
+                    self._peer_connection.speaker,
                 )
                 self._peer_connection.attach_audio_sink(self._dialogue_session.audio_sink)
             except Exception:  # noqa: BLE001 - 조립 실패가 연결 전체를 죽여선 안 된다

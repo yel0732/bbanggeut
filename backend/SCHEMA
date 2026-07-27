@@ -379,6 +379,35 @@ CREATE TABLE report_conversation_summary (
 -- source_conversation_ids may be [] for a game-only narrative.
 
 
+-- CHILDDIARY-02: child_diary -----------------------------------------------
+
+CREATE TABLE child_diary (
+    child_diary_id    BIGINT       NOT NULL AUTO_INCREMENT,
+    child_id          BIGINT       NOT NULL,
+    conversation_id   VARCHAR(40)  NOT NULL,
+    diary_date        DATE         NOT NULL,
+    title             VARCHAR(20)  NOT NULL,
+    lines_json        TEXT         NOT NULL,
+    generation_method VARCHAR(20)  NOT NULL,
+    model_version     VARCHAR(100) NULL,
+    prompt_version    VARCHAR(100) NOT NULL,
+    created_at        DATETIME(6)  NOT NULL,
+    updated_at        DATETIME(6)  NOT NULL,
+    PRIMARY KEY (child_diary_id),
+    CONSTRAINT uk_child_diary_conversation UNIQUE (conversation_id)
+);
+
+CREATE INDEX idx_child_diary_child_date
+    ON child_diary (child_id, diary_date);
+
+-- A preview is not persisted. The backend signs it with a short-lived token,
+-- and only the explicit attach action inserts this row.
+-- generation_method: AI | RULE_BASED
+-- The unique conversation_id constraint prevents duplicate diaries under
+-- concurrent attach requests.
+-- Entity: backend/src/main/java/com/A501/backend/domain/childdiary/entity/ChildDiary.java
+
+
 -- Spring Batch metadata -----------------------------------------------------
 
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.

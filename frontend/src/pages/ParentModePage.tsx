@@ -435,7 +435,7 @@ export function ParentModePage() {
           />
         </button>
 
-        <nav className="absolute top-[24px] right-[48px] z-40 flex gap-3">
+        <nav className="absolute top-[25px] right-[10px] z-40 flex gap-3">
           <button
             className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('children')}

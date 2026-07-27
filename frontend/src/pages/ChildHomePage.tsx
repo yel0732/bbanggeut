@@ -17,6 +17,7 @@ import hoverGateUrl from '@/assets/images/child-home/hover-gate.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
@@ -194,7 +195,7 @@ export function ChildHomePage() {
 
         {/* 공룡 캐릭터 */}
         <div className="absolute top-[280px] left-1/2 h-[300px] w-[336px] -translate-x-1/2">
-          <div className="absolute top-[-115px] left-1/2 h-[122px] w-[270px] -translate-x-1/2">
+          <div className="absolute top-[-125px] left-6/13 h-[122px] w-[270px] -translate-x-1/2">
             <img
               alt=""
               className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
@@ -255,14 +256,7 @@ export function ChildHomePage() {
           />
         </button>
 
-        <Link
-          aria-label="프로필 바꾸기"
-          className="absolute top-[16px] right-[78px] z-40 rounded-full border-2 border-white/70 bg-black/35 px-4 py-2 text-sm text-white backdrop-blur-sm transition hover:scale-105"
-          style={jua}
-          to="/profiles"
-        >
-          프로필 바꾸기
-        </Link>
+        <ChildProfileSwitchButton />
       </div>
     </div>
   )

@@ -53,6 +53,16 @@ export const GamePlayPage = lazy(() =>
     default: GamePlayPage,
   })),
 )
+export const DobblePlayPage = lazy(() =>
+  import('@/pages/DobblePlayPage').then(({ DobblePlayPage }) => ({
+    default: DobblePlayPage,
+  })),
+)
+export const DobbleResultPage = lazy(() =>
+  import('@/pages/DobbleResultPage').then(({ DobbleResultPage }) => ({
+    default: DobbleResultPage,
+  })),
+)
 export const GameResultPage = lazy(() =>
   import('@/pages/GameResultPage').then(({ GameResultPage }) => ({
     default: GameResultPage,

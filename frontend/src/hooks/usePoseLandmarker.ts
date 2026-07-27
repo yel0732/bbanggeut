@@ -11,6 +11,8 @@ const MODEL_PATH =
 
 /** BlazePose 랜드마크 인덱스 (필요한 것만) */
 export const POSE_LM = {
+  leftShoulder: 11,
+  rightShoulder: 12,
   leftElbow: 13,
   rightElbow: 14,
   leftWrist: 15,

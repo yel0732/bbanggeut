@@ -185,7 +185,9 @@ function GuideButton({
         src={imageUrl}
       />
       <span
-        className={`absolute inset-0 flex items-center justify-center pb-1 text-[24px] leading-none ${labelClassName}`}
+        // 버튼 이미지는 위쪽 테두리가 더 두꺼워 글자가 떠 보인다. 아래로 조금 내려
+        // 나무판 안쪽 가운데에 맞춘다.
+        className={`absolute inset-0 flex items-center justify-center pt-4 text-[24px] leading-none ${labelClassName}`}
         style={jua}
       >
         {label}

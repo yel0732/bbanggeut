@@ -5,6 +5,8 @@ Everything is a Fake — no real Provider, no network (§10). Audio is synthetic
 
 import asyncio
 import logging
+import math
+import struct
 from datetime import datetime, timezone
 from fractions import Fraction
 
@@ -21,6 +23,7 @@ from app.speech.recognizer import (
 )
 from app.speech.stt_pipeline import SessionSttPipeline
 from app.speech.turn_state import TurnSequencer
+from app.speech.vad import FakeVoiceActivityDetector
 from app.webrtc.data_channel import FakeDataChannel
 
 _LOGGER = logging.getLogger("test.speech.stt_pipeline")
@@ -28,12 +31,22 @@ _WEBRTC_RATE = 48000
 _FRAME_SAMPLES = 960  # 20ms
 
 
-def _frame() -> AudioFrame:
+def _frame(tone_hz: int | None = None) -> AudioFrame:
     frame = AudioFrame(format="s16", layout="stereo", samples=_FRAME_SAMPLES)
     frame.sample_rate = _WEBRTC_RATE
     frame.time_base = Fraction(1, _WEBRTC_RATE)
+    if tone_hz is None:
+        payload = bytes(_FRAME_SAMPLES * 4)
+    else:
+        payload = b"".join(
+            struct.pack(
+                "<h", int(10000 * math.sin(2 * math.pi * tone_hz * i / _WEBRTC_RATE))
+            )
+            for i in range(_FRAME_SAMPLES)
+            for _ in range(2)
+        )
     for plane in frame.planes:
-        plane.update(bytes(plane.buffer_size))
+        plane.update(payload + bytes(plane.buffer_size - len(payload)))
     return frame
 
 
@@ -69,9 +82,9 @@ def _build(
     return pipeline, channel, recognizer
 
 
-def _feed(pipeline: SessionSttPipeline, seconds: float) -> None:
+def _feed(pipeline: SessionSttPipeline, seconds: float, *, tone_hz: int | None = None) -> None:
     for _ in range(int(seconds / 0.02)):
-        pipeline.on_frame(_frame())
+        pipeline.on_frame(_frame(tone_hz))
 
 
 class TestHappyPath:
@@ -450,3 +463,150 @@ class TestIsolation:
         assert await pipeline.finalize_turn() is None
         assert recognizer.calls == []
         assert channel.sent == []
+
+
+class TestTurnDetectorIntegration:
+    """T08: the pipeline with a VAD gates audio and self-finalizes on silence."""
+
+    def _build_with_vad(self, recognizer=None, **kwargs):
+        kwargs.setdefault("vad", FakeVoiceActivityDetector())
+        return _build(recognizer, **kwargs)
+
+    @pytest.mark.asyncio
+    async def test_leading_silence_never_reaches_the_buffer(self) -> None:
+        """§11-C gating: what came before speech is not buffered, not billed,
+        and cannot hallucinate."""
+
+        pipeline, channel, recognizer = self._build_with_vad()
+
+        _feed(pipeline, 2.0)  # digital silence
+
+        assert not pipeline.has_audio
+        assert recognizer.calls == []
+        assert channel.sent == []
+
+    @pytest.mark.asyncio
+    async def test_speech_confirmation_starts_buffering_with_preroll(self) -> None:
+        pipeline, _, _ = self._build_with_vad()
+
+        _feed(pipeline, 1.0)                 # leading silence — dropped
+        _feed(pipeline, 0.4, tone_hz=440)    # confirmed speech
+
+        assert pipeline.has_audio
+        # pre-roll(300ms 상한)이 포함되되 선행 침묵 1초 전체가 들어오진 않는다
+        assert 0.4 <= pipeline._buffer.duration_seconds <= 1.0  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_trailing_silence_finalizes_the_turn_automatically(self) -> None:
+        """The full W02 loop: speech -> silence -> stt.final without anyone
+        calling finalize_turn() from outside."""
+
+        recognizer = FakeSpeechRecognizer([_good_result()])
+        pipeline, channel, _ = self._build_with_vad(recognizer)
+
+        _feed(pipeline, 1.0, tone_hz=440)   # 발화
+        _feed(pipeline, 3.2)                 # 침묵 3.0초 초과 → on_turn_end
+        for _ in range(4):
+            await asyncio.sleep(0)           # 예약된 finalize task 실행
+
+        assert [event["type"] for event in channel.sent] == ["stt.final"]
+        assert len(recognizer.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_mid_utterance_pause_does_not_split_the_turn(self) -> None:
+        """CONV-REQ-072 end to end: 2.9s pause then more speech = one turn."""
+
+        recognizer = FakeSpeechRecognizer([_good_result()])
+        pipeline, channel, _ = self._build_with_vad(recognizer)
+
+        _feed(pipeline, 0.5, tone_hz=440)
+        _feed(pipeline, 2.9)                 # 임계값 직전 멈춤
+        _feed(pipeline, 0.5, tone_hz=440)
+        _feed(pipeline, 3.2)                 # 진짜 종료
+        for _ in range(4):
+            await asyncio.sleep(0)
+
+        assert len(recognizer.calls) == 1    # 한 턴, 한 번의 인식
+        duration = recognizer.calls[0][1]
+        assert duration >= 3.5               # 멈춤 구간까지 한 발화로 포함됐다
+
+    @pytest.mark.asyncio
+    async def test_two_utterances_become_two_turns(self) -> None:
+        recognizer = FakeSpeechRecognizer([_good_result(), _good_result()])
+        pipeline, channel, _ = self._build_with_vad(recognizer)
+
+        _feed(pipeline, 0.6, tone_hz=440)
+        _feed(pipeline, 3.2)
+        for _ in range(4):
+            await asyncio.sleep(0)
+        _feed(pipeline, 0.6, tone_hz=440)
+        _feed(pipeline, 3.2)
+        for _ in range(4):
+            await asyncio.sleep(0)
+
+        assert [event["turnSeq"] for event in channel.sent] == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_a_cough_produces_no_turn_and_no_provider_call(self) -> None:
+        pipeline, channel, recognizer = self._build_with_vad()
+
+        _feed(pipeline, 0.12, tone_hz=440)   # ~120ms burst
+        _feed(pipeline, 5.0)                 # 이후 긴 침묵
+
+        for _ in range(4):
+            await asyncio.sleep(0)
+        assert recognizer.calls == []
+        assert channel.sent == []
+
+    @pytest.mark.asyncio
+    async def test_no_speech_callback_reaches_the_injected_handler(self) -> None:
+        signals: list[int] = []
+        pipeline, _, _ = self._build_with_vad(on_no_speech=lambda: signals.append(1))
+
+        _feed(pipeline, 10.2)                # 무응답 timeout(10초) 초과
+
+        assert signals == [1]
+
+    @pytest.mark.asyncio
+    async def test_request_finalize_is_cancellable_via_aclose(self) -> None:
+        """W01 리뷰 후속의 요지: 외부 요청 경로도 aclose()가 취소할 수 있다."""
+
+        started = asyncio.Event()
+
+        class _HangingRecognizer:
+            async def transcribe(self, wav_bytes: bytes, audio_seconds: float) -> SttResult:
+                started.set()
+                await asyncio.sleep(3600)
+                raise AssertionError("should have been cancelled")
+
+        pipeline, channel, _ = self._build_with_vad()
+        pipeline._recognizer = _HangingRecognizer()  # noqa: SLF001
+        _feed(pipeline, 1.0, tone_hz=440)
+
+        pipeline.request_finalize()
+        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.wait_for(pipeline.aclose(), timeout=1)
+
+        assert channel.sent == []
+
+    @pytest.mark.asyncio
+    async def test_request_finalize_after_close_is_a_no_op(self) -> None:
+        pipeline, channel, recognizer = self._build_with_vad()
+        _feed(pipeline, 1.0, tone_hz=440)
+        await pipeline.aclose()
+
+        pipeline.request_finalize()
+        for _ in range(4):
+            await asyncio.sleep(0)
+
+        assert recognizer.calls == []
+        assert channel.sent == []
+
+    @pytest.mark.asyncio
+    async def test_aclose_resets_the_detector_state(self) -> None:
+        pipeline, _, _ = self._build_with_vad()
+        _feed(pipeline, 1.0, tone_hz=440)    # SPEAKING 상태로 만든 뒤
+
+        await pipeline.aclose()
+
+        assert pipeline._detector.phase.value == "idle"  # noqa: SLF001

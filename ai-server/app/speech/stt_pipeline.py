@@ -5,10 +5,11 @@ converter, utterance buffer, turn numbering and in-flight recognition task, and
 it is the single place where the batch shape of whisper-1 becomes visible:
 audio simply accumulates until somebody declares the turn over.
 
-``finalize_turn()`` is the seam with W02. Until Turn Detection exists nothing
-calls it during a real conversation — W01's tests drive it directly, and W02
-will wire a VAD to it. It is also called internally when the utterance hits its
-duration cap (§3-3).
+Turn boundaries come from the ``TurnDetector`` (W02) when a ``vad`` is
+injected: leading silence never reaches the buffer (pre-roll excepted), and
+end-of-silence calls ``request_finalize()``. Without a ``vad`` the pipeline
+behaves as in W01 — everything is buffered and only the duration cap (or an
+external ``finalize_turn()`` call, e.g. from tests) closes a turn.
 
 Failure handling is deliberately split (plan §4):
 
@@ -29,14 +30,17 @@ from collections.abc import Awaitable, Callable
 from av import AudioFrame
 
 from app.events.outbound import ConversationEventPublisher
-from app.speech.audio_format import STT_INPUT_FORMAT, AudioFormat
+from app.speech.audio_format import STT_INPUT_FORMAT, AudioFormat, PcmAudioChunk
 from app.speech.frame_converter import AudioConversionError, AudioFrameConverter
 from app.speech.hallucination import HallucinationGuard, SpeechRejectionReason
 from app.speech.recognizer import SpeechRecognizer, SttError, SttResult
+from app.speech.turn_detector import TurnDetectionConfig, TurnDetector
 from app.speech.turn_state import SttTurn, TurnSequencer
 from app.speech.utterance_buffer import UtteranceBuffer
+from app.speech.vad import VoiceActivityDetector
 
 FinalTurnCallback = Callable[[SttTurn, SttResult], Awaitable[None]]
+NoSpeechCallback = Callable[[], None]
 
 _STT_FAILED = "STT_FAILED"
 
@@ -55,6 +59,9 @@ class SessionSttPipeline:
         audio_format: AudioFormat = STT_INPUT_FORMAT,
         turn_sequencer: TurnSequencer | None = None,
         on_final: FinalTurnCallback | None = None,
+        vad: VoiceActivityDetector | None = None,
+        turn_detection: TurnDetectionConfig | None = None,
+        on_no_speech: NoSpeechCallback | None = None,
     ) -> None:
         self._recognizer = recognizer
         self._publisher = publisher
@@ -67,6 +74,17 @@ class SessionSttPipeline:
         self._turn: SttTurn | None = None
         self._task: asyncio.Task | None = None
         self._closed = False
+        self._detector: TurnDetector | None = None
+        if vad is not None:
+            self._detector = TurnDetector(
+                vad,
+                config=turn_detection,
+                audio_format=audio_format,
+                on_speech_start=self._handle_speech_start,
+                on_turn_end=self.request_finalize,
+                on_no_speech=on_no_speech or self._log_no_speech,
+                logger=logger,
+            )
 
     @property
     def current_turn(self) -> SttTurn | None:
@@ -88,6 +106,13 @@ class SessionSttPipeline:
         except AudioConversionError:
             self._logger.warning("inbound audio frame could not be converted")
             return
+        if self._detector is None:
+            self._accept_audio(chunk)
+            return
+        for audio in self._detector.feed(chunk):
+            self._accept_audio(audio)
+
+    def _accept_audio(self, chunk: PcmAudioChunk) -> None:
         self._ensure_turn()
         if not self._buffer.append(chunk):
             # Cap reached: close this turn with the audio we have rather than
@@ -107,11 +132,27 @@ class SessionSttPipeline:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        if self._detector is not None:
+            self._detector.reset()
         self._converter.reset()
         self._buffer.close()
         self._turn = None
 
     # --- turn boundary ---------------------------------------------------
+
+    def request_finalize(self) -> None:
+        """Ask for the current utterance to be confirmed as a turn.
+
+        The one entry point for external callers (the Turn Detector, and later
+        W02+ consumers): the work runs as a pipeline-owned task, so
+        ``aclose()`` can cancel it — awaiting ``finalize_turn()`` directly
+        would escape that tracking (W01 review follow-up, W02 plan §3-5).
+        Duplicate requests while one is running are dropped.
+        """
+
+        if self._closed:
+            return
+        self._schedule_finalize()
 
     def _schedule_finalize(self) -> None:
         if self._task is not None and not self._task.done():
@@ -121,7 +162,9 @@ class SessionSttPipeline:
     async def finalize_turn(self) -> SttResult | None:
         """Recognise the buffered utterance and confirm it as one turn.
 
-        Called by W02's Turn Detection, or internally on buffer overflow.
+        Internal/test entry point — external callers use ``request_finalize()``
+        so the run is owned (and cancellable) by the pipeline. Also invoked on
+        buffer overflow.
         """
 
         if self._closed:
@@ -175,6 +218,16 @@ class SessionSttPipeline:
         return result
 
     # --- internals -------------------------------------------------------
+
+    def _handle_speech_start(self) -> None:
+        # 이 시점엔 새 턴이 아직 만들어지기 전이다(_accept_audio가 만든다) —
+        # 식별자 없이 사건만 기록한다.
+        self._logger.info("speech start confirmed")
+
+    def _log_no_speech(self) -> None:
+        # 신호만 기록한다 — NO_RESPONSE 턴 생성·복구 질문은 W03이 DIARY-1
+        # 정책을 재사용해 연결한다(ADR-018, W02 plan §11-E).
+        self._logger.info("no speech detected within the timeout window")
 
     def _ensure_turn(self) -> None:
         if self._turn is None or self._turn.is_finalized:

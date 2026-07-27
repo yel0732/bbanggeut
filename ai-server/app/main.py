@@ -36,6 +36,8 @@ from app.signaling.error_mapping import map_ticket_failure_code
 from app.signaling.router import router as signaling_router
 from app.speech.hallucination import HallucinationGuard
 from app.speech.stt_pipeline import SessionSttPipeline
+from app.speech.turn_detector import TurnDetectionConfig
+from app.speech.vad import WebrtcVoiceActivityDetector
 from app.speech.whisper_client import WhisperSpeechRecognizer
 from app.webrtc.peer_connection import AiortcPeerConnectionFactory
 
@@ -149,12 +151,21 @@ def create_app(
             min_audio_seconds=resolved_settings.stt_min_utterance_seconds,
             no_speech_prob_threshold=resolved_settings.stt_no_speech_prob_threshold,
         )
+        turn_detection_config = TurnDetectionConfig(
+            min_speech_ms=resolved_settings.stt_min_speech_ms,
+            trailing_silence_seconds=resolved_settings.stt_trailing_silence_seconds,
+            no_speech_timeout_seconds=resolved_settings.stt_no_speech_timeout_seconds,
+            preroll_ms=resolved_settings.stt_preroll_ms,
+        )
         app.state.stt_sink_factory = lambda publisher: SessionSttPipeline(
             speech_recognizer,
             publisher,
             logging.getLogger("app.speech.stt_pipeline"),
             guard=hallucination_guard,
             max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
+            # VAD 자체는 세션별 인스턴스(webrtcvad가 내부 상태를 가짐, §8).
+            vad=WebrtcVoiceActivityDetector(resolved_settings.stt_vad_aggressiveness),
+            turn_detection=turn_detection_config,
         )
 
         try:

@@ -6,6 +6,10 @@ spring:
   batch:
     job:
       enabled: false
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
 
 report:
   schedule:
@@ -28,6 +32,9 @@ conversation:
   topic:
     game-max-question-count: ${CONVERSATION_GAME_MAX_QUESTIONS:6}
     daily-max-question-count: ${CONVERSATION_DAILY_MAX_QUESTIONS:6}
+  realtime:
+    context:
+      ttl: ${CONVERSATION_REALTIME_CONTEXT_TTL:PT30M}
 
 app:
   jwt:

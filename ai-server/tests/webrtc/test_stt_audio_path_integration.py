@@ -131,3 +131,50 @@ async def test_closing_the_peer_connection_closes_the_stt_pipeline() -> None:
         assert closed == [1]
     finally:
         await asyncio.wait_for(client.close(), timeout=10.0)
+
+
+@pytest.mark.asyncio
+async def test_real_webrtc_silence_does_not_open_a_turn_with_the_real_vad() -> None:
+    """W02 end-to-end negative check: a genuine aiortc silence track, judged by
+    the real webrtcvad, never confirms speech — so nothing is buffered and the
+    Provider is never called."""
+
+    from app.speech.vad import WebrtcVoiceActivityDetector
+
+    client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+    server = AiortcPeerConnectionFactory().create()
+    channel = FakeDataChannel()
+    recognizer = FakeSpeechRecognizer()
+    pipeline = SessionSttPipeline(
+        recognizer,
+        ConversationEventPublisher(
+            channel,
+            conversation_id="conv_1",
+            realtime_session_id="rt_1",
+            session_epoch=1,
+            logger=_LOGGER,
+            clock=lambda: datetime(2026, 7, 27, tzinfo=timezone.utc),
+        ),
+        _LOGGER,
+        vad=WebrtcVoiceActivityDetector(),
+    )
+    try:
+        client.addTrack(AudioStreamTrack())  # silence generator
+
+        offer = await client.createOffer()
+        await client.setLocalDescription(offer)
+        answer_sdp = await server.accept_offer(client.localDescription.sdp)
+        await client.setRemoteDescription(
+            RTCSessionDescription(sdp=answer_sdp, type="answer")
+        )
+        server.attach_audio_sink(pipeline)
+
+        await asyncio.sleep(1.0)  # 실제 무음 오디오 ~1초 수신
+
+        assert not pipeline.has_audio
+        assert recognizer.calls == []
+        assert channel.sent == []
+    finally:
+        await asyncio.wait_for(pipeline.aclose(), timeout=10.0)
+        await asyncio.wait_for(client.close(), timeout=10.0)
+        await asyncio.wait_for(server.close(), timeout=10.0)

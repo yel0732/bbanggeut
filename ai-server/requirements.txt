@@ -9,4 +9,5 @@ pytest>=8,<10
 pytest-asyncio>=1,<2
 redis>=5.0,<6
 uvicorn>=0.35,<1
+websockets>=13,<15
 

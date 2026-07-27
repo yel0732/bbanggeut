@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,8 +36,10 @@ import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
 import com.A501.backend.domain.auth.security.GoogleTokenVerifier;
 import com.A501.backend.domain.auth.security.GoogleUserInfo;
 import com.A501.backend.domain.auth.security.JwtProvider;
+import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.security.RefreshTokenProperties;
 import com.A501.backend.domain.auth.security.TokenHasher;
+import com.A501.backend.domain.child.service.ChildService;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -58,12 +61,18 @@ class AuthServiceTest {
     @Mock
     private GoogleTokenVerifier googleTokenVerifier;
 
+    @Mock
+    private PinService pinService;
+
+    @Mock
+    private ChildService childService;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         authService = new AuthService(parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider,
-                REFRESH_TOKEN_PROPERTIES, googleTokenVerifier);
+                REFRESH_TOKEN_PROPERTIES, googleTokenVerifier, pinService, childService);
     }
 
     @Test
@@ -634,5 +643,113 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
+    }
+
+    @Test
+    void withdraw_softDeletesParentVerifiesPinSoftDeletesChildrenAndRevokesAllTokens() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        RefreshToken token = RefreshToken.issue(
+                parent, TokenHasher.hash("some-token"), LocalDateTime.now().plusDays(1), false);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent)).thenReturn(List.of(token));
+
+        authService.withdraw(1L, "1234");
+
+        verify(pinService).verifyPin(1L, "1234");
+        verify(childService).softDeleteChildrenOf(1L);
+        assertThat(parent.isDeleted()).isTrue();
+        assertThat(token.isRevoked()).isTrue();
+    }
+
+    @Test
+    void withdraw_allowsWithoutPinWhenAccountHasNoPin() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent)).thenReturn(List.of());
+
+        authService.withdraw(1L, null);
+
+        verify(pinService, never()).verifyPin(any(), any());
+        verify(childService).softDeleteChildrenOf(1L);
+        assertThat(parent.isDeleted()).isTrue();
+    }
+
+    @Test
+    void withdraw_propagatesPinMismatchAndLeavesAccountActive() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH)).when(pinService).verifyPin(1L, "0000");
+
+        assertThatThrownBy(() -> authService.withdraw(1L, "0000"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_MISMATCH));
+        assertThat(parent.isDeleted()).isFalse();
+        verify(childService, never()).softDeleteChildrenOf(any());
+    }
+
+    @Test
+    void withdraw_throwsInvalidFormatWhenPinRequiredButMissing() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.withdraw(1L, "  "))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_INVALID_FORMAT));
+        // 형식 오류는 verifyPin을 타지 않으므로 잠금 카운트를 소모하지 않는다.
+        verify(pinService, never()).verifyPin(any(), any());
+        assertThat(parent.isDeleted()).isFalse();
+    }
+
+    @Test
+    void withdraw_throwsInvalidFormatForMalformedPinWithoutConsumingLockoutAttempt() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.withdraw(1L, "123"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(PinErrorCode.PIN_INVALID_FORMAT));
+        verify(pinService, never()).verifyPin(any(), any());
+        assertThat(parent.isDeleted()).isFalse();
+    }
+
+    @Test
+    void withdraw_throwsWhenAccountAlreadyWithdrawnOrMissing() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.withdraw(1L, "1234"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
+        verify(pinService, never()).verifyPin(any(), any());
+    }
+
+    @Test
+    void googleAuth_doesNotResurrectSoftDeletedAccountFoundByProviderId() {
+        Parent deleted = Parent.createGoogle("parent@example.com", "google-sub-1", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(deleted, "deletedAt", LocalDateTime.now());
+        when(googleTokenVerifier.verify("id-token"))
+                .thenReturn(new GoogleUserInfo("google-sub-1", "parent@example.com"));
+        when(parentRepository.findByProviderId("google-sub-1")).thenReturn(Optional.of(deleted));
+        when(parentRepository.findByEmail("parent@example.com")).thenReturn(Optional.of(deleted));
+        when(jwtProvider.generateSignupToken("google-sub-1", "parent@example.com")).thenReturn("signup-token");
+
+        GoogleAuthResult result = authService.googleAuth(new GoogleAuthRequest("id-token"));
+
+        assertThat(result.outcome()).isEqualTo(GoogleAuthResult.GoogleAuthOutcome.SIGNUP_REQUIRED);
     }
 }

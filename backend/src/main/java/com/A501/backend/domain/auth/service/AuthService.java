@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
+import java.time.ZoneId;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -19,6 +20,7 @@ import com.A501.backend.domain.auth.dto.request.SignupRequest;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.entity.RefreshToken;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
+import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
 import com.A501.backend.domain.auth.security.GoogleTokenVerifier;
@@ -26,6 +28,7 @@ import com.A501.backend.domain.auth.security.GoogleUserInfo;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.security.RefreshTokenProperties;
 import com.A501.backend.domain.auth.security.TokenHasher;
+import com.A501.backend.domain.child.service.ChildService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +41,7 @@ public class AuthService {
 
     private static final int MINIMUM_SIGNUP_AGE = 19;
     private static final int REFRESH_TOKEN_CLEANUP_RETENTION_DAYS = 30;
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final ParentRepository parentRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -45,6 +49,8 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final RefreshTokenProperties refreshTokenProperties;
     private final GoogleTokenVerifier googleTokenVerifier;
+    private final PinService pinService;
+    private final ChildService childService;
 
     public boolean isEmailAvailable(String email) {
         return parentRepository.findByEmail(normalizeEmail(email)).isEmpty();
@@ -139,16 +145,42 @@ public class AuthService {
                 .forEach(RefreshToken::revoke);
     }
 
+    // 회원 탈퇴 — 소프트 삭제(deleted_at 기록)만 하고, 여러 도메인에 걸친 실제 데이터 파기는
+    // 후속 비동기 작업으로 남긴다. PIN이 설정된 계정은 PIN 재인증을 요구하고, PIN 미설정 계정은
+    // 애초에 다른 기능을 쓸 수 없는 계정이라 바로 탈퇴를 허용한다.
+    // noRollbackFor: 이 메서드가 트랜잭션을 먼저 열어 verifyPin이 여기 합류하므로, 없으면 PIN 실패
+    // 카운트 증가가 롤백에 같이 취소된다(deleteChild/PinService에서 겪은 것과 같은 트랜잭션 경계 문제).
+    @Transactional(noRollbackFor = BusinessException.class)
+    public void withdraw(Long parentId, String pin) {
+        Parent parent = getParent(parentId);
+        if (parent.hasPin()) {
+            // 형식(4자리 숫자) 검증을 verifyPin보다 먼저 한다 — null/빈값/형식오류를 400으로 구분하고,
+            // 형식이 틀린 입력이 PIN 실패 카운트(잠금)를 소모하지 않게 하기 위함(verifyPin을 타지 않음).
+            // DTO 애노테이션으로 못 하는 이유: PIN 미설정 계정은 pin을 아예 안 보내므로 선택값이어야 한다.
+            if (pin == null || !pin.matches("\\d{4}")) {
+                throw new BusinessException(PinErrorCode.PIN_INVALID_FORMAT);
+            }
+            pinService.verifyPin(parentId, pin);
+        }
+
+        parent.withdraw(LocalDateTime.now(KST));
+        childService.softDeleteChildrenOf(parentId);
+        refreshTokenRepository.findAllByParentAndRevokedFalse(parent).forEach(RefreshToken::revoke);
+    }
+
     @Transactional
     public GoogleAuthResult googleAuth(GoogleAuthRequest request) {
         GoogleUserInfo googleUser = googleTokenVerifier.verify(request.idToken());
 
-        Optional<Parent> byProviderId = parentRepository.findByProviderId(googleUser.providerId());
+        // 탈퇴(소프트 삭제)된 계정은 걸러낸다 — 거르지 않으면 탈퇴한 구글 사용자가 재로그인으로 부활한다.
+        Optional<Parent> byProviderId = parentRepository.findByProviderId(googleUser.providerId())
+                .filter(p -> !p.isDeleted());
         if (byProviderId.isPresent()) {
             return GoogleAuthResult.loginSuccess(issueTokens(byProviderId.get(), true));
         }
 
-        Optional<Parent> byEmail = parentRepository.findByEmail(normalizeEmail(googleUser.email()));
+        Optional<Parent> byEmail = parentRepository.findByEmail(normalizeEmail(googleUser.email()))
+                .filter(p -> !p.isDeleted());
         if (byEmail.isPresent() && byEmail.get().hasPassword()) {
             String linkToken = jwtProvider.generateLinkToken(byEmail.get().getParentId(), googleUser.providerId());
             return GoogleAuthResult.linkRequired(linkToken);

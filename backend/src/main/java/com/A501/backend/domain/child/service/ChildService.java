@@ -36,6 +36,15 @@ public class ChildService {
         return childRepository.findAllByParentIdAndDeletedAtIsNull(parentId);
     }
 
+    // 부모 탈퇴 시 그 부모의 활성 자녀를 모두 소프트 삭제한다. auth 도메인(AuthService)이
+    // 서비스 계층을 통해 호출하며, child 엔티티를 직접 참조하지 않도록 이 메서드로만 노출한다.
+    @Transactional
+    public void softDeleteChildrenOf(Long parentId) {
+        LocalDateTime now = LocalDateTime.now(KST);
+        childRepository.findAllByParentIdAndDeletedAtIsNull(parentId)
+                .forEach(child -> child.softDelete(now));
+    }
+
     @Transactional
     public Child createChild(Long parentId, String name, int profileImageNum) {
         if (!pinService.hasPin(parentId)) {

@@ -88,6 +88,12 @@ public class Parent extends BaseTimeEntity {
         this.passwordHash = passwordHash;
     }
 
+    // now는 호출부(AuthService)가 Asia/Seoul 기준으로 계산해 넘긴다 — 엔티티가 타임존을 알 필요 없이
+    // 다른 소프트 삭제 시각과 동일한 기준으로 deleted_at을 남기기 위함.
+    public void withdraw(LocalDateTime now) {
+        this.deletedAt = now;
+    }
+
     public boolean hasPassword() {
         return passwordHash != null;
     }

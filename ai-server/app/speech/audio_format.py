@@ -47,6 +47,9 @@ class AudioFormat:
 # Provider 고정 요구사항이라 설정이 아닌 상수로 둔다.
 STT_INPUT_FORMAT = AudioFormat(sample_rate=16000, channels=1, sample_width=2)
 
+# gpt-4o-mini-tts의 pcm 출력은 24kHz mono s16이다(실측, DIARY-3-W01.md §1).
+TTS_OUTPUT_FORMAT = AudioFormat(sample_rate=24000, channels=1, sample_width=2)
+
 
 @dataclass(frozen=True)
 class PcmAudioChunk:

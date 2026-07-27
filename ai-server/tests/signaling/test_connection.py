@@ -77,7 +77,7 @@ def _build_connection(
     ticket_result: TicketVerificationResult,
     registry: RealtimeConnectionRegistry | None = None,
     peer_connection_factory: FakePeerConnectionFactory | None = None,
-    stt_sink_factory=None,
+    realtime_session_factory=None,
 ) -> tuple[SignalingConnection, FakeTicketVerifier, FakePeerConnectionFactory, RealtimeConnectionRegistry, FakeHeartbeat]:
     ticket_verifier = FakeTicketVerifier(ticket_result)
     factory = peer_connection_factory or FakePeerConnectionFactory()
@@ -92,7 +92,7 @@ def _build_connection(
         map_failure_code=map_ticket_failure_code,
         epoch_registry=SessionEpochRegistry(),
         logger=_LOGGER,
-        stt_sink_factory=stt_sink_factory,
+        realtime_session_factory=realtime_session_factory,
     )
     return connection, ticket_verifier, factory, registry, heartbeat
 
@@ -538,56 +538,72 @@ async def test_cleanup_closes_data_channel() -> None:
     assert channel.closed
 
 
-class _RecordingSttSink:
-    """Fake AudioSink standing in for SessionSttPipeline (W01 wiring)."""
+class _FakeDialogueSession:
+    """RealtimeDialogueSession 대역 — audio_sink·Guard 훅·aclose만 흉내낸다."""
 
     def __init__(self) -> None:
         self.closed = 0
+        self.cancelled_checks: list[str] = []
 
-    def on_frame(self, frame) -> None:  # pragma: no cover - not driven here
-        pass
+        class _SinkStub:
+            async def aclose(self) -> None: ...
+
+        self.audio_sink = _SinkStub()
+
+    def is_response_cancelled(self, response_id: str) -> bool:
+        self.cancelled_checks.append(response_id)
+        return response_id == "resp_cancelled"
+
+    def is_known_turn(self, turn_id: str) -> bool:
+        return turn_id != "turn_ghost"
 
     async def aclose(self) -> None:
         self.closed += 1
 
 
 @pytest.mark.asyncio
-async def test_stt_sink_is_attached_when_the_data_channel_arrives() -> None:
-    """The sink publishes stt.final through the DataChannel, so it can only be
-    built once that channel exists (aiortc raises "track" earlier)."""
+async def test_dialogue_session_is_created_when_the_data_channel_arrives() -> None:
+    """세션은 stt.final·assistant.*를 발행할 채널이 생겨야 만들 수 있다."""
 
-    built: list = []
+    created: list = []
+    session = _FakeDialogueSession()
 
-    def factory(publisher):
-        built.append(publisher)
-        return _RecordingSttSink()
+    async def factory(publisher, conversation_id):
+        created.append((publisher, conversation_id))
+        return session
 
     websocket = FakeWebSocket()
     connection, _, peer_factory, _, _ = _build_connection(
         websocket=websocket,
         ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
-        stt_sink_factory=factory,
+        realtime_session_factory=factory,
     )
     await connection._handle_raw(_authenticate_message())
     await connection._handle_raw(_offer_message())
     peer_connection = peer_factory.created[0]
 
-    assert peer_connection.attached_sink is None  # nothing before the channel
+    assert peer_connection.attached_sink is None  # 채널 전에는 아무것도 없다
 
     await peer_connection.simulate_data_channel_received(FakeDataChannel())
 
-    assert len(built) == 1
-    assert isinstance(peer_connection.attached_sink, _RecordingSttSink)
+    assert created[0][1] == "conv_1"
+    assert peer_connection.attached_sink is session.audio_sink
 
 
 @pytest.mark.asyncio
-async def test_the_publisher_given_to_the_sink_targets_this_session() -> None:
+async def test_the_publisher_given_to_the_session_targets_this_session() -> None:
     captured: list = []
+    session = _FakeDialogueSession()
+
+    async def factory(publisher, conversation_id):
+        captured.append(publisher)
+        return session
+
     websocket = FakeWebSocket()
     connection, _, peer_factory, _, _ = _build_connection(
         websocket=websocket,
         ticket_result=TicketVerificationResult.success("conv_9", "rt_9", 4),
-        stt_sink_factory=lambda publisher: captured.append(publisher) or _RecordingSttSink(),
+        realtime_session_factory=factory,
     )
     await connection._handle_raw(_authenticate_message())
     await connection._handle_raw(_offer_message())
@@ -602,8 +618,68 @@ async def test_the_publisher_given_to_the_sink_targets_this_session() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_sink_is_attached_when_stt_is_not_configured() -> None:
-    """Without a factory the server still runs — echo only, as before W01."""
+async def test_guard_uses_the_session_hooks_for_inbound_events() -> None:
+    """T13: 취소된 responseId를 참조하는 수신 이벤트가 Guard에서 폐기된다."""
+
+    session = _FakeDialogueSession()
+
+    async def factory(publisher, conversation_id):
+        return session
+
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+        realtime_session_factory=factory,
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await peer_factory.created[0].simulate_data_channel_received(channel)
+
+    await channel.simulate_message(
+        {
+            "type": "client.audio.cleared",
+            "eventId": "evt_1",
+            "conversationId": "conv_1",
+            "realtimeSessionId": "rt_1",
+            "sessionEpoch": 1,
+            "responseId": "resp_cancelled",
+            "eventSeq": 1,
+            "occurredAt": "2026-07-27T10:00:10+09:00",
+            "payload": {},
+        }
+    )
+
+    assert session.cancelled_checks == ["resp_cancelled"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_closes_the_dialogue_session() -> None:
+    session = _FakeDialogueSession()
+
+    async def factory(publisher, conversation_id):
+        return session
+
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+        realtime_session_factory=factory,
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    await peer_factory.created[0].simulate_data_channel_received(FakeDataChannel())
+
+    await connection._cleanup()
+    await connection._cleanup()
+
+    assert session.closed == 1  # cleanup은 멱등, 세션 정리는 한 번
+
+
+@pytest.mark.asyncio
+async def test_no_session_is_created_when_dialogue_is_not_configured() -> None:
+    """factory 미설정이면 이전(W02까지)과 동일 — 에코만 동작한다."""
 
     websocket = FakeWebSocket()
     connection, _, peer_factory, _, _ = _build_connection(

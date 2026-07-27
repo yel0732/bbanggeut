@@ -21,6 +21,10 @@ from app.dialogue.question.fallback import (
 from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.policy.termination import DialogueTerminationPolicy
 from app.providers.gms_chat import GmsChatClient
+from app.realtime.context_snapshot import (
+    RedisContextSnapshotReader,
+    default_context_snapshot,
+)
 from app.realtime.jwks_cache import RealtimeJwksCache
 from app.realtime.redis_client import create_redis_client
 from app.realtime.session_epoch_registry import SessionEpochRegistry
@@ -32,6 +36,7 @@ from app.realtime.ticket_verification import (
 )
 from app.report.generator import DailyReportGenerator
 from app.session.realtime_connection_registry import RealtimeConnectionRegistry
+from app.session.realtime_dialogue import create_realtime_dialogue_session
 from app.signaling.error_mapping import map_ticket_failure_code
 from app.signaling.router import router as signaling_router
 from app.speech.hallucination import HallucinationGuard
@@ -157,16 +162,44 @@ def create_app(
             no_speech_timeout_seconds=resolved_settings.stt_no_speech_timeout_seconds,
             preroll_ms=resolved_settings.stt_preroll_ms,
         )
-        app.state.stt_sink_factory = lambda publisher: SessionSttPipeline(
-            speech_recognizer,
-            publisher,
-            logging.getLogger("app.speech.stt_pipeline"),
-            guard=hallucination_guard,
-            max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
-            # VAD 자체는 세션별 인스턴스(webrtcvad가 내부 상태를 가짐, §8).
-            vad=WebrtcVoiceActivityDetector(resolved_settings.stt_vad_aggressiveness),
-            turn_detection=turn_detection_config,
+
+        def stt_pipeline_factory(publisher, *, turn_sequencer, on_final, on_no_speech):
+            return SessionSttPipeline(
+                speech_recognizer,
+                publisher,
+                logging.getLogger("app.speech.stt_pipeline"),
+                guard=hallucination_guard,
+                max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
+                # VAD 자체는 세션별 인스턴스(webrtcvad가 내부 상태를 가짐, §8).
+                vad=WebrtcVoiceActivityDetector(resolved_settings.stt_vad_aggressiveness),
+                turn_detection=turn_detection_config,
+                turn_sequencer=turn_sequencer,
+                on_final=on_final,
+                on_no_speech=on_no_speech,
+            )
+
+        context_snapshot_reader = RedisContextSnapshotReader(
+            redis_client, logging.getLogger("app.realtime.context_snapshot")
         )
+
+        async def realtime_session_factory(publisher, conversation_id):
+            return await create_realtime_dialogue_session(
+                publisher=publisher,
+                conversation_id=conversation_id,
+                read_snapshot=context_snapshot_reader.read,
+                default_snapshot=default_context_snapshot,
+                dialogue_pipeline=app.state.dialogue_pipeline,
+                termination_policy=DialogueTerminationPolicy(
+                    required_targets=frozenset(QuestionTarget)
+                ),
+                is_epoch_current=lambda: session_epoch_registry.is_current(
+                    conversation_id, publisher.session_epoch
+                ),
+                stt_pipeline_factory=stt_pipeline_factory,
+                logger=logging.getLogger("app.session.realtime_dialogue"),
+            )
+
+        app.state.realtime_session_factory = realtime_session_factory
 
         try:
             yield

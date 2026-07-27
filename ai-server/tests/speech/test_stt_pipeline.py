@@ -610,3 +610,67 @@ class TestTurnDetectorIntegration:
         await pipeline.aclose()
 
         assert pipeline._detector.phase.value == "idle"  # noqa: SLF001
+
+
+class TestPendingFinalize:
+    """W03 리뷰 발견: on_final(LLM ~1-3초)이 finalize task를 길게 만들면서,
+    그 동안 끝난 다음 발화의 finalize 요청이 조용히 skip되어 턴이 유실됐다."""
+
+    @pytest.mark.asyncio
+    async def test_finalize_requested_during_a_long_on_final_is_not_lost(self) -> None:
+        release = asyncio.Event()
+        entered = asyncio.Event()
+        finals: list[str] = []
+
+        async def slow_on_final(turn, result) -> None:
+            finals.append(result.text)
+            if len(finals) == 1:
+                entered.set()
+                await release.wait()  # LLM 호출을 흉내내는 긴 대기
+
+        first = SttResult(text="첫 발화.", audio_seconds=2.0, avg_logprob=-0.3,
+                          no_speech_prob=0.0, reported_end_seconds=2.0)
+        second = SttResult(text="둘째 발화.", audio_seconds=2.0, avg_logprob=-0.3,
+                           no_speech_prob=0.0, reported_end_seconds=2.0)
+        pipeline, channel, _ = _build(
+            FakeSpeechRecognizer([first, second]), on_final=slow_on_final
+        )
+
+        _feed(pipeline, 2.0)
+        pipeline.request_finalize()
+        await asyncio.wait_for(entered.wait(), timeout=1)
+
+        # 첫 턴의 dialogue가 진행되는 동안 아이가 다음 발화를 끝냈다
+        _feed(pipeline, 2.0)
+        pipeline.request_finalize()
+
+        release.set()
+        for _ in range(8):
+            await asyncio.sleep(0)
+
+        assert finals == ["첫 발화.", "둘째 발화."]  # 둘째 턴이 유실되지 않는다
+        assert [event["turnSeq"] for event in channel.sent] == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_pending_finalize_is_dropped_on_close(self) -> None:
+        release = asyncio.Event()
+        entered = asyncio.Event()
+
+        async def slow_on_final(turn, result) -> None:
+            entered.set()
+            await release.wait()
+
+        pipeline, channel, recognizer = _build(
+            FakeSpeechRecognizer([_good_result(), _good_result()]),
+            on_final=slow_on_final,
+        )
+        _feed(pipeline, 2.0)
+        pipeline.request_finalize()
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        _feed(pipeline, 2.0)
+        pipeline.request_finalize()  # pending으로 대기
+
+        release.set()
+        await asyncio.wait_for(pipeline.aclose(), timeout=1)
+
+        assert len(recognizer.calls) <= 1  # 닫힌 뒤 pending이 실행되지 않는다

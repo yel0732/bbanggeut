@@ -84,6 +84,10 @@ public class Parent extends BaseTimeEntity {
         this.providerId = providerId;
     }
 
+    public void changePassword(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     public boolean hasPassword() {
         return passwordHash != null;
     }

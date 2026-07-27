@@ -534,4 +534,105 @@ class AuthServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.INVALID_LINK_TOKEN));
     }
+
+    @Test
+    void changePassword_updatesHashAndRevokesOnlyOtherSessions() {
+        Parent parent = Parent.createLocal("parent@example.com", "old-hash", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        RefreshToken currentToken = RefreshToken.issue(
+                parent, TokenHasher.hash("current-token"), LocalDateTime.now().plusDays(1), false);
+        RefreshToken otherToken = RefreshToken.issue(
+                parent, TokenHasher.hash("other-token"), LocalDateTime.now().plusDays(1), false);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("Abcdef1!", "old-hash")).thenReturn(true);
+        when(passwordEncoder.encode("Newpass1!")).thenReturn("new-hash");
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent))
+                .thenReturn(List.of(currentToken, otherToken));
+
+        authService.changePassword(1L, "Abcdef1!", "Newpass1!", "Newpass1!", "current-token");
+
+        assertThat(parent.getPasswordHash()).isEqualTo("new-hash");
+        assertThat(currentToken.isRevoked()).isFalse();
+        assertThat(otherToken.isRevoked()).isTrue();
+    }
+
+    @Test
+    void changePassword_revokesAllSessionsWhenCurrentRefreshTokenCookieMissing() {
+        Parent parent = Parent.createLocal("parent@example.com", "old-hash", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        RefreshToken someToken = RefreshToken.issue(
+                parent, TokenHasher.hash("some-token"), LocalDateTime.now().plusDays(1), false);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("Abcdef1!", "old-hash")).thenReturn(true);
+        when(passwordEncoder.encode("Newpass1!")).thenReturn("new-hash");
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent))
+                .thenReturn(List.of(someToken));
+
+        authService.changePassword(1L, "Abcdef1!", "Newpass1!", "Newpass1!", null);
+
+        assertThat(someToken.isRevoked()).isTrue();
+    }
+
+    @Test
+    void changePassword_throwsWhenCurrentPasswordMismatch() {
+        Parent parent = Parent.createLocal("parent@example.com", "old-hash", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("wrong", "old-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.changePassword(1L, "wrong", "Newpass1!", "Newpass1!", "current-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.CURRENT_PASSWORD_MISMATCH));
+        assertThat(parent.getPasswordHash()).isEqualTo("old-hash");
+    }
+
+    @Test
+    void changePassword_throwsWhenNewPasswordConfirmationMismatch() {
+        Parent parent = Parent.createLocal("parent@example.com", "old-hash", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("Abcdef1!", "old-hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.changePassword(1L, "Abcdef1!", "Newpass1!", "Different1!", "current-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.NEW_PASSWORD_CONFIRMATION_MISMATCH));
+        assertThat(parent.getPasswordHash()).isEqualTo("old-hash");
+    }
+
+    @Test
+    void changePassword_throwsWhenPasswordNotSetOnGoogleOnlyAccount() {
+        Parent parent = Parent.createGoogle("parent@example.com", "google-sub-1", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.changePassword(1L, "any", "Newpass1!", "Newpass1!", "current-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PASSWORD_NOT_SET));
+    }
+
+    @Test
+    void changePassword_throwsWhenParentNotFound() {
+        when(parentRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.changePassword(99L, "Abcdef1!", "Newpass1!", "Newpass1!", "current-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
+    }
+
+    @Test
+    void changePassword_throwsWhenParentIsSoftDeleted() {
+        Parent parent = Parent.createLocal("parent@example.com", "old-hash", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> authService.changePassword(1L, "Abcdef1!", "Newpass1!", "Newpass1!", "current-token"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
+    }
 }

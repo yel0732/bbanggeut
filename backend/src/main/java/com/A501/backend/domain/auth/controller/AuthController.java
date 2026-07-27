@@ -10,12 +10,14 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.A501.backend.domain.auth.dto.request.ChangePasswordRequest;
 import com.A501.backend.domain.auth.dto.request.EmailPatterns;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
@@ -114,6 +116,18 @@ public class AuthController {
     public ResponseEntity<SignupResponse> googleComplete(@Valid @RequestBody GoogleCompleteRequest request) {
         Parent parent = authService.googleComplete(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(SignupResponse.of(parent));
+    }
+
+    @Operation(summary = "비밀번호 변경")
+    @PatchMapping("/password")
+    public ResponseEntity<Void> changePassword(
+            Authentication authentication,
+            @CookieValue(name = REFRESH_TOKEN_COOKIE_NAME, required = false) String refreshToken,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        Long parentId = (Long) authentication.getPrincipal();
+        authService.changePassword(parentId, request.currentPassword(), request.newPassword(),
+                request.newPasswordConfirm(), refreshToken);
+        return ResponseEntity.ok().build();
     }
 
     @Operation(summary = "구글 계정 연동")

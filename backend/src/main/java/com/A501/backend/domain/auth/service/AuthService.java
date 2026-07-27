@@ -109,6 +109,37 @@ public class AuthService {
     }
 
     @Transactional
+    public void changePassword(
+            Long parentId, String currentPassword, String newPassword, String newPasswordConfirm,
+            String currentRawRefreshToken) {
+        Parent parent = getParent(parentId);
+        if (!parent.hasPassword()) {
+            throw new BusinessException(AuthErrorCode.PASSWORD_NOT_SET);
+        }
+        if (!passwordEncoder.matches(currentPassword, parent.getPasswordHash())) {
+            throw new BusinessException(AuthErrorCode.CURRENT_PASSWORD_MISMATCH);
+        }
+        if (!newPassword.equals(newPasswordConfirm)) {
+            throw new BusinessException(AuthErrorCode.NEW_PASSWORD_CONFIRMATION_MISMATCH);
+        }
+
+        parent.changePassword(passwordEncoder.encode(newPassword));
+        // TODO: 새 비밀번호가 기존 비밀번호와 동일한 경우의 허용/거부 정책 미정 — 지금은 허용.
+        revokeOtherSessions(parent, currentRawRefreshToken);
+    }
+
+    // 비밀번호를 바꾼 이 세션은 유지하고, 다른 기기/브라우저의 세션은 전부 로그아웃시킨다.
+    // 현재 세션의 refreshToken을 식별할 수 없는 경우(쿠키 없음)는 안전한 쪽으로 전체 폐기한다.
+    private void revokeOtherSessions(Parent parent, String currentRawRefreshToken) {
+        String currentTokenHash = (currentRawRefreshToken == null || currentRawRefreshToken.isBlank())
+                ? null
+                : TokenHasher.hash(currentRawRefreshToken);
+        refreshTokenRepository.findAllByParentAndRevokedFalse(parent).stream()
+                .filter(token -> !token.getTokenHash().equals(currentTokenHash))
+                .forEach(RefreshToken::revoke);
+    }
+
+    @Transactional
     public GoogleAuthResult googleAuth(GoogleAuthRequest request) {
         GoogleUserInfo googleUser = googleTokenVerifier.verify(request.idToken());
 
@@ -188,6 +219,14 @@ public class AuthService {
                 .filter(Parent::hasPassword)
                 .filter(parent -> passwordEncoder.matches(rawPassword, parent.getPasswordHash()))
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_CREDENTIALS));
+    }
+
+    // 소프트 삭제된 Parent는 걸러낸다 — PinService.getParent와 동일한 이유(만료 전 access
+    // token으로 탈퇴 계정이 인증 필요 API를 계속 쓸 수 있게 되는 걸 막기 위함).
+    private Parent getParent(Long parentId) {
+        return parentRepository.findById(parentId)
+                .filter(p -> !p.isDeleted())
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.PARENT_NOT_FOUND));
     }
 
     private boolean isUnderAge(LocalDate birthDate) {

@@ -34,6 +34,9 @@ from app.report.generator import DailyReportGenerator
 from app.session.realtime_connection_registry import RealtimeConnectionRegistry
 from app.signaling.error_mapping import map_ticket_failure_code
 from app.signaling.router import router as signaling_router
+from app.speech.hallucination import HallucinationGuard
+from app.speech.stt_pipeline import SessionSttPipeline
+from app.speech.whisper_client import WhisperSpeechRecognizer
 from app.webrtc.peer_connection import AiortcPeerConnectionFactory
 
 
@@ -132,6 +135,27 @@ def create_app(
             logging.getLogger("app.realtime.session_lease_heartbeat"),
         )
         app.state.map_ticket_failure_code = map_ticket_failure_code
+
+        # STT: one recognizer shared (stateless HTTP), one pipeline per
+        # connection (owns that session's converter/buffer/turn state, §8).
+        speech_recognizer = WhisperSpeechRecognizer(
+            http_client,
+            api_key=resolved_settings.gms_key,
+            model=resolved_settings.stt_model,
+            language=resolved_settings.stt_language,
+            timeout_seconds=resolved_settings.stt_timeout_seconds,
+        )
+        hallucination_guard = HallucinationGuard(
+            min_audio_seconds=resolved_settings.stt_min_utterance_seconds,
+            no_speech_prob_threshold=resolved_settings.stt_no_speech_prob_threshold,
+        )
+        app.state.stt_sink_factory = lambda publisher: SessionSttPipeline(
+            speech_recognizer,
+            publisher,
+            logging.getLogger("app.speech.stt_pipeline"),
+            guard=hallucination_guard,
+            max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
+        )
 
         try:
             yield

@@ -36,6 +36,13 @@ class AppSettings:
     # 빈 tuple이면 PeerConnection이 STUN 조회 없이 host 후보만 사용한다(로컬 MVP 기본).
     # NAT 통과가 필요한 배포에서만 REALTIME_STUN_URLS로 주입한다(INFRA Epic).
     realtime_stun_urls: tuple[str, ...] = ()
+    # STT(DEC-04: whisper-1 배치). 기본값 근거는 jira/plan/DIARY-3-W01.md §1 실측.
+    stt_model: str = "whisper-1"
+    stt_language: str = "ko"
+    stt_timeout_seconds: float = 10.0
+    stt_max_utterance_seconds: float = 30.0  # whisper 처리 창과 동일, 초과 시 턴 강제 종료
+    stt_min_utterance_seconds: float = 0.5  # 미만이면 호출하지 않음(0.4초 → "you" 환각)
+    stt_no_speech_prob_threshold: float = 0.6  # 실제 발화 0.00 vs 환각 0.82~0.94
 
     def __post_init__(self) -> None:
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
@@ -110,6 +117,34 @@ class AppSettings:
                 or value <= 0
             ):
                 raise ValueError(f"{name} must be a positive finite number")
+        for name, text in (
+            ("STT_MODEL", self.stt_model),
+            ("STT_LANGUAGE", self.stt_language),
+        ):
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"{name} must contain non-whitespace text")
+        for name, value in (
+            ("STT_TIMEOUT_SECONDS", self.stt_timeout_seconds),
+            ("STT_MAX_UTTERANCE_SECONDS", self.stt_max_utterance_seconds),
+            ("STT_MIN_UTTERANCE_SECONDS", self.stt_min_utterance_seconds),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a positive finite number")
+        if self.stt_min_utterance_seconds >= self.stt_max_utterance_seconds:
+            raise ValueError(
+                "STT_MIN_UTTERANCE_SECONDS must be below STT_MAX_UTTERANCE_SECONDS"
+            )
+        if (
+            isinstance(self.stt_no_speech_prob_threshold, bool)
+            or not isinstance(self.stt_no_speech_prob_threshold, (int, float))
+            or not 0 < self.stt_no_speech_prob_threshold <= 1
+        ):
+            raise ValueError("STT_NO_SPEECH_PROB_THRESHOLD must be within (0, 1]")
         if not isinstance(self.realtime_stun_urls, tuple):
             raise ValueError("REALTIME_STUN_URLS must be a tuple of URLs")
         for url in self.realtime_stun_urls:
@@ -190,6 +225,24 @@ class AppSettings:
             ),
             realtime_stun_urls=_parse_url_list(
                 values.get("REALTIME_STUN_URLS", "")
+            ),
+            stt_model=values.get("STT_MODEL", "whisper-1"),
+            stt_language=values.get("STT_LANGUAGE", "ko"),
+            stt_timeout_seconds=_parse_float(
+                values.get("STT_TIMEOUT_SECONDS", "10"),
+                "STT_TIMEOUT_SECONDS",
+            ),
+            stt_max_utterance_seconds=_parse_float(
+                values.get("STT_MAX_UTTERANCE_SECONDS", "30"),
+                "STT_MAX_UTTERANCE_SECONDS",
+            ),
+            stt_min_utterance_seconds=_parse_float(
+                values.get("STT_MIN_UTTERANCE_SECONDS", "0.5"),
+                "STT_MIN_UTTERANCE_SECONDS",
+            ),
+            stt_no_speech_prob_threshold=_parse_float(
+                values.get("STT_NO_SPEECH_PROB_THRESHOLD", "0.6"),
+                "STT_NO_SPEECH_PROB_THRESHOLD",
             ),
         )
 

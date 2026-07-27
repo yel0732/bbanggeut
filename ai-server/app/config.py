@@ -33,6 +33,9 @@ class AppSettings:
     realtime_ticket_audience: str = "ai-realtime"
     realtime_heartbeat_interval_seconds: float = 5.0
     realtime_lease_ttl_seconds: float = 15.0
+    # 빈 tuple이면 PeerConnection이 STUN 조회 없이 host 후보만 사용한다(로컬 MVP 기본).
+    # NAT 통과가 필요한 배포에서만 REALTIME_STUN_URLS로 주입한다(INFRA Epic).
+    realtime_stun_urls: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
@@ -107,6 +110,16 @@ class AppSettings:
                 or value <= 0
             ):
                 raise ValueError(f"{name} must be a positive finite number")
+        if not isinstance(self.realtime_stun_urls, tuple):
+            raise ValueError("REALTIME_STUN_URLS must be a tuple of URLs")
+        for url in self.realtime_stun_urls:
+            if not isinstance(url, str) or not url.startswith(
+                ("stun:", "stuns:", "turn:", "turns:")
+            ):
+                raise ValueError(
+                    "REALTIME_STUN_URLS entries must start with "
+                    "stun:, stuns:, turn: or turns:"
+                )
 
     @classmethod
     def from_environment(
@@ -175,6 +188,9 @@ class AppSettings:
                 values.get("REALTIME_LEASE_TTL_SECONDS", "15"),
                 "REALTIME_LEASE_TTL_SECONDS",
             ),
+            realtime_stun_urls=_parse_url_list(
+                values.get("REALTIME_STUN_URLS", "")
+            ),
         )
 
 
@@ -190,3 +206,7 @@ def _parse_int(value: str, name: str) -> int:
         return int(value)
     except (TypeError, ValueError):
         raise ValueError(f"{name} must be an integer") from None
+
+
+def _parse_url_list(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())

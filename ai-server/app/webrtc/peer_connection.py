@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Protocol
 
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import MediaStreamTrack
 from aiortc.sdp import candidate_from_sdp
 
@@ -135,8 +135,16 @@ class AiortcPeerConnection:
     need ``add_ice_candidate()``.
     """
 
-    def __init__(self) -> None:
-        self._pc = RTCPeerConnection()
+    def __init__(self, stun_urls: tuple[str, ...] = ()) -> None:
+        # aiortc treats iceServers=None as "use the built-in Google STUN
+        # default" — an unwanted external network dependency that stalls ICE
+        # gathering ~5s per PeerConnection when STUN is unreachable (measured,
+        # jira/plan/DIARY-3-W01.md). An explicit empty list disables STUN
+        # lookups entirely; production injects real URLs via
+        # AppSettings.realtime_stun_urls when a deployment actually needs
+        # srflx candidates (NAT traversal — INFRA epic scope).
+        ice_servers = [RTCIceServer(urls=list(stun_urls))] if stun_urls else []
+        self._pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers))
         self._pc.on("connectionstatechange", self._handle_state_change)
         self._pc.on("track", self._handle_track)
         self._pc.on("datachannel", self._handle_data_channel)
@@ -198,5 +206,8 @@ class AiortcPeerConnection:
 
 
 class AiortcPeerConnectionFactory:
+    def __init__(self, stun_urls: tuple[str, ...] = ()) -> None:
+        self._stun_urls = stun_urls
+
     def create(self) -> AiortcPeerConnection:
-        return AiortcPeerConnection()
+        return AiortcPeerConnection(self._stun_urls)

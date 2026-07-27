@@ -18,7 +18,7 @@ import logging
 from datetime import datetime, timezone
 
 import pytest
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import AudioStreamTrack
 
 from app.realtime.session_epoch_registry import SessionEpochRegistry
@@ -91,7 +91,7 @@ async def _connect(
     epoch_registry: SessionEpochRegistry,
     factory: AiortcPeerConnectionFactory,
 ):
-    react_client = RTCPeerConnection()
+    react_client = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     react_client.addTrack(AudioStreamTrack())  # client's "mic" — deterministic silence generator
     channel = react_client.createDataChannel("conversation-events")
 

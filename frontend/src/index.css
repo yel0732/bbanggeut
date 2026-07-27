@@ -233,6 +233,43 @@
   }
 }
 
+/* 과일 자르기 콤보 표시 — 콤보가 올라갈 때마다 한 번 튀어오른다. */
+@keyframes fruit-combo-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.7);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.16);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* 과일 자르기 피버 타임 — 가장자리 열기와 문구 흔들림 */
+@keyframes fruit-fever-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes fruit-fever-bob {
+  0%,
+  100% {
+    transform: scale(1) rotate(-2deg);
+  }
+  50% {
+    transform: scale(1.08) rotate(2deg);
+  }
+}
+
 @layer base {
   :root {
     --cursor-game-default:

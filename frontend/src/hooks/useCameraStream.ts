@@ -49,7 +49,15 @@ export function useCameraStream() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: 'user' },
+        // 게임 화면은 16:9다. 카메라가 4:3을 주면 인식 좌표를 화면에 옮길 때
+        // 가로가 늘어나 세로 움직임이 실제보다 느리게 측정된다. 같은 비율을 요청해
+        // 가로/세로 판정이 똑같이 걸리게 한다. (ideal이라 안 되면 그대로 진행)
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          aspectRatio: { ideal: 16 / 9 },
+        },
       })
       streamRef.current = stream
       if (videoRef.current) {

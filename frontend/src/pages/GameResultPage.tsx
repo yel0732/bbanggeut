@@ -85,6 +85,16 @@ export function GameResultPage() {
             과일을 {result.slicedFruitCount}개나 슝슝 잘랐어요!
           </p>
 
+          {/* 최고 콤보 — 이어 벤 적이 있을 때만 자랑거리로 보여 준다. */}
+          {result.maxCombo >= 2 ? (
+            <p
+              className="rounded-full bg-[rgba(255,153,0,0.75)] px-7 py-2 text-[26px] leading-none text-white"
+              style={jua}
+            >
+              한 번에 {result.maxCombo}개 연속! 최고 콤보예요
+            </p>
+          ) : null}
+
           <div className="mt-4 flex items-center gap-6">
             <ResultButton
               label="다시하기"

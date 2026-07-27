@@ -104,7 +104,6 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "GMS_BASE_URL": "not-a-url"},
         {"GMS_KEY": "key", "GMS_ANALYSIS_MODEL": " "},
         {"GMS_KEY": "key", "GMS_RESPONSE_MODEL": " "},
-<<<<<<< ai-server/tests/test_config.py
         {"GMS_KEY": "key", "REALTIME_REDIS_HOST": " "},
         {"GMS_KEY": "key", "REALTIME_REDIS_PORT": "0"},
         {"GMS_KEY": "key", "REALTIME_REDIS_PORT": "70000"},
@@ -113,9 +112,7 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "REALTIME_TICKET_AUDIENCE": " "},
         {"GMS_KEY": "key", "REALTIME_HEARTBEAT_INTERVAL_SECONDS": "0"},
         {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
-=======
         {"GMS_KEY": "key", "GMS_REPORT_MODEL": " "},
->>>>>>> ai-server/tests/test_config.py
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

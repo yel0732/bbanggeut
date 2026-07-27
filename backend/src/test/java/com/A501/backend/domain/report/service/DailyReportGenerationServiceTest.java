@@ -150,7 +150,7 @@ class DailyReportGenerationServiceTest {
     }
 
     @Test
-    void failsReportWhenBothAreasAreEmpty() {
+    void completesReportWithoutSnapshotsWhenBothAreasAreEmpty() {
         DailyReport report = createPendingReport();
         when(gameReportQueryPort.findCompletedGames(
                 CHILD_ID, STARTED_AT, ENDED_AT))
@@ -159,18 +159,15 @@ class DailyReportGenerationServiceTest {
                 CHILD_ID, STARTED_AT, ENDED_AT))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() ->
-                generationService.generate(report.getId()))
-                .isInstanceOf(IllegalStateException.class);
+        var result = generationService.generate(report.getId());
 
-        DailyReport failedReport = reportOf(report);
-        assertThat(failedReport.getGenerationStatus())
-                .isEqualTo(ReportGenerationStatus.FAILED);
-        assertThat(failedReport.getProcessingStartedAt()).isNotNull();
-        assertThat(failedReport.getFailedAt()).isNotNull();
-        assertThat(failedReport.getFailureReason())
-                .isEqualTo("A daily report requires game or conversation data.");
-        assertThat(failedReport.getCompletedAt()).isNull();
+        assertThat(result.hasActivity()).isFalse();
+        DailyReport completedReport = reportOf(report);
+        assertThat(completedReport.getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.COMPLETED);
+        assertThat(completedReport.getCompletedAt()).isNotNull();
+        assertThat(completedReport.getFailedAt()).isNull();
+        assertThat(completedReport.getFailureReason()).isNull();
         assertThat(gameResultRepository.findAll()).isEmpty();
         assertThat(conversationSummaryRepository.findAll()).isEmpty();
     }

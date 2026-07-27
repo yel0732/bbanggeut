@@ -145,7 +145,7 @@ class DailyReportAutomaticRetryTest {
     }
 
     @Test
-    void 재시도할_수_없는_원본_데이터_없음은_한_번만_시도한다() {
+    void 원본_데이터가_없으면_재시도_없이_정상_완료한다() {
         DailyReport report = createPendingReport();
         when(gameReportQueryPort.findCompletedGames(
                 CHILD_ID, STARTED_AT, ENDED_AT))
@@ -154,21 +154,18 @@ class DailyReportAutomaticRetryTest {
                 CHILD_ID, STARTED_AT, ENDED_AT))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> generationService.generate(report.getId()))
-                .isInstanceOf(IllegalStateException.class);
+        var result = generationService.generate(report.getId());
 
+        assertThat(result.hasActivity()).isFalse();
+        assertThat(reportOf(report).getGenerationStatus())
+                .isEqualTo(ReportGenerationStatus.COMPLETED);
         assertThat(reportOf(report).getRetryCount()).isZero();
         assertThat(attemptRepository
                 .findAllByReportIdOrderByAttemptNumberAsc(report.getId()))
                 .singleElement()
-                .satisfies(attempt -> {
-                    assertThat(attempt.getAttemptStatus())
-                            .isEqualTo(ReportAttemptStatus.FAILED);
-                    assertThat(attempt.getFailureStage())
-                            .isEqualTo(ReportFailureStage.SOURCE_VALIDATION);
-                    assertThat(attempt.getErrorCode())
-                            .isEqualTo(ReportErrorCode.REPORT_SOURCE_EMPTY);
-                });
+                .satisfies(attempt ->
+                        assertThat(attempt.getAttemptStatus())
+                                .isEqualTo(ReportAttemptStatus.COMPLETED));
         verify(retryWaiter, times(0)).waitForNextAttempt();
     }
 

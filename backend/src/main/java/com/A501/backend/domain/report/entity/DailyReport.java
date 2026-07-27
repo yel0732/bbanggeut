@@ -15,6 +15,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Index;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -28,6 +29,11 @@ import lombok.NoArgsConstructor;
                 @UniqueConstraint(
                         name = "uk_daily_report_child_date",
                         columnNames = {"child_id", "report_date"})
+        },
+        indexes = {
+                @Index(
+                        name = "idx_daily_report_status_processing",
+                        columnList = "generation_status, processing_started_at")
         })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DailyReport extends BaseTimeEntity {
@@ -166,5 +172,18 @@ public class DailyReport extends BaseTimeEntity {
         generationStatus = ReportGenerationStatus.PENDING;
         processingStartedAt = null;
         completedAt = null;
+    }
+
+    public void recoverInterruptedProcessing() {
+        if (generationStatus != ReportGenerationStatus.PROCESSING) {
+            throw new IllegalStateException(
+                    "Only a processing report can be recovered.");
+        }
+        generationStatus = ReportGenerationStatus.PENDING;
+        processingStartedAt = null;
+        completedAt = null;
+        failedAt = null;
+        failureReason = null;
+        retryCount++;
     }
 }

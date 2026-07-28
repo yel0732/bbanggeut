@@ -41,6 +41,7 @@ from app.signaling.error_mapping import map_ticket_failure_code
 from app.signaling.router import router as signaling_router
 from app.speech.hallucination import HallucinationGuard
 from app.speech.stt_pipeline import SessionSttPipeline
+from app.events.stream import ConversationStreamProducer
 from app.speech.synthesis import SpeechSynthesisService
 from app.speech.tts_client import GmsSpeechSynthesizer
 from app.speech.turn_detector import TurnDetectionConfig
@@ -193,13 +194,26 @@ def create_app(
             first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
         )
 
-        def synthesis_service_factory(speaker, publisher, response_registry):
+        def synthesis_service_factory(speaker, publisher, response_registry, on_completed):
             return SpeechSynthesisService(
                 speech_synthesizer,
                 speaker,
                 publisher,
                 response_registry.is_cancelled,
                 logging.getLogger("app.speech.synthesis"),
+                on_completed=on_completed,
+            )
+
+        def stream_producer_factory(publisher):
+            return ConversationStreamProducer(
+                redis_client,
+                conversation_id=publisher.conversation_id,
+                realtime_session_id=publisher.realtime_session_id,
+                session_epoch=publisher.session_epoch,
+                logger=logging.getLogger("app.events.stream"),
+                max_attempts=resolved_settings.stream_publish_max_attempts,
+                retry_backoff_seconds=resolved_settings.stream_publish_retry_seconds,
+                outbox_size=resolved_settings.stream_outbox_size,
             )
 
         async def realtime_session_factory(publisher, conversation_id, speaker):
@@ -219,6 +233,7 @@ def create_app(
                 logger=logging.getLogger("app.session.realtime_dialogue"),
                 speaker=speaker,
                 synthesis_service_factory=synthesis_service_factory,
+                stream_producer_factory=stream_producer_factory,
             )
 
         app.state.realtime_session_factory = realtime_session_factory

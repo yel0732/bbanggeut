@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { verifyParentPin } from '@/api/auth'
+import { withdrawAccount } from '@/api/auth'
 
 import {
   getChildReports,
@@ -347,11 +347,10 @@ export function ParentModePage() {
     }
 
     setIsVerifyingWithdrawal(true)
-    void verifyParentPin(nextPin)
+    void withdrawAccount(nextPin)
       .then(() => {
-        setWithdrawMessage(
-          '핀 번호가 확인됐어요. 회원 탈퇴 API 연결이 필요해요.',
-        )
+        setWithdrawMessage('회원 탈퇴가 완료됐어요.')
+        window.setTimeout(() => navigate('/', { replace: true }), 650)
       })
       .catch((error: unknown) => {
         setWithdrawMessage(
@@ -542,13 +541,13 @@ export function ParentModePage() {
           <button
             aria-expanded={isArrivalListOpen}
             aria-label="도착한 일일 리포트 알림"
-            className="relative size-[62px] overflow-hidden rounded-[17px] bg-[#f6edcf] p-0 shadow-[0_4px_9px_rgba(0,0,0,.34)] transition hover:scale-106"
+            className="relative size-[62px] bg-transparent p-0 transition hover:scale-106"
             onClick={() => setIsArrivalListOpen((value) => !value)}
             type="button"
           >
             <img
               alt=""
-              className="size-full scale-[1.62] object-cover"
+              className="size-full scale-[1.62] object-cover drop-shadow-[0_4px_5px_rgba(0,0,0,.3)]"
               src={reportNotificationButtonUrl}
             />
             {reportArrivals.some((item) => !item.read) ? (

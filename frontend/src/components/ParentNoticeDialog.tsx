@@ -32,7 +32,7 @@ export function ParentNoticeDialog({
       role="dialog"
     >
       <section
-        className={`${compact ? 'h-[390px] w-[520px]' : 'h-[420px] w-[560px]'} relative -mt-8 [animation:parent-popup-in_.25s_cubic-bezier(.2,1.3,.5,1)_both]`}
+        className={`${compact ? 'h-[330px] w-[450px]' : 'h-[365px] w-[490px]'} relative -mt-8 [animation:parent-popup-in_.25s_cubic-bezier(.2,1.3,.5,1)_both]`}
       >
         <img
           alt=""
@@ -40,12 +40,12 @@ export function ParentNoticeDialog({
           src={errorPopupUrl}
         />
         <div className="absolute top-[35%] right-[13%] left-[13%] text-center">
-          <h2 className="text-[27px] text-[#754b25]" style={jua}>
+          <h2 className="text-[24px] text-[#754b25]" style={jua}>
             {title}
           </h2>
           {message ? (
             <p
-              className="mt-2 text-[17px] leading-6 text-[#796443]"
+              className="mt-2 text-[16px] leading-6 text-[#796443]"
               style={jua}
             >
               {message}
@@ -56,7 +56,7 @@ export function ParentNoticeDialog({
         <div className="absolute right-[18%] bottom-[12%] left-[18%] flex justify-center gap-3">
           {onCancel ? (
             <button
-              className="h-11 min-w-[125px] rounded-2xl border-[3px] border-[#c8aa70] bg-[#fff8e9] px-5 text-[17px] text-[#765d36] shadow-md transition hover:scale-103"
+              className="h-10 min-w-[112px] rounded-2xl border-[3px] border-[#c8aa70] bg-[#fff8e9] px-5 text-[16px] text-[#765d36] shadow-md transition hover:scale-103"
               onClick={onCancel}
               style={jua}
               type="button"
@@ -65,7 +65,7 @@ export function ParentNoticeDialog({
             </button>
           ) : null}
           <button
-            className="h-11 min-w-[125px] rounded-2xl border-[3px] border-[#668c3c] bg-[#83ad4f] px-5 text-[17px] text-white shadow-md transition hover:scale-103"
+            className="h-10 min-w-[112px] rounded-2xl border-[3px] border-[#668c3c] bg-[#83ad4f] px-5 text-[16px] text-white shadow-md transition hover:scale-103"
             onClick={onConfirm}
             style={jua}
             type="button"

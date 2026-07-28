@@ -20,6 +20,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import {
   loadChildProfiles,
   MAX_CHILD_PROFILES,
@@ -46,6 +47,8 @@ export function ChildProfileListPage() {
   const [editingNameMessage, setEditingNameMessage] = useState('')
   const [editingPhotoUrl, setEditingPhotoUrl] = useState<string | null>(null)
   const [isEditCameraOn, setIsEditCameraOn] = useState(false)
+  const [profilePendingDeletion, setProfilePendingDeletion] =
+    useState<ChildProfile | null>(null)
   const isProfileLimitReached = profiles.length >= MAX_CHILD_PROFILES
   const pageCount = Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
@@ -81,8 +84,15 @@ export function ChildProfileListPage() {
   useEffect(() => () => stopEditCamera(), [])
 
   const removeProfile = (profile: ChildProfile) => {
-    if (!window.confirm(`${profile.name} 프로필을 삭제할까요?`)) return
-    updateProfiles(profiles.filter(({ id }) => id !== profile.id))
+    setProfilePendingDeletion(profile)
+  }
+
+  const confirmProfileRemoval = () => {
+    if (!profilePendingDeletion) return
+    updateProfiles(
+      profiles.filter(({ id }) => id !== profilePendingDeletion.id),
+    )
+    setProfilePendingDeletion(null)
   }
 
   const openEdit = (profile: ChildProfile) => {
@@ -183,7 +193,7 @@ export function ChildProfileListPage() {
         <Link
           aria-label="뒤로"
           className="absolute top-[25px] left-[25px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
-          to="/parent"
+          to="/profiles/new"
         >
           <img
             alt=""
@@ -308,7 +318,7 @@ export function ChildProfileListPage() {
                 paintOrder: 'stroke fill',
                 WebkitTextStroke: '3px #4a7d1e',
               }}
-              to="/profiles/new?add=1"
+              to="/profiles/new?add=1&source=onboarding"
             >
               + 새 프로필 생성
             </Link>
@@ -502,6 +512,16 @@ export function ChildProfileListPage() {
               </div>
             </div>
           </div>
+        ) : null}
+        {profilePendingDeletion ? (
+          <ParentNoticeDialog
+            compact
+            confirmLabel="삭제"
+            message={`${profilePendingDeletion.name} 프로필을 삭제할까요?`}
+            onCancel={() => setProfilePendingDeletion(null)}
+            onConfirm={confirmProfileRemoval}
+            title="프로필 삭제"
+          />
         ) : null}
       </div>
     </div>

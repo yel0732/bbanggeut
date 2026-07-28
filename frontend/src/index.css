@@ -268,48 +268,6 @@
   }
 }
 
-/* 과일 자르기 피버 타임 — 가장자리 열기와 문구 흔들림 */
-@keyframes fruit-fever-glow {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes fruit-fever-bob {
-  0%,
-  100% {
-    transform: scale(1) rotate(-2deg);
-  }
-  50% {
-    transform: scale(1.08) rotate(2deg);
-  }
-}
-
-@keyframes fruit-fever-rays {
-  from {
-    transform: rotate(0deg) scale(1.1);
-  }
-  to {
-    transform: rotate(360deg) scale(1.1);
-  }
-}
-
-@keyframes fruit-fever-border {
-  0%,
-  100% {
-    opacity: 0.65;
-    filter: drop-shadow(0 0 8px rgba(255, 119, 0, 0.8));
-  }
-  50% {
-    opacity: 1;
-    filter: drop-shadow(0 0 22px rgba(255, 238, 80, 1));
-  }
-}
-
 @layer base {
   :root {
     --cursor-game-default:

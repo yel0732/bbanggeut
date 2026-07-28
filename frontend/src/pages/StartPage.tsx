@@ -76,7 +76,7 @@ export function StartPage() {
       <div className="absolute right-30 bottom-12 z-20">
         <MainStartButton
           imageUrl={greenButtonUrl}
-          label={isCheckingSession ? '확인하고 있어요...' : '숲 속 들어가기'}
+          label="숲 속 들어가기"
           onClick={() => {
             void enterForest()
           }}

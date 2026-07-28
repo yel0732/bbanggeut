@@ -35,6 +35,7 @@ const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←'
 export function ParentProfilePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const isOnboardingChildFlow = searchParams.get('source') === 'onboarding'
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -211,6 +212,10 @@ export function ParentProfilePage() {
 
   const closeChildForm = () => {
     stopCamera()
+    if (isOnboardingChildFlow) {
+      navigate('/profiles/children')
+      return
+    }
     setShowChildForm(false)
     setChildName('')
     setChildPhotoUrl(null)
@@ -456,7 +461,7 @@ export function ParentProfilePage() {
 
         {showChildForm ? (
           <div className="absolute inset-0 z-60 flex items-start justify-center bg-[rgba(10,26,15,.5)]">
-            <section className="relative mt-9 h-[640px] w-[500px]">
+            <section className="relative mt-4 h-[640px] w-[500px]">
               <img
                 alt=""
                 className="pointer-events-none absolute inset-0 size-full"

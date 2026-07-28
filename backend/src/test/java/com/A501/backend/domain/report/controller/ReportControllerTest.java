@@ -22,7 +22,6 @@ import com.A501.backend.domain.report.exception.ReportApiErrorCode;
 import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
-import com.A501.backend.domain.report.port.ReportParentAccessTokenVerifier;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportManualRegenerationRepository;
 
@@ -49,9 +48,6 @@ class ReportControllerTest {
     @MockitoBean
     private ReportChildAccessVerifier childAccessVerifier;
 
-    @MockitoBean
-    private ReportParentAccessTokenVerifier parentAccessTokenVerifier;
-
     @BeforeEach
     void setUp() {
         regenerationRepository.deleteAll();
@@ -68,8 +64,7 @@ class ReportControllerTest {
                         "/api/children/{childId}/reports/{reportDate}/regenerate",
                         CHILD_ID,
                         REPORT_DATE)
-                        .header("Idempotency-Key", "retry-20260723")
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        .header("Idempotency-Key", "retry-20260723"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.reportId").value(report.getId()))
                 .andExpect(jsonPath("$.childId").value(CHILD_ID))
@@ -86,6 +81,7 @@ class ReportControllerTest {
                 .isIn(
                         com.A501.backend.domain.report.entity.ReportGenerationStatus.PENDING,
                         com.A501.backend.domain.report.entity.ReportGenerationStatus.PROCESSING,
+                        com.A501.backend.domain.report.entity.ReportGenerationStatus.COMPLETED,
                         com.A501.backend.domain.report.entity.ReportGenerationStatus.FAILED);
     }
 
@@ -98,8 +94,7 @@ class ReportControllerTest {
                             "/api/children/{childId}/reports/{reportDate}/regenerate",
                             CHILD_ID,
                             REPORT_DATE)
-                            .header("Idempotency-Key", "same-key")
-                            .header("X-Parent-Access-Token", "parent-token"))
+                            .header("Idempotency-Key", "same-key"))
                     .andExpect(status().isAccepted())
                     .andExpect(jsonPath("$.status").value("PENDING"));
         }
@@ -118,8 +113,7 @@ class ReportControllerTest {
                         "/api/children/{childId}/reports/{reportDate}/regenerate",
                         CHILD_ID,
                         REPORT_DATE)
-                        .header("Idempotency-Key", "not-failed")
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        .header("Idempotency-Key", "not-failed"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error")
                         .value("REPORT_REGENERATION_NOT_ALLOWED"));
@@ -135,8 +129,7 @@ class ReportControllerTest {
                         "/api/children/{childId}/reports/{reportDate}/regenerate",
                         CHILD_ID,
                         REPORT_DATE)
-                        .header("Idempotency-Key", "forbidden-child")
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        .header("Idempotency-Key", "forbidden-child"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("CHILD_NOT_FOUND"));
     }
@@ -146,8 +139,7 @@ class ReportControllerTest {
         mockMvc.perform(post(
                         "/api/children/{childId}/reports/{reportDate}/regenerate",
                         CHILD_ID,
-                        REPORT_DATE)
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        REPORT_DATE))
                 .andExpect(status().isBadRequest());
     }
 

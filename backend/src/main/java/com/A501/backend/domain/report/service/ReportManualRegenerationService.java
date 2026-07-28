@@ -21,7 +21,6 @@ import com.A501.backend.domain.report.exception.ReportApiErrorCode;
 import com.A501.backend.domain.report.event.ReportGenerationRequestedEvent;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
-import com.A501.backend.domain.report.port.ReportParentAccessTokenVerifier;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportManualRegenerationRepository;
 
@@ -37,8 +36,6 @@ public class ReportManualRegenerationService {
             currentParentProvider;
     private final ObjectProvider<ReportChildAccessVerifier>
             childAccessVerifier;
-    private final ObjectProvider<ReportParentAccessTokenVerifier>
-            parentAccessTokenVerifier;
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -47,8 +44,6 @@ public class ReportManualRegenerationService {
             ReportManualRegenerationRepository regenerationRepository,
             ObjectProvider<ReportCurrentParentProvider> currentParentProvider,
             ObjectProvider<ReportChildAccessVerifier> childAccessVerifier,
-            ObjectProvider<ReportParentAccessTokenVerifier>
-                    parentAccessTokenVerifier,
             @Qualifier("utcClock") Clock clock,
             ApplicationEventPublisher eventPublisher
     ) {
@@ -56,7 +51,6 @@ public class ReportManualRegenerationService {
         this.regenerationRepository = regenerationRepository;
         this.currentParentProvider = currentParentProvider;
         this.childAccessVerifier = childAccessVerifier;
-        this.parentAccessTokenVerifier = parentAccessTokenVerifier;
         this.clock = clock;
         this.eventPublisher = eventPublisher;
     }
@@ -65,13 +59,10 @@ public class ReportManualRegenerationService {
     public ReportRegenerationResponse request(
             Long childId,
             LocalDate reportDate,
-            String idempotencyKey,
-            String parentAccessToken
+            String idempotencyKey
     ) {
         Long parentId = required(currentParentProvider)
                 .getCurrentParentId();
-        required(parentAccessTokenVerifier)
-                .verify(parentId, parentAccessToken);
         required(childAccessVerifier).verifyOwnership(parentId, childId);
 
         String normalizedKey = normalize(idempotencyKey);

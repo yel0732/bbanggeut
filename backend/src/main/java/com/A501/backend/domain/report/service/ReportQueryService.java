@@ -27,7 +27,6 @@ import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.exception.ReportApiErrorCode;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
-import com.A501.backend.domain.report.port.ReportParentAccessTokenVerifier;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportConversationSummaryRepository;
 import com.A501.backend.domain.report.repository.ReportGameResultRepository;
@@ -50,8 +49,6 @@ public class ReportQueryService {
             currentParentProvider;
     private final ObjectProvider<ReportChildAccessVerifier>
             childAccessVerifier;
-    private final ObjectProvider<ReportParentAccessTokenVerifier>
-            parentAccessTokenVerifier;
     private final ObjectMapper objectMapper;
 
     public ReportListResponse getReports(
@@ -60,10 +57,9 @@ public class ReportQueryService {
             LocalDate endDate,
             ReportGenerationStatus status,
             int page,
-            int size,
-            String parentAccessToken
+            int size
     ) {
-        verifyAccess(childId, parentAccessToken);
+        verifyAccess(childId);
         validatePeriod(startDate, endDate);
 
         PageRequest pageable = PageRequest.of(
@@ -105,10 +101,9 @@ public class ReportQueryService {
 
     public ReportDetailResponse getReport(
             Long childId,
-            LocalDate reportDate,
-            String parentAccessToken
+            LocalDate reportDate
     ) {
-        verifyAccess(childId, parentAccessToken);
+        verifyAccess(childId);
         DailyReport report = dailyReportRepository
                 .findByChildIdAndReportDate(childId, reportDate)
                 .orElseThrow(() ->
@@ -147,10 +142,8 @@ public class ReportQueryService {
                 null);
     }
 
-    private void verifyAccess(Long childId, String parentAccessToken) {
+    private void verifyAccess(Long childId) {
         Long parentId = required(currentParentProvider).getCurrentParentId();
-        required(parentAccessTokenVerifier)
-                .verify(parentId, parentAccessToken);
         required(childAccessVerifier).verifyOwnership(parentId, childId);
     }
 

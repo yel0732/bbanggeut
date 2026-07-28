@@ -52,11 +52,7 @@ public class ReportController {
             ReportGenerationStatus status,
             @PositiveOrZero @RequestParam(defaultValue = "0") int page,
             @Min(1) @Max(100)
-            @RequestParam(defaultValue = "20") int size,
-            @RequestHeader(
-                    value = "X-Parent-Access-Token",
-                    required = false)
-            String parentAccessToken
+            @RequestParam(defaultValue = "20") int size
     ) {
         return ResponseEntity.ok(queryService.getReports(
                 childId,
@@ -64,8 +60,7 @@ public class ReportController {
                 endDate,
                 status,
                 page,
-                size,
-                parentAccessToken));
+                size));
     }
 
     @Operation(summary = "Get a daily report by date")
@@ -74,17 +69,12 @@ public class ReportController {
             @Positive @PathVariable Long childId,
             @PathVariable
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate reportDate,
-            @RequestHeader(
-                    value = "X-Parent-Access-Token",
-                    required = false)
-            String parentAccessToken
+            LocalDate reportDate
     ) {
         return ResponseEntity.ok(
                 queryService.getReport(
                         childId,
-                        reportDate,
-                        parentAccessToken));
+                        reportDate));
     }
 
     @Operation(summary = "Regenerate a failed daily report")
@@ -95,17 +85,12 @@ public class ReportController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate reportDate,
             @RequestHeader(value = "Idempotency-Key", required = false)
-            String idempotencyKey,
-            @RequestHeader(
-                    value = "X-Parent-Access-Token",
-                    required = false)
-            String parentAccessToken
+            String idempotencyKey
     ) {
         return ResponseEntity.accepted().body(
                 regenerationService.request(
                         childId,
                         reportDate,
-                        idempotencyKey,
-                        parentAccessToken));
+                        idempotencyKey));
     }
 }

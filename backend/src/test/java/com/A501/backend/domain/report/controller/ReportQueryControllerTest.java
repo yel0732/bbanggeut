@@ -28,7 +28,6 @@ import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
-import com.A501.backend.domain.report.port.ReportParentAccessTokenVerifier;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportConversationSummaryRepository;
 import com.A501.backend.domain.report.repository.ReportGameResultRepository;
@@ -58,9 +57,6 @@ class ReportQueryControllerTest {
     @MockitoBean
     private ReportChildAccessVerifier childAccessVerifier;
 
-    @MockitoBean
-    private ReportParentAccessTokenVerifier parentAccessTokenVerifier;
-
     @BeforeEach
     void setUp() {
         summaryRepository.deleteAll();
@@ -78,7 +74,6 @@ class ReportQueryControllerTest {
         createCompletedReport(LocalDate.of(2026, 7, 23));
 
         mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .header("X-Parent-Access-Token", "parent-token")
                         .queryParam("startDate", "2026-07-22")
                         .queryParam("endDate", "2026-07-23")
                         .queryParam("status", "COMPLETED")
@@ -133,8 +128,7 @@ class ReportQueryControllerTest {
         mockMvc.perform(get(
                         "/api/children/{childId}/reports/{reportDate}",
                         CHILD_ID,
-                        "2026-07-23")
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        "2026-07-23"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.gameResults.length()").value(1))
@@ -157,8 +151,7 @@ class ReportQueryControllerTest {
         mockMvc.perform(get(
                         "/api/children/{childId}/reports/{reportDate}",
                         CHILD_ID,
-                        "2026-07-23")
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        "2026-07-23"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"))
                 .andExpect(jsonPath("$.failure.message")
@@ -173,8 +166,7 @@ class ReportQueryControllerTest {
         mockMvc.perform(get(
                         "/api/children/{childId}/reports/{reportDate}",
                         CHILD_ID,
-                        "2026-07-23")
-                        .header("X-Parent-Access-Token", "parent-token"))
+                        "2026-07-23"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("REPORT_NOT_FOUND"));
     }
@@ -185,8 +177,7 @@ class ReportQueryControllerTest {
                 .when(childAccessVerifier)
                 .verifyOwnership(PARENT_ID, CHILD_ID);
 
-        mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .header("X-Parent-Access-Token", "parent-token"))
+        mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("CHILD_NOT_FOUND"));
     }
@@ -194,7 +185,6 @@ class ReportQueryControllerTest {
     @Test
     void invalidDateRangeIsRejected() throws Exception {
         mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .header("X-Parent-Access-Token", "parent-token")
                         .queryParam("startDate", "2026-07-24")
                         .queryParam("endDate", "2026-07-23"))
                 .andExpect(status().isBadRequest())

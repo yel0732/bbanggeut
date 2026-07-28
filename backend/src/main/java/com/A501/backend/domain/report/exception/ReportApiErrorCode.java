@@ -15,10 +15,6 @@ public enum ReportApiErrorCode implements ErrorCode {
             HttpStatus.UNAUTHORIZED,
             "REPORT_UNAUTHORIZED",
             "Authentication is required."),
-    INVALID_PARENT_ACCESS_TOKEN(
-            HttpStatus.UNAUTHORIZED,
-            "INVALID_PARENT_ACCESS_TOKEN",
-            "A valid parent access token is required."),
     CHILD_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "CHILD_NOT_FOUND",

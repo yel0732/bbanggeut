@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum ConversationErrorCode {
 
+    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     CHILD_NOT_FOUND(HttpStatus.NOT_FOUND, "아이 프로필을 찾을 수 없습니다."),
     CHILD_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 아이 프로필에 접근할 수 없습니다."),
     CONVERSATION_NOT_FOUND(HttpStatus.NOT_FOUND, "대화 세션을 찾을 수 없습니다."),

@@ -817,6 +817,38 @@ class TestStreamPublishing:
 
         assert any(c[0] == "SESSION_COMPLETED" for c in stream.calls)
 
+    def test_no_speech_with_all_slots_filled_completes_the_session(self) -> None:
+        """물을 목표가 없는 무응답도 종료 이벤트를 발행해 세션을 방치하지 않는다."""
+
+        manager, state, _, stream, _ = _build_manager_with_stream()
+        state.current_topic.slots = DiarySlots(
+            event="과일 게임",
+            emotion="즐거움",
+            emotion_reason="이겨서",
+            memorable_moment="마지막 판",
+        )
+
+        manager.handle_no_speech()
+
+        assert ("SESSION_COMPLETED", "REQUIRED_SLOTS_FILLED") in stream.calls
+        assert state.terminated is True
+
+    def test_no_speech_with_all_remaining_targets_skipped_times_out(self) -> None:
+        manager, state, _, stream, _ = _build_manager_with_stream()
+        state.current_topic.slots = DiarySlots(event="과일 게임")
+        state.current_topic.skipped_targets = frozenset(
+            {
+                QuestionTarget.EMOTION,
+                QuestionTarget.EMOTION_REASON,
+                QuestionTarget.MEMORABLE_MOMENT,
+            }
+        )
+
+        manager.handle_no_speech()
+
+        assert ("SESSION_COMPLETED", "INACTIVITY_TIMEOUT") in stream.calls
+        assert state.terminated is True
+
     @pytest.mark.asyncio
     async def test_emit_ai_turn_completed_forwards_to_stream(self) -> None:
         manager, _, _, stream, _ = _build_manager_with_stream()

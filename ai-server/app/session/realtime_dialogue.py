@@ -377,8 +377,14 @@ class RealtimeDialogueManager:
         )
         if current_target is None:
             # 물을 목표가 남지 않았는데 답도 없다 — 종료가 유일한 결정이다.
+            # 종료 이벤트를 발행하지 않으면 Spring 세션이 IN_PROGRESS로 방치되어
+            # reconciler가 lease 만료를 감지할 때까지 유령 세션이 남는다.
             state.terminated = True
             self._logger.info("conversation terminated: no target left on no-response")
+            all_filled = select_next_question_target(topic.slots) is None
+            self._emit_session_completed(
+                "REQUIRED_SLOTS_FILLED" if all_filled else "INACTIVITY_TIMEOUT"
+            )
             return
         decision = evaluate_dialogue_policy(
             DialoguePolicyRequest(

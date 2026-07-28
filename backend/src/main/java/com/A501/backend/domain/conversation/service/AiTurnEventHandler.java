@@ -123,13 +123,17 @@ public class AiTurnEventHandler implements ConversationEventHandler {
         ConversationTurn turn = turnRepository.findByIdForUpdate(turnId)
                 .orElseThrow(() -> new ConversationEventContractException(
                         "AI_TURN_GENERATED must be processed before AI_TURN_COMPLETED."));
+        // 턴의 정체성은 식별자(turnId·conversationId·turnSeq·responseId)로 판정한다.
+        // COMPLETED의 text는 GENERATED가 이미 저장한 content와 같아야 할 이유가 없다
+        // (향후 TTS가 다른 텍스트를 실을 수 있음) — content/questionText는 이 턴의
+        // 저장값을 그대로 넘겨 동일성 검사를 무력화한다(DIARY-3-W06 리뷰 finding ③).
         validateExisting(
                 turn,
                 turnId,
                 event.conversationId(),
                 turnSeq,
                 responseId,
-                payload.text(),
+                turn.getContent(),
                 turn.getQuestionText(),
                 turn.getTopicType());
 

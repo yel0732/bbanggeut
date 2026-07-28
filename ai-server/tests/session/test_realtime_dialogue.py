@@ -302,6 +302,96 @@ class TestChildTurn:
         assert state.terminated is False  # 대화는 계속될 수 있다
 
 
+def _low_confidence_result(text: str = "심부란 노랐어.") -> SttResult:
+    # exp(-0.6) ≈ 0.549 < 기본 임계값 0.65 — 오인식 의심 신뢰도.
+    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-0.6)
+
+
+class TestLowConfidenceReask:
+    """§22 STT_LOW_CONFIDENCE: 낮은 신뢰도 Final은 대화 대신 확인 질문으로."""
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_final_reasks_instead_of_running_dialogue(self) -> None:
+        manager, _, channel, pipeline, _, sequencer = _build_manager()
+        child = _child_turn(sequencer)
+
+        await manager.handle_child_turn(child, _low_confidence_result())
+
+        assert pipeline.requests == []  # 오인식 의심 텍스트는 슬롯 분석에 넣지 않는다
+        assert [event["type"] for event in channel.sent] == [
+            "error",
+            "assistant.response.created",
+            "assistant.text.final",
+        ]
+        error = channel.sent[0]
+        assert error["payload"]["code"] == "STT_LOW_CONFIDENCE"
+        assert error["payload"]["recoverable"] is True
+        assert error["turnId"] == child.turn_id
+        assert channel.sent[2]["payload"]["text"] == "괜찮아, 천천히 다시 말해 줄래?"
+
+    @pytest.mark.asyncio
+    async def test_reask_counts_no_question_and_keeps_the_pending_question(self) -> None:
+        """재발화는 원래 질문에 대한 답으로 평가돼야 한다 — 상태 불변."""
+
+        manager, state, _, _, _, sequencer = _build_manager()
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+        question_count = state.current_topic.question_count
+        last_question = state.last_question
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert state.current_topic.question_count == question_count
+        assert state.last_question == last_question
+        assert state.recent_questions == [last_question]
+
+    @pytest.mark.asyncio
+    async def test_reask_limit_lets_the_next_low_confidence_final_proceed(self) -> None:
+        """연속 상한(기본 1) 도달 시 낮은 신뢰도라도 진행 — 무한 되묻기 방지.
+
+        그때는 sttConfidence가 파이프라인으로 전달돼 분석 LLM이 보수적으로
+        해석한다(2순위 연계).
+        """
+
+        manager, _, _, pipeline, _, sequencer = _build_manager()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert len(pipeline.requests) == 1
+        assert pipeline.requests[0].stt_confidence == pytest.approx(0.5488, abs=1e-3)
+
+    @pytest.mark.asyncio
+    async def test_confident_final_resets_the_reask_counter(self) -> None:
+        manager, state, _, pipeline, _, sequencer = _build_manager()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert len(pipeline.requests) == 1  # 확신 턴만 파이프라인에 들어갔다
+        assert state.consecutive_low_confidence_reasks == 1  # 세 번째가 다시 되물음
+
+    @pytest.mark.asyncio
+    async def test_missing_confidence_skips_the_gate(self) -> None:
+        """avg_logprob가 없으면(신뢰도 미상) 되묻지 않고 진행한다."""
+
+        manager, _, _, pipeline, _, sequencer = _build_manager()
+        result = SttResult(text="블록 놀이 했어.", audio_seconds=2.0)
+
+        await manager.handle_child_turn(_child_turn(sequencer), result)
+
+        assert len(pipeline.requests) == 1
+        assert pipeline.requests[0].stt_confidence is None
+
+    @pytest.mark.asyncio
+    async def test_confident_final_passes_its_confidence_to_the_pipeline(self) -> None:
+        manager, _, _, pipeline, _, sequencer = _build_manager()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert pipeline.requests[0].stt_confidence == pytest.approx(0.7408, abs=1e-3)
+
+
 class TestCancellationBoundary:
     @pytest.mark.asyncio
     async def test_response_cancelled_mid_llm_call_is_never_published(self) -> None:
@@ -427,9 +517,14 @@ class TestSessionAssembly:
         )
         captured: dict = {}
 
-        def stt_pipeline_factory(publisher, *, turn_sequencer, on_final, on_no_speech):
+        def stt_pipeline_factory(
+            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+        ):
             captured.update(
-                sequencer=turn_sequencer, on_final=on_final, on_no_speech=on_no_speech
+                sequencer=turn_sequencer,
+                on_final=on_final,
+                on_no_speech=on_no_speech,
+                is_output_active=is_output_active,
             )
 
             class _SinkStub:
@@ -457,6 +552,8 @@ class TestSessionAssembly:
         assert session.state.snapshot.conversation.current_topic.value == "DAILY"
         assert captured["on_final"] == session.manager.handle_child_turn
         assert captured["on_no_speech"] == session.manager.handle_no_speech
+        # 합성이 없는(오디오 없는) 연결에는 재생될 오디오가 없으므로 게이트도 없다.
+        assert captured["is_output_active"] is None
         await session.aclose()
 
     @pytest.mark.asyncio

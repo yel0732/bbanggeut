@@ -41,6 +41,8 @@ from app.speech.vad import VoiceActivityDetector
 
 FinalTurnCallback = Callable[[SttTurn, SttResult], Awaitable[None]]
 NoSpeechCallback = Callable[[], None]
+# AI 오디오가 나가는 중인지 묻는다. True인 동안 입력을 받지 않는다(ADR-020).
+OutputActiveCheck = Callable[[], bool]
 
 _STT_FAILED = "STT_FAILED"
 
@@ -62,6 +64,7 @@ class SessionSttPipeline:
         vad: VoiceActivityDetector | None = None,
         turn_detection: TurnDetectionConfig | None = None,
         on_no_speech: NoSpeechCallback | None = None,
+        is_output_active: OutputActiveCheck | None = None,
     ) -> None:
         self._recognizer = recognizer
         self._publisher = publisher
@@ -75,6 +78,8 @@ class SessionSttPipeline:
         self._task: asyncio.Task | None = None
         self._pending_finalize = False
         self._closed = False
+        self._is_output_active = is_output_active
+        self._input_suspended = False
         self._detector: TurnDetector | None = None
         if vad is not None:
             self._detector = TurnDetector(
@@ -102,6 +107,12 @@ class SessionSttPipeline:
 
         if self._closed:
             return
+        if self._is_output_active is not None and self._is_output_active():
+            if not self._input_suspended:
+                self._input_suspended = True
+                self._suspend_input()
+            return
+        self._input_suspended = False
         try:
             chunk = self._converter.convert(frame)
         except AudioConversionError:
@@ -234,6 +245,27 @@ class SessionSttPipeline:
         return result
 
     # --- internals -------------------------------------------------------
+
+    def _suspend_input(self) -> None:
+        """AI 오디오 구간 진입: 미완 발화를 버리고 입력 상태를 초기화한다.
+
+        AI 응답이 만들어지는 동안(whisper+LLM, 실측 3초 이상)에도 파이프라인은
+        듣고 있으므로, 재생이 시작되는 순간 아이가 말하던 중일 수 있다. 그 반쪽
+        발화를 남겨 두면 게이트가 열린 뒤 도착하는 뒷부분과 이어붙어 깨진 문장이
+        된다. AI 발화 중 아이 발화가 유실되는 것은 ADR-020이 받아들인 대가이며,
+        반쪽을 버리는 것이 그 결정과 일관된다.
+
+        진행 중인 finalize 태스크는 건드리지 않는다 — 그 턴이 바로 지금 재생 중인
+        AI 응답을 만들어 낸 턴이다.
+        """
+
+        self._logger.info("inbound audio suspended while the assistant speaks")
+        if self._detector is not None:
+            self._detector.reset()
+        self._converter.reset()
+        if not self._buffer.is_closed:
+            self._buffer.reset()
+        self._turn = None
 
     def _handle_speech_start(self) -> None:
         # 이 시점엔 새 턴이 아직 만들어지기 전이다(_accept_audio가 만든다) —

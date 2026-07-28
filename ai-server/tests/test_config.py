@@ -67,6 +67,8 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.stt_max_utterance_seconds == 30.0
     assert settings.stt_min_utterance_seconds == 0.5
     assert settings.stt_no_speech_prob_threshold == 0.6
+    assert settings.stt_low_confidence_threshold == 0.67
+    assert settings.stt_low_confidence_reask_limit == 1
     assert settings.stt_vad_aggressiveness == 2
     assert settings.stt_min_speech_ms == 250
     assert settings.stt_trailing_silence_seconds == 3.0
@@ -98,6 +100,8 @@ def test_reads_realtime_settings_from_environment() -> None:
             "STT_MAX_UTTERANCE_SECONDS": "20",
             "STT_MIN_UTTERANCE_SECONDS": "1",
             "STT_NO_SPEECH_PROB_THRESHOLD": "0.75",
+            "STT_LOW_CONFIDENCE_THRESHOLD": "0.5",
+            "STT_LOW_CONFIDENCE_REASK_LIMIT": "2",
             "STT_VAD_AGGRESSIVENESS": "3",
             "STT_MIN_SPEECH_MS": "300",
             "STT_TRAILING_SILENCE_SECONDS": "2.5",
@@ -131,6 +135,8 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.stt_max_utterance_seconds == 20.0
     assert settings.stt_min_utterance_seconds == 1.0
     assert settings.stt_no_speech_prob_threshold == 0.75
+    assert settings.stt_low_confidence_threshold == 0.5
+    assert settings.stt_low_confidence_reask_limit == 2
     assert settings.stt_vad_aggressiveness == 3
     assert settings.stt_min_speech_ms == 300
     assert settings.stt_trailing_silence_seconds == 2.5
@@ -183,6 +189,10 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "STT_MIN_UTTERANCE_SECONDS": "-1"},
         {"GMS_KEY": "key", "STT_NO_SPEECH_PROB_THRESHOLD": "0"},
         {"GMS_KEY": "key", "STT_NO_SPEECH_PROB_THRESHOLD": "1.5"},
+        # 1 이상이면 모든 발화를 되묻는다 — 대화가 성립하지 않는다(0은 비활성으로 허용)
+        {"GMS_KEY": "key", "STT_LOW_CONFIDENCE_THRESHOLD": "1"},
+        {"GMS_KEY": "key", "STT_LOW_CONFIDENCE_THRESHOLD": "-0.1"},
+        {"GMS_KEY": "key", "STT_LOW_CONFIDENCE_REASK_LIMIT": "-1"},
         # 최소가 최대보다 크면 어떤 발화도 인식되지 않는다
         {"GMS_KEY": "key", "STT_MIN_UTTERANCE_SECONDS": "40"},
         {"GMS_KEY": "key", "STT_VAD_AGGRESSIVENESS": "4"},

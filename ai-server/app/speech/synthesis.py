@@ -60,6 +60,20 @@ class SpeechSynthesisService:
         self._clock = clock
         self._task: asyncio.Task | None = None
         self._closed = False
+        self._speaking = False
+
+    @property
+    def is_speaking(self) -> bool:
+        """Whether this connection is producing AI audio right now.
+
+        Spans synthesis *and* playback, not just playback: the STT input gate
+        reads this to suspend inbound audio for the whole non-listening period
+        (ADR-020). Splitting it would reopen a listening window during the
+        ~1.9s time-to-first-byte, and any utterance started there would be
+        discarded the moment playback began.
+        """
+
+        return self._speaking
 
     def speak(self, turn_id: str, turn_seq: int, response_id: str, text: str) -> None:
         """Start synthesizing one AI turn's text. Non-blocking."""
@@ -69,6 +83,7 @@ class SpeechSynthesisService:
         # A previous turn's playback is superseded by this one; begin_response
         # flushes it. Only one AI turn speaks at a time.
         queue = self._speaker.begin_response(response_id)
+        self._speaking = True
         self._task = asyncio.create_task(
             self._run(turn_id, turn_seq, response_id, text, queue)
         )
@@ -84,6 +99,21 @@ class SpeechSynthesisService:
                 await task
 
     async def _run(
+        self,
+        turn_id: str,
+        turn_seq: int,
+        response_id: str,
+        text: str,
+        queue: ResponseAudioQueue,
+    ) -> None:
+        try:
+            await self._synthesize(turn_id, turn_seq, response_id, text, queue)
+        finally:
+            # 성공·실패·취소 어느 경로로 끝나도 입력 게이트는 반드시 다시 열려야
+            # 한다. 여기서 새면 아이 말을 영구히 못 듣는다(ADR-020).
+            self._speaking = False
+
+    async def _synthesize(
         self,
         turn_id: str,
         turn_seq: int,

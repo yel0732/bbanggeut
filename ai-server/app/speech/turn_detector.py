@@ -50,6 +50,25 @@ class TurnDetectionConfig:
     # 발화 중간 1~2프레임 미검출(호흡·무성 자음)이 시작 판정을 리셋하지 않도록
     # 허용하는 연속 non-speech 프레임 수.
     max_gap_frames: int = 2
+    # 위 관용의 종료 판정 쪽 대칭. 종료 판정에는 관용이 전혀 없어서 speech 한
+    # 프레임(20ms)이 쌓인 침묵을 통째로 리셋했고, 간헐적 잡음(문 닫힘, 의자 끌림)이
+    # 턴 종료를 무한정 미룰 수 있었다. 이 프레임 수까지의 연속 speech는 발화 재개로
+    # 보지 않는다.
+    #
+    # 기본값 6은 webrtcvad 실측에서 나왔다. webrtcvad는 약 80ms(4프레임)의 내부
+    # hangover를 가져서, 실제 버스트보다 길게 speech를 보고한다.
+    #
+    #     20ms 클릭  -> speech 5프레임    40ms 버스트 -> 6프레임
+    #     100ms      -> 9프레임           200ms       -> 16프레임
+    #
+    # 따라서 6은 클릭과 40ms급 버스트까지만 흡수한다. 100ms 이상의 소리는 발화
+    # 재개로 판정된다 — 아이의 짧은 대답("응")과 길이가 겹쳐 더 올릴 수 없다.
+    # **지속적인 배경음(TV 등)은 연속 run이 길어 이 관용으로 막지 못한다** —
+    # 그건 입력 단 잡음 억제와 AI 발화 구간 게이팅의 몫이다(ADR-020).
+    max_speech_blip_frames: int = 6
+    # 턴 종료 시 whisper에 남겨 보낼 말꼬리 뒤 여백. 종료 판정용 침묵 전체를
+    # 보내면 입력이 발화의 150%를 넘고(실측) 무음 환각 위험도 커진다.
+    end_hangover_ms: int = 200
 
     def __post_init__(self) -> None:
         if self.min_speech_ms <= 0:
@@ -62,6 +81,10 @@ class TurnDetectionConfig:
             raise ValueError("preroll_ms must not be negative")
         if self.max_gap_frames < 0:
             raise ValueError("max_gap_frames must not be negative")
+        if self.max_speech_blip_frames < 0:
+            raise ValueError("max_speech_blip_frames must not be negative")
+        if self.end_hangover_ms < 0:
+            raise ValueError("end_hangover_ms must not be negative")
 
 
 class TurnPhase(StrEnum):
@@ -74,9 +97,14 @@ class TurnDetector:
 
     ``feed()`` returns the audio that belongs in the utterance buffer: nothing
     while IDLE (leading silence never reaches whisper — plan §11-C), the
-    pre-roll plus everything since once speech is confirmed, and every frame
-    while SPEAKING including trailing silence (whisper is indifferent to a
-    quiet tail, and trimming it is an optimisation for later).
+    pre-roll plus everything since once speech is confirmed, and every spoken
+    frame while SPEAKING.
+
+    Silence while SPEAKING is **withheld rather than emitted**, because at that
+    moment it is not yet known whether it is a mid-utterance pause (must be
+    kept — CONV-REQ-072) or the end of the turn (must be trimmed). Resumed
+    speech restores it in order; a turn end keeps only ``end_hangover_ms``.
+    Measured before trimming: whisper received 8.56s for a 5.60s utterance.
     """
 
     def __init__(
@@ -110,12 +138,19 @@ class TurnDetector:
             + self._config.max_gap_frames * self._frame_ms
         )
         self._preroll: deque[bytes] = deque(maxlen=max(1, ring_ms // self._frame_ms))
+        self._hangover_bytes = (
+            audio_format.bytes_per_second * self._config.end_hangover_ms // 1000
+        )
 
         self._phase = TurnPhase.IDLE
         self._candidate_speech_ms = 0
         self._candidate_gap_run = 0
         self._idle_silence_ms = 0
         self._trailing_silence_ms = 0
+        # 종료 판정 중인 오디오는 바로 내보내지 않고 여기 잡아 둔다. 발화가 재개되면
+        # 온전히 되살리고(중간 멈춤 손실 없음), 턴이 끝나면 hangover만 남긴다.
+        self._pending = bytearray()
+        self._speech_blip_run = 0
 
     @property
     def phase(self) -> TurnPhase:
@@ -141,6 +176,8 @@ class TurnDetector:
         self._candidate_gap_run = 0
         self._idle_silence_ms = 0
         self._trailing_silence_ms = 0
+        self._pending.clear()
+        self._speech_blip_run = 0
 
     # --- internals ---------------------------------------------------------
 
@@ -183,17 +220,36 @@ class TurnDetector:
         self._candidate_gap_run = 0
         self._idle_silence_ms = 0
         self._trailing_silence_ms = 0
+        self._pending.clear()
+        # 방금 min_speech_ms만큼의 연속 speech를 확인하고 들어왔다 — 이미 관용치를
+        # 넘긴 상태로 시작해야 첫 발화 프레임들이 보류되지 않는다.
+        self._speech_blip_run = self._config.max_speech_blip_frames + 1
         self._notify(self._on_speech_start, "speech_start")
 
     def _process_speaking(self, frame: bytes, speech: bool, out: bytearray) -> None:
-        out += frame
         if speech:
+            self._speech_blip_run += 1
+            if self._speech_blip_run <= self._config.max_speech_blip_frames:
+                # 발화 재개인지 고립된 잡음인지 아직 모른다 — 판단이 설 때까지
+                # 붙잡아 둔다. 재개로 판명되면 아래에서 온전히 되살아난다.
+                self._pending += frame
+                return
             # A long mid-utterance pause followed by more speech must not end
             # the turn (CONV-REQ-072) — the silence run restarts every time.
+            out += self._pending  # 멈춤 구간을 순서 그대로 복원한다
+            self._pending.clear()
             self._trailing_silence_ms = 0
+            # blip_run은 여기서 리셋하지 않는다 — "연속 speech 프레임 수"라는 의미를
+            # 유지해야 이어지는 발화가 매 프레임 다시 보류되지 않는다.
+            out += frame
             return
+        self._speech_blip_run = 0
+        self._pending += frame
         self._trailing_silence_ms += self._frame_ms
         if self._trailing_silence_ms >= self._config.trailing_silence_seconds * 1000:
+            # 말꼬리 직후 여백만 남기고 종료 판정용 침묵은 버린다.
+            out += self._pending[: self._hangover_bytes]
+            self._pending.clear()
             self._phase = TurnPhase.IDLE
             self._trailing_silence_ms = 0
             self._idle_silence_ms = 0

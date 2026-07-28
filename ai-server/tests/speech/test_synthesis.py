@@ -129,6 +129,68 @@ class TestHappyPath:
         await service.aclose()
 
 
+class TestIsSpeakingGate:
+    """ADR-020: STT 입력 게이트가 이 값을 읽는다 — 반드시 다시 열려야 한다."""
+
+    @pytest.mark.asyncio
+    async def test_starts_speaking_synchronously_on_speak(self) -> None:
+        """게이트는 TTFB(실측 1.9초)를 기다리지 않고 즉시 닫혀야 한다."""
+
+        service, _, _, _ = _build(FakeSpeechSynthesizer([_CHUNK]))
+        assert service.is_speaking is False
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+
+        assert service.is_speaking is True
+        await service.aclose()
+
+    @pytest.mark.asyncio
+    async def test_stops_speaking_after_playback_completes(self) -> None:
+        synth = FakeSpeechSynthesizer([_CHUNK])
+        service, channel, _, speaker = _build(synth)
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+
+        async def _completed() -> None:
+            while not any(e["type"] == "assistant.audio.completed" for e in channel.sent):
+                queue = speaker._current  # noqa: SLF001
+                if queue is not None:
+                    while queue.get_nowait() is not None:
+                        pass
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(_completed(), timeout=2)
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        assert service.is_speaking is False
+
+    @pytest.mark.asyncio
+    async def test_stops_speaking_when_synthesis_fails(self) -> None:
+        """TTS 실패로 게이트가 열린 채 남으면 아이 말을 영구히 못 듣는다."""
+
+        synth = FakeSpeechSynthesizer([], error=TtsError(TtsFailureCode.PROVIDER_FAILED))
+        service, channel, _, _ = _build(synth)
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+        for _ in range(10):
+            await asyncio.sleep(0)
+
+        assert any(e["type"] == "assistant.audio.failed" for e in channel.sent)
+        assert service.is_speaking is False
+
+    @pytest.mark.asyncio
+    async def test_stops_speaking_when_the_task_is_cancelled(self) -> None:
+        synth = FakeSpeechSynthesizer([_CHUNK, _CHUNK, _CHUNK])
+        service, _, _, _ = _build(synth)
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+        await synth.started.wait()
+        await service.aclose()
+
+        assert service.is_speaking is False
+
+
 class TestFailure:
     @pytest.mark.asyncio
     async def test_provider_failure_emits_failed_and_flushes(self) -> None:

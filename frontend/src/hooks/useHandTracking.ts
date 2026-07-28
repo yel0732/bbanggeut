@@ -22,6 +22,13 @@ const SHOULDER_FAR = 0.11
 const HOLD_MS = 240
 /** 인식 결과 지터를 줄이는 지수 평활 계수 (1에 가까울수록 즉각 반응) */
 const SAMPLE_SMOOTHING = 0.55
+/**
+ * 팔을 "들었다"고 볼 여유.
+ *
+ * 손목이 같은 쪽 어깨보다 이만큼 위에 있어야 든 것으로 본다. 어깨너비에 대한
+ * 비율이라 카메라 거리와 무관하게 성립한다. 경계에서 깜빡이지 않을 만큼만 둔다.
+ */
+const RAISE_MARGIN_RATIO = 0.22
 
 export type DistanceHint = 'near' | 'ok' | 'far'
 
@@ -121,13 +128,53 @@ export function useHandTracking(
       (rw?.visibility ?? 0) > VISIBILITY_MIN &&
       (re?.visibility ?? 0) > VISIBILITY_MIN
 
-    // 미지정이면 먼저 든(더 높이 올린) 팔을 플레이 팔로 지정한다.
+    const ls = pose[LM.leftShoulder]
+    const rs = pose[LM.rightShoulder]
+    const shouldersOk =
+      (ls?.visibility ?? 0) > VISIBILITY_MIN &&
+      (rs?.visibility ?? 0) > VISIBILITY_MIN
+    const shoulderWidth = shouldersOk
+      ? Math.hypot(ls.x - rs.x, ls.y - rs.y)
+      : null
+
+    /**
+     * 그 팔을 들고 있는지. y는 위로 갈수록 작다.
+     *
+     * 어깨가 보이면 같은 쪽 어깨보다 위인지로 본다. 어깨가 안 보이면 팔뚝이
+     * 위를 향하는지(손목이 팔꿈치보다 위)로 대신한다.
+     */
+    const isRaised = (
+      wrist: { y: number },
+      elbow: { y: number },
+      shoulder: { y: number } | null,
+    ): boolean => {
+      if (shoulder && shoulderWidth !== null) {
+        return wrist.y < shoulder.y - shoulderWidth * RAISE_MARGIN_RATIO
+      }
+      return wrist.y < elbow.y
+    }
+
+    /*
+      플레이 팔은 "든 팔"만 후보로 삼는다.
+
+      가시성만 보면 서서 팔을 내리고 있어도 조건을 넘겨서, 추적이 시작되는 첫
+      프레임에 우연히 위에 있던 팔로 정해져 버린다. 아이는 오른팔을 휘두르는데
+      칼이 왼팔에 붙어 있는 일이 생긴다. 아무 팔도 안 들었으면 지정을 보류하고
+      기다린다 — 화면 안내("한 손을 번쩍 들어 주세요")와 조건이 같아진다.
+
+      한 번 정해진 뒤에는 다시 확인하지 않는다. 내리치기를 하려면 팔을 내려야
+      하는데 그때 칼이 사라지면 게임이 성립하지 않는다.
+    */
     if (playSideRef.current === null) {
-      if (leftOk && rightOk) {
+      const leftRaised = leftOk && isRaised(lw, le, shouldersOk ? ls : null)
+      const rightRaised = rightOk && isRaised(rw, re, shouldersOk ? rs : null)
+
+      if (leftRaised && rightRaised) {
+        // 둘 다 들었으면 더 높이 든 팔로 정한다.
         playSideRef.current = lw.y < rw.y ? 'left' : 'right'
-      } else if (leftOk) {
+      } else if (leftRaised) {
         playSideRef.current = 'left'
-      } else if (rightOk) {
+      } else if (rightRaised) {
         playSideRef.current = 'right'
       } else {
         lose()
@@ -149,19 +196,11 @@ export function useHandTracking(
     const k = SAMPLE_SMOOTHING
 
     // 어깨너비로 거리를 잰다. 어깨가 안 보이는 프레임은 직전 값을 유지한다.
-    const ls = pose[LM.leftShoulder]
-    const rs = pose[LM.rightShoulder]
-    const shouldersOk =
-      (ls?.visibility ?? 0) > VISIBILITY_MIN &&
-      (rs?.visibility ?? 0) > VISIBILITY_MIN
-    const rawShoulder = shouldersOk
-      ? Math.hypot(ls.x - rs.x, ls.y - rs.y)
-      : null
-    let shoulder = previous?.shoulder ?? rawShoulder ?? 0
-    if (rawShoulder !== null) {
+    let shoulder = previous?.shoulder ?? shoulderWidth ?? 0
+    if (shoulderWidth !== null) {
       shoulder = previous
-        ? shoulder + (rawShoulder - shoulder) * k
-        : rawShoulder
+        ? shoulder + (shoulderWidth - shoulder) * k
+        : shoulderWidth
     }
 
     // 인식 결과는 프레임마다 미세하게 떨린다. 지수 평활로 흔들림을 눌러 준다.

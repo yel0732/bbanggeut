@@ -68,8 +68,9 @@ export function TutorialBoard({
         {body}
       </div>
 
+      {/* 버튼 배치는 단계마다 다르다(가운데 모으기 / 좌우로 벌리기). 자리만 준다. */}
       <div
-        className="mt-3 flex items-center justify-center gap-5"
+        className="mt-3 flex w-full items-center"
         style={{ height: FOOTER_HEIGHT }}
       >
         {footer}

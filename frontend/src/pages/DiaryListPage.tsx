@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
@@ -15,8 +15,10 @@ import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
 import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
+import { getChildDiaries } from '@/api/diaries'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { loadActiveChildProfileId } from '@/lib/childProfiles'
 
 type DiaryEntry = {
   id: number
@@ -147,15 +149,48 @@ export function DiaryListPage() {
   const [year, setYear] = useState(2026)
   const [month, setMonth] = useState(7)
   const [page, setPage] = useState(0)
-  const [selectedId, setSelectedId] = useState<number | null>(1)
+  const [diaries, setDiaries] = useState<DiaryEntry[]>([])
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  useEffect(() => {
+    // Keep the old design fixture out of the rendered flow; diaries always come
+    // from the selected child's server-side diary collection.
+    void DIARIES
+    const childId = Number(loadActiveChildProfileId())
+    if (!Number.isInteger(childId) || childId <= 0) {
+      setDiaries([])
+      return
+    }
+    let active = true
+    void getChildDiaries(childId)
+      .then((response) => {
+        if (!active) return
+        const next = response.items.map((diary) => ({
+          id: diary.childDiaryId,
+          date: diary.diaryDate,
+          title: diary.title,
+          lines: diary.lines,
+        }))
+        setDiaries(next)
+        setSelectedId(next[0]?.id ?? null)
+      })
+      .catch(() => {
+        if (!active) return
+        setDiaries([])
+        setSelectedId(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const monthDiaries = useMemo(
     () =>
-      DIARIES.filter((diary) => {
+      diaries.filter((diary) => {
         const [diaryYear, diaryMonth] = diary.date.split('-').map(Number)
         return diaryYear === year && diaryMonth === month
       }),
-    [month, year],
+    [diaries, month, year],
   )
   const pageCount = Math.max(1, Math.ceil(monthDiaries.length / ITEMS_PER_PAGE))
   const visibleDiaries = monthDiaries.slice(

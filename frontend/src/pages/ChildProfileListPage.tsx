@@ -22,8 +22,17 @@ import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import {
+  deleteChildProfile as deleteBackendChildProfile,
+  getChildProfiles as getBackendChildProfiles,
+  updateChildProfile as updateBackendChildProfile,
+} from '@/api/profiles'
+import { getStoredAccessToken } from '@/api/auth'
+import {
+  childImageNumFromPhoto,
+  childPhotoFromImageNum,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
+  saveActiveChildProfileId,
   saveChildProfiles,
   type ChildProfile,
 } from '@/lib/childProfiles'
@@ -66,6 +75,30 @@ export function ChildProfileListPage() {
     saveChildProfiles(nextProfiles)
   }
 
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        const local = loadChildProfiles()
+        updateProfiles(
+          children.map((child) => ({
+            id: String(child.childId),
+            name: child.name,
+            photoUrl:
+              local.find((profile) => profile.id === String(child.childId))
+                ?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+            profileImageNum: child.profileImageNum,
+          })),
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
+
   const stopEditCamera = () => {
     editStreamRef.current?.getTracks().forEach((track) => track.stop())
     editStreamRef.current = null
@@ -89,10 +122,17 @@ export function ChildProfileListPage() {
 
   const confirmProfileRemoval = () => {
     if (!profilePendingDeletion) return
-    updateProfiles(
-      profiles.filter(({ id }) => id !== profilePendingDeletion.id),
-    )
-    setProfilePendingDeletion(null)
+    const childId = Number(profilePendingDeletion.id)
+    const pin = window.prompt('삭제하려면 부모 PIN 4자리를 입력해 주세요.')
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      return
+    }
+    void deleteBackendChildProfile(childId, pin)
+      .then(() => {
+        updateProfiles(profiles.filter(({ id }) => id !== profilePendingDeletion.id))
+        setProfilePendingDeletion(null)
+      })
+      .catch(() => undefined)
   }
 
   const openEdit = (profile: ChildProfile) => {
@@ -157,15 +197,36 @@ export function ChildProfileListPage() {
   const saveEdit = () => {
     const nextName = editingName.trim()
     if (!editingProfile || !nextName) return
-    updateProfiles(
-      profiles.map((profile) =>
-        profile.id === editingProfile.id
-          ? { ...profile, name: nextName, photoUrl: editingPhotoUrl }
-          : profile,
-      ),
+    const profileImageNum = childImageNumFromPhoto(
+      editingPhotoUrl,
+      editingProfile.profileImageNum,
     )
-    stopEditCamera()
-    setEditingProfile(null)
+    void updateBackendChildProfile(
+      Number(editingProfile.id),
+      nextName,
+      profileImageNum,
+    )
+      .then((updated) => {
+        updateProfiles(
+          profiles.map((profile) =>
+            profile.id === editingProfile.id
+              ? {
+                  ...profile,
+                  name: updated.name,
+                  photoUrl: editingPhotoUrl,
+                  profileImageNum: updated.profileImageNum,
+                }
+              : profile,
+          ),
+        )
+        stopEditCamera()
+        setEditingProfile(null)
+      })
+      .catch((error: unknown) => {
+        setEditingNameMessage(
+          error instanceof Error ? error.message : '프로필을 수정하지 못했어요.',
+        )
+      })
   }
 
   return (
@@ -247,7 +308,10 @@ export function ChildProfileListPage() {
                   />
                   <button
                     className="relative z-10 flex min-w-0 flex-1 -translate-y-0.5 items-center bg-transparent text-left"
-                    onClick={() => navigate('/child')}
+                    onClick={() => {
+                      saveActiveChildProfileId(profile.id)
+                      navigate('/child')
+                    }}
                     type="button"
                   >
                     <img

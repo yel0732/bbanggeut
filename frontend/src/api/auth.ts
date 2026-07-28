@@ -40,6 +40,7 @@ const SESSION_KEYS = [
 const REFRESH_BUFFER_MS = 60_000
 const NEW_SIGNUP_EMAIL_KEY = 'bbanggut-new-signup-email'
 const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
+const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
 const ACCOUNT_LOCAL_DATA_KEYS = [
   'bbanggut-active-child-profile-id',
   'bbanggut-child-profiles',
@@ -98,6 +99,7 @@ export function storeLoginSession(response: LoginResponse, remember: boolean) {
 export function markNewSignup(email: string) {
   // A previous, unfinished signup must never carry its PIN into this account.
   window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
+  window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
   window.sessionStorage.setItem(
     NEW_SIGNUP_EMAIL_KEY,
     email.trim().toLowerCase(),
@@ -110,8 +112,14 @@ export function consumeNewSignup(email: string) {
   return signupEmail === normalizedEmail
 }
 
+export function hasPendingNewSignupOnboarding() {
+  return Boolean(window.sessionStorage.getItem(NEW_SIGNUP_EMAIL_KEY))
+}
+
 export function completeNewSignupOnboarding() {
   window.sessionStorage.removeItem(NEW_SIGNUP_EMAIL_KEY)
+  window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
+  window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
 }
 
 export function getStoredAccessToken() {
@@ -234,6 +242,26 @@ export async function withdrawAccount(pin: string) {
   clearLoginSession()
   ACCOUNT_LOCAL_DATA_KEYS.forEach((key) => window.localStorage.removeItem(key))
   window.sessionStorage.removeItem(NEW_SIGNUP_EMAIL_KEY)
+}
+
+export async function changeAccountPassword(
+  currentPassword: string,
+  newPassword: string,
+) {
+  const response = await authFetch(apiUrl('/api/auth/password'), {
+    body: JSON.stringify({
+      currentPassword,
+      newPassword,
+      newPasswordConfirm: newPassword,
+    }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH',
+  })
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null
+    throw new Error(error?.message ?? '비밀번호를 변경하지 못했어요.')
+  }
 }
 
 export function clearLoginSession() {

@@ -62,3 +62,24 @@ export async function setParentPin(pin: string) {
   })
   await requireOk(response, '핀 번호를 저장하지 못했어요.')
 }
+
+export async function changeParentPin(
+  currentPin: string,
+  newPin: string,
+) {
+  const response = await authFetch(apiUrl('/api/profile/pin'), {
+    body: JSON.stringify({ currentPin, newPin, newPinConfirm: newPin }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH',
+  })
+  await requireOk(response, 'PIN을 변경하지 못했어요.')
+}
+
+export async function updateParentProfileImage(profileImageNum: number) {
+  const response = await authFetch(apiUrl('/api/profile/image'), {
+    body: JSON.stringify({ profileImageNum }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH',
+  })
+  await requireOk(response, '부모 프로필 사진을 변경하지 못했어요.')
+}

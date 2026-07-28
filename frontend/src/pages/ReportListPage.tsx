@@ -262,8 +262,8 @@ export function ReportListPage() {
           ) : reports.length === 0 ? (
             <StatusMessage>
               {dateFilter
-                ? '선택한 날짜에 완성된 리포트가 없어요.'
-                : '아직 완성된 리포트가 없어요.'}
+                ? '선택한 날짜에 리포트가 없어요.'
+                : '아직 리포트가 없어요.'}
             </StatusMessage>
           ) : (
             <div className="flex flex-col pl-[80px]">

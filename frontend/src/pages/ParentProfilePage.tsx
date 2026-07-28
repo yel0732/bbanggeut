@@ -36,6 +36,7 @@ import {
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
 const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
+const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
 
 function loadOnboardingPinDraft() {
   try {
@@ -44,6 +45,10 @@ function loadOnboardingPinDraft() {
   } catch {
     return null
   }
+}
+
+function isOnboardingPinSaved() {
+  return window.sessionStorage.getItem(ONBOARDING_PIN_SAVED_KEY) === 'true'
 }
 const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 
@@ -73,8 +78,9 @@ export function ParentProfilePage() {
   )
   const [pinMessage, setPinMessage] = useState('')
   const [isPinError, setIsPinError] = useState(false)
+  const [isPinSaved, setIsPinSaved] = useState(isOnboardingPinSaved)
   const isEditMode = searchParams.get('edit') === '1'
-  const isPinConfirmed = firstPin !== null && pin === firstPin
+  const isPinConfirmed = firstPin !== null && pin === firstPin && isPinSaved
 
   useEffect(() => {
     return () => {
@@ -124,8 +130,24 @@ export function ParentProfilePage() {
       }
 
       if (nextPin === firstPin) {
-        window.sessionStorage.setItem(ONBOARDING_PIN_DRAFT_KEY, nextPin)
-        setPinMessage('핀번호가 설정되었어요 ✓')
+        void setParentPin(nextPin)
+          .then(() => {
+            window.sessionStorage.setItem(ONBOARDING_PIN_DRAFT_KEY, nextPin)
+            window.sessionStorage.setItem(ONBOARDING_PIN_SAVED_KEY, 'true')
+            setIsPinSaved(true)
+            setPinMessage('PIN 번호가 설정되었습니다.')
+          })
+          .catch((error: unknown) => {
+            window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
+            window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
+            setIsPinSaved(false)
+            setFirstPin(null)
+            setPin('')
+            setIsPinError(true)
+            setPinMessage(
+              error instanceof Error ? error.message : 'PIN 번호를 설정하지 못했어요.',
+            )
+          })
         return
       }
 
@@ -306,7 +328,7 @@ export function ParentProfilePage() {
       return
     }
     try {
-      if (getStoredAccessToken() && firstPin) {
+      if (getStoredAccessToken() && firstPin && !isPinSaved) {
         await setParentPin(firstPin)
       }
     } catch (error) {
@@ -319,6 +341,7 @@ export function ParentProfilePage() {
       return
     }
     window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
+    window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
     completeNewSignupOnboarding()
     navigate('/profiles')
   }

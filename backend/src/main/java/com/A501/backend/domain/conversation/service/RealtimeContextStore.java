@@ -11,4 +11,7 @@ import com.A501.backend.domain.conversation.dto.realtime.ContextSnapshot;
 public interface RealtimeContextStore {
 
     void save(String conversationId, ContextSnapshot snapshot, Duration ttl);
+
+    /** 대화가 이탈·중단으로 정리될 때 Context Snapshot(아이 프로필 포함)을 제거한다. */
+    void delete(String conversationId);
 }

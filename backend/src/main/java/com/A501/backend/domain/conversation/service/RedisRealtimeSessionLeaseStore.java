@@ -36,6 +36,15 @@ public class RedisRealtimeSessionLeaseStore implements RealtimeSessionLeaseStore
     }
 
     @Override
+    public void delete(String conversationId) {
+        try {
+            redisTemplate.delete(KEY_PREFIX + conversationId);
+        } catch (DataAccessException exception) {
+            throw new ConversationException(ConversationErrorCode.REDIS_UNAVAILABLE);
+        }
+    }
+
+    @Override
     public Optional<RealtimeSessionLeaseRecord> find(String conversationId) {
         String key = KEY_PREFIX + conversationId;
         String json;

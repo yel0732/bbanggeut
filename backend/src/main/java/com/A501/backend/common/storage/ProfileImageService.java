@@ -1,0 +1,112 @@
+package com.A501.backend.common.storage;
+
+import java.io.IOException;
+import java.util.Locale;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.A501.backend.common.exception.BusinessException;
+
+import lombok.RequiredArgsConstructor;
+
+// 프로필 사진의 검증 규칙과 키 정책을 담당한다. 실제 저장/조회/삭제는 ImageStorage가 맡고,
+// 이 서비스는 "무엇을 허용할지"만 결정한다.
+@Service
+@RequiredArgsConstructor
+public class ProfileImageService {
+
+    private static final String JPEG = "image/jpeg";
+    private static final String PNG = "image/png";
+
+    // 확장자나 Content-Type 헤더는 클라이언트가 마음대로 보낼 수 있으므로 파일 앞부분의 시그니처를
+    // 함께 확인한다. 선언한 타입과 실제 바이트가 다르면 거부한다.
+    private static final byte[] JPEG_SIGNATURE = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+    private static final byte[] PNG_SIGNATURE = {
+            (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+
+    private final ImageStorage imageStorage;
+    private final StorageProperties storageProperties;
+
+    public String uploadImage(String keyPrefix, MultipartFile file) {
+        // 호출부 실수로 공개 영역(프리셋)에 아이 사진이 올라가는 사고를 막는 내부 불변식이다.
+        // 사용자 입력이 아니라 코드 버그이므로 ErrorCode로 다루지 않는다.
+        if (!storageProperties.isUpload(keyPrefix)) {
+            throw new IllegalStateException("업로드 키 접두사가 아닙니다: " + keyPrefix);
+        }
+
+        String contentType = normalizeContentType(file.getContentType());
+        if (!JPEG.equals(contentType) && !PNG.equals(contentType)) {
+            throw new BusinessException(ImageErrorCode.INVALID_IMAGE_TYPE);
+        }
+        if (file.getSize() > storageProperties.maxImageSize().toBytes()) {
+            throw new BusinessException(ImageErrorCode.IMAGE_TOO_LARGE);
+        }
+
+        byte[] content = readBytes(file);
+        // 선언된 크기(getSize)를 믿지 않고 실제로 읽은 바이트로 한 번 더 확인한다.
+        if (content.length > storageProperties.maxImageSize().toBytes()) {
+            throw new BusinessException(ImageErrorCode.IMAGE_TOO_LARGE);
+        }
+        if (!hasSignatureOf(content, contentType)) {
+            throw new BusinessException(ImageErrorCode.INVALID_IMAGE_TYPE);
+        }
+
+        return imageStorage.upload(keyPrefix, content, contentType);
+    }
+
+    public String resolveUrl(String key) {
+        return imageStorage.resolveUrl(key);
+    }
+
+    // 클라이언트가 키를 직접 보낼 수 있는 유일한 지점이다. 접두사만 보면 profile-presets/../ 같은
+    // 경로 조작이나 존재하지 않는 키를 허용하게 되므로, 화이트리스트 정확 일치만 통과시킨다.
+    public void assertValidPreset(String key) {
+        if (key == null || !storageProperties.presetKeys().contains(key)) {
+            throw new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY);
+        }
+    }
+
+    public boolean isUpload(String key) {
+        return storageProperties.isUpload(key);
+    }
+
+    // 프리셋은 모든 사용자가 공유하는 이미지라 지우면 안 된다. 사진 교체·자녀 삭제·회원 탈퇴처럼
+    // "이전 이미지를 정리하는" 자리에서 업로드 객체만 골라 지우기 위한 메서드다.
+    public void deleteIfUpload(String key) {
+        if (storageProperties.isUpload(key)) {
+            imageStorage.delete(key);
+        }
+    }
+
+    private String normalizeContentType(String contentType) {
+        if (contentType == null) {
+            return null;
+        }
+        // "image/jpeg; charset=..." 형태로 오는 경우가 있어 파라미터를 떼어낸다.
+        int parameterIndex = contentType.indexOf(';');
+        String mediaType = parameterIndex < 0 ? contentType : contentType.substring(0, parameterIndex);
+        return mediaType.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private byte[] readBytes(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (IOException e) {
+            throw new BusinessException(ImageErrorCode.IMAGE_UPLOAD_FAILED);
+        }
+    }
+
+    private boolean hasSignatureOf(byte[] content, String contentType) {
+        byte[] signature = JPEG.equals(contentType) ? JPEG_SIGNATURE : PNG_SIGNATURE;
+        if (content.length < signature.length) {
+            return false;
+        }
+        for (int i = 0; i < signature.length; i++) {
+            if (content[i] != signature[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+}

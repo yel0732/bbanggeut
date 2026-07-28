@@ -176,13 +176,6 @@ CREATE TABLE fruit_ninja_fruit_result (
         UNIQUE (game_session_id, fruit_code)
 );
 
--- 애플리케이션 시작 시 FruitNinjaRuleDataInitializer가 아래 기준 데이터를
--- 중복 없이 등록한다. 운영에서 자동 등록을 끄려면
--- FRUIT_NINJA_SEED_ENABLED=false를 설정한다.
--- version: fruit-ninja-v1, duration: 60 sec, slice speed: 950 px/s
--- spawn interval: 1100 ms, max visible fruit: 5
--- fruit codes are lowercase and must match the frontend result payload.
-
 -- CARDTASK-13: card_round ---------------------------------------------------
 
 CREATE TABLE card_round (

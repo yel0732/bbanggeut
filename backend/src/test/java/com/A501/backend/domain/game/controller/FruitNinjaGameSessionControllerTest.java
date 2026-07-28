@@ -5,7 +5,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -14,18 +13,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.A501.backend.domain.game.entity.FruitScoreConfig;
-import com.A501.backend.domain.game.entity.FruitType;
-import com.A501.backend.domain.game.entity.MovementGameRuleVersion;
 import com.A501.backend.domain.game.repository.FruitNinjaFruitResultRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
-import com.A501.backend.domain.game.repository.FruitScoreConfigRepository;
-import com.A501.backend.domain.game.repository.FruitTypeRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
-import com.A501.backend.domain.game.repository.MovementGameRuleVersionRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -35,31 +27,16 @@ class FruitNinjaGameSessionControllerTest {
     @Autowired GameSessionRepository gameSessionRepository;
     @Autowired FruitNinjaResultRepository fruitNinjaResultRepository;
     @Autowired FruitNinjaFruitResultRepository fruitResultRepository;
-    @Autowired MovementGameRuleVersionRepository ruleRepository;
-    @Autowired FruitTypeRepository fruitTypeRepository;
-    @Autowired FruitScoreConfigRepository scoreRepository;
 
     @BeforeEach
     void setUp() {
         fruitResultRepository.deleteAll();
         fruitNinjaResultRepository.deleteAll();
         gameSessionRepository.deleteAll();
-        scoreRepository.deleteAll();
-        fruitTypeRepository.deleteAll();
-        ruleRepository.deleteAll();
-
-        MovementGameRuleVersion rule = ruleRepository.saveAndFlush(
-                MovementGameRuleVersion.create(
-                        "fruit-v1", 120, BigDecimal.valueOf(1.5), 800, 5, true));
-        FruitType apple = fruitTypeRepository.saveAndFlush(FruitType.create("APPLE", "사과", 120));
-        FruitType banana = fruitTypeRepository.saveAndFlush(FruitType.create("BANANA", "바나나", 130));
-        scoreRepository.save(FruitScoreConfig.create(rule, apple, 100));
-        scoreRepository.save(FruitScoreConfig.create(rule, banana, 150));
-        scoreRepository.flush();
     }
 
     @Test
-    void savesCompletedFruitNinjaResultWithServerCalculatedScore() throws Exception {
+    void savesCompletedFruitNinjaResultWithClientScore() throws Exception {
         UUID clientPlayId = UUID.randomUUID();
 
         mockMvc.perform(post("/api/game-sessions")
@@ -67,10 +44,10 @@ class FruitNinjaGameSessionControllerTest {
                         .content(validRequest(clientPlayId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.clientPlayId").value(clientPlayId.toString()))
-                .andExpect(jsonPath("$.score").value(800));
+                .andExpect(jsonPath("$.score").value(999999));
 
         var session = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
-        assertThat(session.getScore()).isEqualTo(800);
+        assertThat(session.getScore()).isEqualTo(999999);
         assertThat(fruitNinjaResultRepository.findById(session.getGameSessionId()))
                 .get()
                 .extracting("rulesVersion", "totalFruitCount", "slicedFruitCount")
@@ -102,16 +79,20 @@ class FruitNinjaGameSessionControllerTest {
     }
 
     @Test
-    void rejectsIncompletePlayDurationWithoutSavingAnything() throws Exception {
-        String request = validRequest(UUID.randomUUID())
+    void acceptsClientPlayDurationWithoutRuleLookup() throws Exception {
+        UUID clientPlayId = UUID.randomUUID();
+        String request = validRequest(clientPlayId)
                 .replace("\"playDurationSeconds\": 120", "\"playDurationSeconds\": 80");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated());
 
-        assertNothingSaved();
+        assertThat(gameSessionRepository.findByClientPlayId(clientPlayId))
+                .get()
+                .extracting("playDurationSeconds")
+                .isEqualTo(80);
     }
 
     @Test
@@ -144,31 +125,39 @@ class FruitNinjaGameSessionControllerTest {
     }
 
     @Test
-    void rejectsUnknownRuleVersion() throws Exception {
-        String request = validRequest(UUID.randomUUID())
+    void storesClientRuleVersionWithoutRuleLookup() throws Exception {
+        UUID clientPlayId = UUID.randomUUID();
+        String request = validRequest(clientPlayId)
                 .replace("\"rulesVersion\": \"fruit-v1\"", "\"rulesVersion\": \"unknown\"");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("FRUIT_NINJA_RULE_NOT_FOUND"));
+                .andExpect(status().isCreated());
 
-        assertNothingSaved();
+        var session = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
+        assertThat(fruitNinjaResultRepository.findById(session.getGameSessionId()))
+                .get()
+                .extracting("rulesVersion")
+                .isEqualTo("unknown");
     }
 
     @Test
-    void rejectsFruitCodeThatDoesNotExistInRule() throws Exception {
-        String request = validRequest(UUID.randomUUID())
+    void storesClientFruitCodeWithoutRuleLookup() throws Exception {
+        UUID clientPlayId = UUID.randomUUID();
+        String request = validRequest(clientPlayId)
                 .replace("\"fruitCode\": \"BANANA\"", "\"fruitCode\": \"MANGO\"");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("FRUIT_NOT_FOUND_IN_RULE"));
+                .andExpect(status().isCreated());
 
-        assertNothingSaved();
+        var session = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
+        assertThat(fruitResultRepository.findAllByGameSessionIdOrderByFruitCode(
+                session.getGameSessionId()))
+                .extracting("fruitCode")
+                .containsExactly("APPLE", "MANGO");
     }
 
     private void assertNothingSaved() {

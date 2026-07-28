@@ -35,7 +35,8 @@ class ConversationStreamEventContractTest {
                     "text": "과일이 많이 나왔을 때 재미있었어.",
                     "sttConfidence": 0.91,
                     "startedAt": "2026-07-22T10:00:20+00:00",
-                    "completedAt": "2026-07-22T10:00:30+00:00"
+                    "completedAt": "2026-07-22T10:00:30+00:00",
+                    "topicType": "GAME"
                   }
                 }
                 """;
@@ -52,6 +53,7 @@ class ConversationStreamEventContractTest {
         assertThat(event.payload().get("text").asString())
                 .isEqualTo("과일이 많이 나왔을 때 재미있었어.");
         assertThat(event.payload().get("sttConfidence").asDouble()).isEqualTo(0.91);
+        assertThat(event.payload().get("topicType").asString()).isEqualTo("GAME");
     }
 
     @Test
@@ -69,12 +71,17 @@ class ConversationStreamEventContractTest {
                   "occurredAt": "2026-07-22T10:00:31+00:00",
                   "payload": {
                     "text": "그때 어떤 기분이 들었어?",
+                    "questionText": "그때 어떤 기분이 들었어?",
                     "targetSlot": "emotion",
                     "topicType": "GAME",
+                    "slotsTopicType": "GAME",
                     "topicSlots": {
                       "event": "과일 자르기", "people": [], "place": null,
                       "emotion": null, "emotionReason": null, "memorableMoment": null
-                    }
+                    },
+                    "topicQuestionCount": 2,
+                    "sessionQuestionCount": 2,
+                    "topicCompletionReason": null
                   }
                 }
                 """;
@@ -86,6 +93,9 @@ class ConversationStreamEventContractTest {
         assertThat(event.payload().get("targetSlot").asString()).isEqualTo("emotion");
         // §11-B: 재연결 스냅숏이 최신 슬롯을 담게 하는 동기화 필드
         assertThat(event.payload().get("topicType").asString()).isEqualTo("GAME");
+        assertThat(event.payload().get("slotsTopicType").asString()).isEqualTo("GAME");
+        assertThat(event.payload().get("topicQuestionCount").asInt()).isEqualTo(2);
+        assertThat(event.payload().get("sessionQuestionCount").asInt()).isEqualTo(2);
         assertThat(event.payload().get("topicSlots").get("event").asString())
                 .isEqualTo("과일 자르기");
         assertThat(event.payload().get("topicSlots").get("emotion").isNull()).isTrue();

@@ -131,6 +131,28 @@ class ConversationSessionStateTest {
     }
 
     @Test
+    void Realtime_Session_발급_시각을_epoch_cutover로_기록한다() {
+        ConversationSession session = createSession("conv_state_realtime_cutover");
+        LocalDateTime cutover = LocalDateTime.of(2026, 7, 28, 1, 0, 5);
+
+        session.startRealtimeSession(cutover);
+
+        assertThat(session.getCurrentSessionEpochStartedAt()).isEqualTo(cutover);
+    }
+
+    @Test
+    void 확정_질문_수는_단조_증가하며_최댓값을_넘을_수_없다() {
+        ConversationSession session = createSession("conv_state_sync_count");
+
+        session.synchronizeQuestionCount(3);
+        session.synchronizeQuestionCount(2);
+
+        assertThat(session.getQuestionCount()).isEqualTo(3);
+        assertThatThrownBy(() -> session.synchronizeQuestionCount(7))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void READY_상태에서도_Realtime_Session을_발급할_수_있다() {
         ConversationSession session = createSession("conv_state_realtime_ready");
 

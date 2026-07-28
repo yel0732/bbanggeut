@@ -74,6 +74,7 @@ public class ContextSnapshotBuilder {
                         DEFAULT_LANGUAGE,
                         session.getCurrentTopic(),
                         totalMaxQuestionCount,
+                        session.getQuestionCount(),
                         lastTurnSeq),
                 buildRecentConversationSummary(session),
                 topics,
@@ -119,6 +120,7 @@ public class ContextSnapshotBuilder {
                 topicState.getTopicType(),
                 topicState.getTopicOrder(),
                 topicState.getMaxQuestionCount(),
+                topicState.getQuestionCount(),
                 context.games(),
                 slots);
     }

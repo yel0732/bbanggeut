@@ -26,6 +26,7 @@ CREATE TABLE conversation_session (
     question_count         INT          NOT NULL,
     max_question_count     INT          NOT NULL,
     current_session_epoch  INT          NOT NULL,
+    current_session_epoch_started_at DATETIME(6) NULL,
     started_at             DATETIME(6)  NULL,
     completed_at           DATETIME(6)  NULL,
     termination_reason     VARCHAR(40)  NULL,
@@ -221,6 +222,7 @@ CREATE TABLE conversation_turn (
     interrupted_at         DATETIME(6)   NULL,
     interruption_reason    VARCHAR(40)   NULL,
     interruption_id        VARCHAR(40)   NULL,
+    version                BIGINT        NOT NULL DEFAULT 0,
     created_at             DATETIME(6)   NOT NULL,
     updated_at             DATETIME(6)   NOT NULL,
     PRIMARY KEY (turn_id),
@@ -236,6 +238,51 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+-- DIARY-3-T26/T27: Redis Stream processing receipts and failures -----------
+
+CREATE TABLE conversation_event (
+    event_id               VARCHAR(80)   NOT NULL,
+    redis_record_id        VARCHAR(80)   NOT NULL,
+    conversation_id        VARCHAR(40)   NOT NULL,
+    realtime_session_id    VARCHAR(80)   NOT NULL,
+    session_epoch          INT           NOT NULL,
+    event_type             VARCHAR(40)   NOT NULL,
+    turn_id                VARCHAR(40)   NULL,
+    occurred_at            DATETIME(6)   NOT NULL,
+    processed_at           DATETIME(6)   NOT NULL,
+    processing_result      VARCHAR(30)   NOT NULL,
+    created_at             DATETIME(6)   NOT NULL,
+    updated_at             DATETIME(6)   NOT NULL,
+    PRIMARY KEY (event_id),
+    CONSTRAINT uk_conversation_event_redis_record UNIQUE (redis_record_id)
+);
+
+CREATE INDEX idx_conversation_event_conversation_epoch
+    ON conversation_event (conversation_id, session_epoch);
+CREATE INDEX idx_conversation_event_turn
+    ON conversation_event (conversation_id, turn_id);
+
+CREATE TABLE conversation_event_failure (
+    conversation_event_failure_id BIGINT        NOT NULL AUTO_INCREMENT,
+    redis_record_id               VARCHAR(80)   NOT NULL,
+    event_id                      VARCHAR(80)   NULL,
+    conversation_id               VARCHAR(40)   NULL,
+    event_type                    VARCHAR(40)   NULL,
+    delivery_count                BIGINT        NOT NULL,
+    failed_at                     DATETIME(6)   NOT NULL,
+    failure_reason                VARCHAR(1000) NOT NULL,
+    created_at                    DATETIME(6)   NOT NULL,
+    updated_at                    DATETIME(6)   NOT NULL,
+    PRIMARY KEY (conversation_event_failure_id),
+    CONSTRAINT uk_conversation_event_failure_record UNIQUE (redis_record_id)
+);
+
+CREATE INDEX idx_conversation_event_failure_record
+    ON conversation_event_failure (redis_record_id);
+
+-- processing_result: APPLIED | IGNORED_STALE
+-- The original event payload/transcript is intentionally not copied into either table.
+
 -- REPORT-01: daily_report ---------------------------------------------------
 
 CREATE TABLE daily_report (

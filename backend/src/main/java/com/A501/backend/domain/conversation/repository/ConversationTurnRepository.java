@@ -1,10 +1,14 @@
 package com.A501.backend.domain.conversation.repository;
 
 import java.util.List;
+import java.util.Optional;
+
+import jakarta.persistence.LockModeType;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +46,22 @@ public interface ConversationTurnRepository extends JpaRepository<ConversationTu
             where turn.conversationId = :conversationId
             """)
     int findMaxTurnSeqByConversationId(@Param("conversationId") String conversationId);
+
+    @Query("""
+            select coalesce(max(turn.turnSeq), 0)
+            from ConversationTurn turn
+            where turn.conversationId = :conversationId
+              and turn.speaker = :speaker
+            """)
+    int findMaxTurnSeqByConversationIdAndSpeaker(
+            @Param("conversationId") String conversationId,
+            @Param("speaker") Speaker speaker);
+
+    Optional<ConversationTurn> findByConversationIdAndTurnSeq(
+            String conversationId,
+            int turnSeq);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select turn from ConversationTurn turn where turn.turnId = :turnId")
+    Optional<ConversationTurn> findByIdForUpdate(@Param("turnId") String turnId);
 }

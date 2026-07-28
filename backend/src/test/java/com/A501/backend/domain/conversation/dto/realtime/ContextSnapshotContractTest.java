@@ -25,13 +25,14 @@ class ContextSnapshotContractTest {
                 "conv_01JZ123ABC",
                 new RealtimeChildContext("하준"),
                 new RealtimeConversationContext(
-                        ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12, 4),
+                        ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12, 3, 4),
                 null,
                 List.of(
                         new RealtimeTopicSnapshot(
                                 ConversationTopic.GAME,
                                 1,
                                 6,
+                                3,
                                 List.of(new DialogueGameContextPayload(
                                         UUID.fromString("11111111-1111-1111-1111-111111111111"),
                                         1L,
@@ -52,6 +53,7 @@ class ContextSnapshotContractTest {
                 .contains("\"language\":\"ko-KR\"")
                 .contains("\"currentTopic\":\"GAME\"")
                 .contains("\"totalMaxQuestionCount\":12")
+                .contains("\"questionCount\":3")
                 .contains("\"lastTurnSeq\":4")
                 .contains("\"maxQuestionCount\":6")
                 .contains("\"oneQuestionAtATime\":true")
@@ -74,6 +76,7 @@ class ContextSnapshotContractTest {
                     "language": "ko-KR",
                     "currentTopic": "DAILY",
                     "totalMaxQuestionCount": 6,
+                    "questionCount": 2,
                     "lastTurnSeq": 0
                   },
                   "recentConversationSummary": null,
@@ -82,6 +85,7 @@ class ContextSnapshotContractTest {
                       "type": "DAILY",
                       "order": 1,
                       "maxQuestionCount": 6,
+                      "questionCount": 2,
                       "games": [],
                       "initialSlots": {
                         "event": null, "people": [], "place": null,
@@ -99,7 +103,9 @@ class ContextSnapshotContractTest {
         ContextSnapshot snapshot = objectMapper.readValue(json, ContextSnapshot.class);
 
         assertThat(snapshot.conversation().currentTopic()).isEqualTo(ConversationTopic.DAILY);
+        assertThat(snapshot.conversation().questionCount()).isEqualTo(2);
         assertThat(snapshot.topics()).hasSize(1);
+        assertThat(snapshot.topics().get(0).questionCount()).isEqualTo(2);
         assertThat(snapshot.topics().get(0).initialSlots().people()).isEmpty();
     }
 }

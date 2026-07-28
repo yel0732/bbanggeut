@@ -83,6 +83,7 @@ class TestPayloads:
                 stt_confidence=0.91,
                 started_at=datetime(2026, 7, 22, 10, 0, 20, tzinfo=timezone.utc),
                 completed_at=datetime(2026, 7, 22, 10, 0, 30, tzinfo=timezone.utc),
+                topic_type="GAME",
             )
         )
 
@@ -95,6 +96,7 @@ class TestPayloads:
             "sttConfidence": 0.91,
             "startedAt": "2026-07-22T10:00:20+00:00",
             "completedAt": "2026-07-22T10:00:30+00:00",
+            "topicType": "GAME",
         }
 
     @pytest.mark.asyncio
@@ -105,9 +107,12 @@ class TestPayloads:
                 turn_seq=3,
                 response_id="resp_003",
                 text="그때 어떤 기분이 들었어?",
+                question_text="그때 어떤 기분이 들었어?",
                 target_slot="emotion",
                 topic_type="GAME",
                 topic_slots=DiarySlots(event="과일 자르기", emotion=None),
+                topic_question_count=2,
+                session_question_count=2,
             )
         )
 
@@ -117,6 +122,9 @@ class TestPayloads:
         assert event["payload"]["targetSlot"] == "emotion"
         # §11-B 슬롯 동기화: 재연결 스냅숏이 최신 슬롯을 담게 하는 필드
         assert event["payload"]["topicType"] == "GAME"
+        assert event["payload"]["slotsTopicType"] == "GAME"
+        assert event["payload"]["topicQuestionCount"] == 2
+        assert event["payload"]["sessionQuestionCount"] == 2
         assert event["payload"]["topicSlots"]["event"] == "과일 자르기"
         assert event["payload"]["topicSlots"]["emotion"] is None
         assert event["payload"]["topicSlots"]["people"] == []

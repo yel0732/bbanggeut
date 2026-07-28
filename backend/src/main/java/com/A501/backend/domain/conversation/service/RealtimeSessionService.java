@@ -1,6 +1,8 @@
 package com.A501.backend.domain.conversation.service;
 
 import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -54,7 +56,9 @@ public class RealtimeSessionService {
             throw new ConversationException(ConversationErrorCode.INVALID_SESSION_STATE);
         }
 
-        int sessionEpoch = session.startRealtimeSession();
+        LocalDateTime epochStartedAt =
+                LocalDateTime.now(utcClock).truncatedTo(ChronoUnit.MICROS);
+        int sessionEpoch = session.startRealtimeSession(epochStartedAt);
         String realtimeSessionId = generateRealtimeSessionId();
 
         ContextSnapshot snapshot = contextSnapshotBuilder.build(session);

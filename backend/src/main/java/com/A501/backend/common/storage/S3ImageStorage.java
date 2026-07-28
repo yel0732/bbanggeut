@@ -2,7 +2,7 @@ package com.A501.backend.common.storage;
 
 import java.util.UUID;
 
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.A501.backend.common.exception.BusinessException;
@@ -21,7 +21,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 // (StorageProperties.bucketFor), 클라이언트가 버킷을 지정할 방법은 없다.
 @Slf4j
 @Component
-@Profile("!local")
+@ConditionalOnProperty(name = "app.storage.provider", havingValue = "s3")
 @RequiredArgsConstructor
 public class S3ImageStorage implements ImageStorage {
 

@@ -53,6 +53,10 @@ class AppSettings:
     tts_model: str = "gpt-4o-mini-tts"  # GMS의 유일한 TTS 모델
     tts_voice: str = "alloy"  # §11-B: 캐릭터 목소리는 제품 결정 — 임시 기본값
     tts_timeout_seconds: float = 10.0  # 첫 바이트까지(실측 TTFB 1.89s의 5배 여유)
+    # Conversation Event 발행(W05). 기본값 근거는 jira/plan/DIARY-3-W05.md §4.
+    stream_publish_max_attempts: int = 3
+    stream_publish_retry_seconds: float = 0.5
+    stream_outbox_size: int = 256
 
     def __post_init__(self) -> None:
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
@@ -142,6 +146,25 @@ class AppSettings:
             or self.tts_timeout_seconds <= 0
         ):
             raise ValueError("TTS_TIMEOUT_SECONDS must be a positive finite number")
+        if (
+            isinstance(self.stream_publish_max_attempts, bool)
+            or not isinstance(self.stream_publish_max_attempts, int)
+            or self.stream_publish_max_attempts < 1
+        ):
+            raise ValueError("STREAM_PUBLISH_MAX_ATTEMPTS must be a positive integer")
+        if (
+            isinstance(self.stream_outbox_size, bool)
+            or not isinstance(self.stream_outbox_size, int)
+            or self.stream_outbox_size < 1
+        ):
+            raise ValueError("STREAM_OUTBOX_SIZE must be a positive integer")
+        if (
+            isinstance(self.stream_publish_retry_seconds, bool)
+            or not isinstance(self.stream_publish_retry_seconds, (int, float))
+            or not math.isfinite(self.stream_publish_retry_seconds)
+            or self.stream_publish_retry_seconds <= 0
+        ):
+            raise ValueError("STREAM_PUBLISH_RETRY_SECONDS must be a positive finite number")
         for name, value in (
             ("STT_TIMEOUT_SECONDS", self.stt_timeout_seconds),
             ("STT_MAX_UTTERANCE_SECONDS", self.stt_max_utterance_seconds),
@@ -313,6 +336,18 @@ class AppSettings:
             tts_timeout_seconds=_parse_float(
                 values.get("TTS_TIMEOUT_SECONDS", "10"),
                 "TTS_TIMEOUT_SECONDS",
+            ),
+            stream_publish_max_attempts=_parse_int(
+                values.get("STREAM_PUBLISH_MAX_ATTEMPTS", "3"),
+                "STREAM_PUBLISH_MAX_ATTEMPTS",
+            ),
+            stream_publish_retry_seconds=_parse_float(
+                values.get("STREAM_PUBLISH_RETRY_SECONDS", "0.5"),
+                "STREAM_PUBLISH_RETRY_SECONDS",
+            ),
+            stream_outbox_size=_parse_int(
+                values.get("STREAM_OUTBOX_SIZE", "256"),
+                "STREAM_OUTBOX_SIZE",
             ),
         )
 

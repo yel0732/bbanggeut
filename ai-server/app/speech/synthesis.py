@@ -20,6 +20,7 @@ import contextlib
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime, timezone
 
 from app.events.outbound import ConversationEventPublisher
 from app.speech.speaker import PcmFramer, ResponseAudioQueue, SpeakerHandle
@@ -28,6 +29,10 @@ from app.speech.tts_client import TTS_OUTPUT_FORMAT, SpeechSynthesizer, TtsError
 # 취소 판정은 세션의 ResponseRegistry를 직접 알지 않고 주입 콜백으로 받는다
 # (capability가 orchestration을 참조하지 않도록 — manager의 epoch 훅과 같은 방식).
 CancelCheck = Callable[[str], bool]
+# (turn_id, turn_seq, response_id, text, audio_started_at, audio_completed_at)
+# — 송신 완료 시점(wall clock)을 W05 Stream 발행에 넘긴다. capability가 Stream을
+# 직접 알지 않도록 콜백 주입(§1 호환 수정 5).
+CompletedCallback = Callable[[str, int, str, str, datetime, datetime], None]
 
 _TTS_FAILED = "TTS_FAILED"
 _DRAIN_POLL_SECONDS = 0.02
@@ -43,12 +48,16 @@ class SpeechSynthesisService:
         publisher: ConversationEventPublisher,
         is_cancelled: CancelCheck,
         logger: logging.Logger,
+        on_completed: CompletedCallback | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._synthesizer = synthesizer
         self._speaker = speaker
         self._publisher = publisher
         self._is_cancelled = is_cancelled
         self._logger = logger
+        self._on_completed = on_completed
+        self._clock = clock
         self._task: asyncio.Task | None = None
         self._closed = False
 
@@ -86,6 +95,7 @@ class SpeechSynthesisService:
         started = False
         pcm_bytes = 0
         started_at = time.monotonic()
+        audio_started_at: datetime | None = None
         try:
             async for chunk in self._synthesizer.synthesize(text):
                 if self._is_cancelled(response_id) or queue.is_flushed:
@@ -98,12 +108,14 @@ class SpeechSynthesisService:
                 for frame in framer.push(chunk):
                     if not started:
                         started = True
+                        audio_started_at = self._clock()
                         self._emit_started(turn_id, turn_seq, response_id, started_at)
                     pcm_bytes += frame.samples * TTS_OUTPUT_FORMAT.bytes_per_sample
                     await queue.put(frame)
             for frame in framer.flush():
                 if not started:
                     started = True
+                    audio_started_at = self._clock()
                     self._emit_started(turn_id, turn_seq, response_id, started_at)
                 pcm_bytes += frame.samples * TTS_OUTPUT_FORMAT.bytes_per_sample
                 await queue.put(frame)
@@ -140,6 +152,11 @@ class SpeechSynthesisService:
             turn_seq=turn_seq,
             response_id=response_id,
         )
+        if self._on_completed is not None and audio_started_at is not None:
+            # 송신 완료 시각 = 지금(drain 완료 직후). W05가 AI_TURN_COMPLETED로 발행.
+            self._on_completed(
+                turn_id, turn_seq, response_id, text, audio_started_at, self._clock()
+            )
 
     def _emit_started(
         self, turn_id: str, turn_seq: int, response_id: str, started_at: float

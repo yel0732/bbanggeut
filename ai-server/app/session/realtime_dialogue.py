@@ -27,6 +27,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from app.dialogue.pipeline import (
     DialoguePipelineError,
@@ -48,6 +49,7 @@ from app.dialogue.policy.termination import (
 from app.dialogue.question.fallback import build_fallback_question
 from app.dialogue.schemas import DialogueTopic, DialogueTopicContext, DiarySlots
 from app.events.outbound import ConversationEventPublisher
+from app.events.stream import ConversationStreamProducer
 from app.realtime.context_snapshot import ContextSnapshot, TopicSnapshot
 from app.session.response_registry import ResponseRegistry
 from app.speech.recognizer import SttResult
@@ -67,6 +69,15 @@ _LLM_ERROR_CODE = "LLM_TIMEOUT"  # §22의 LLM 계열 공개 코드(복구: Fall
 
 def _default_request_id_factory() -> str:
     return f"req_{uuid.uuid4().hex}"
+
+
+@dataclass(frozen=True)
+class _AiTurnRef:
+    """Identifiers of a published AI turn, threaded to the Stream event."""
+
+    turn_id: str
+    turn_seq: int
+    response_id: str
 
 
 @dataclass
@@ -143,6 +154,8 @@ class RealtimeDialogueManager:
         logger: logging.Logger,
         request_id_factory: RequestIdFactory = _default_request_id_factory,
         speak: SpeakCallback | None = None,
+        stream_producer: ConversationStreamProducer | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._pipeline = dialogue_pipeline
         self._termination_policy = termination_policy
@@ -153,6 +166,18 @@ class RealtimeDialogueManager:
         self._is_epoch_current = is_epoch_current
         self._logger = logger
         self._request_id_factory = request_id_factory
+        self._speak = speak
+        self._stream = stream_producer
+        self._clock = clock
+
+    def set_speak(self, speak: SpeakCallback) -> None:
+        """Wire the synthesis speak callback after construction.
+
+        Assembly builds the manager first (synthesis needs the manager's
+        ``emit_ai_turn_completed``), then sets this — resolving the circular
+        speak↔on_completed dependency.
+        """
+
         self._speak = speak
 
     # --- guard hooks (T13) -------------------------------------------------
@@ -177,6 +202,7 @@ class RealtimeDialogueManager:
             return
         state.consecutive_no_responses = 0
         state.known_turn_ids.add(turn.turn_id)
+        self._emit_child_turn_finalized(turn, result)
 
         topic = state.current_topic
         request = DialogueTurnRequest(
@@ -229,20 +255,28 @@ class RealtimeDialogueManager:
                 "conversation terminated by dialogue policy",
                 extra={"termination_reason": _reason_value(response)},
             )
+            self._emit_session_completed(_reason_value(response))
             return
 
-        published = self._publish_assistant_text(response.assistant_message)
-        if not published:
+        ai_ref = self._publish_assistant_text(response.assistant_message)
+        if ai_ref is None:
             return
 
         if response.decision is DialogueTurnDecision.SWITCH_TOPIC:
             topic.slots = response.updated_slots  # 끝난 주제의 최종 슬롯
+            # 전환 질문은 목표가 없다 — 새 주제 오프닝이다(§11-C: null target).
+            self._emit_ai_turn_generated(ai_ref, response.assistant_message, None, topic)
             state.advance_topic()
             # 전환 질문은 새 주제의 첫 질문으로 센다.
             state.current_topic.question_count = 1
         else:
             topic.slots = response.updated_slots
             topic.question_count += 1
+            # 이 질문이 겨냥한 목표를 갱신 슬롯으로 재계산한다(§11-C, 결정론적).
+            target = select_next_question_target(topic.slots)
+            self._emit_ai_turn_generated(
+                ai_ref, response.assistant_message, target, topic
+            )
         state.remember_question(response.assistant_question)
 
     # --- no-response (ADR-018 연결) -----------------------------------------
@@ -283,25 +317,31 @@ class RealtimeDialogueManager:
                 "conversation terminated by no-response ladder",
                 extra={"consecutive_no_responses": decision.consecutive_no_responses},
             )
+            self._emit_session_completed("INACTIVITY_TIMEOUT")
             return
 
         if decision.recovery_prompt is not None:
             prompt_text = decision.recovery_prompt.text
+            target = decision.next_target
         else:
             # SKIP: 다음 목표의 규칙 기반 질문으로 넘어간다(ADR-017).
             prompt_text = build_fallback_question(decision.next_target).text
-        if self._publish_assistant_text(prompt_text):
+            target = decision.next_target
+        ai_ref = self._publish_assistant_text(prompt_text)
+        if ai_ref is not None:
+            self._emit_ai_turn_generated(ai_ref, prompt_text, target, topic)
             # 재질문은 질문 수에 세지 않는다(W03 plan §7-E) — 상태만 갱신.
             self._state.remember_question(prompt_text)
 
     # --- publishing (T15) ----------------------------------------------------
 
-    def _publish_assistant_text(self, text: str) -> bool:
+    def _publish_assistant_text(self, text: str) -> _AiTurnRef | None:
         """Issue an AI turn + response and publish it, unless it must be discarded.
 
-        The re-check happens here, after any await points, because the LLM
-        call cannot be interrupted — cancelled/stale results are dropped at
-        the last gate before the wire (ADR-012, W03 완료 조건).
+        Returns the AI turn's identifiers on success (so the caller can emit the
+        matching Stream event), or ``None`` when discarded. The re-check happens
+        here, after any await points, because the LLM call cannot be interrupted
+        — cancelled/stale results are dropped at the last gate (ADR-012).
         """
 
         state = self._state
@@ -313,7 +353,7 @@ class RealtimeDialogueManager:
                 "assistant response discarded before publish",
                 extra={"turn_id": ai_turn.turn_id, "response_id": response_id},
             )
-            return False
+            return None
 
         state.known_turn_ids.add(ai_turn.turn_id)
         self._publisher.publish(
@@ -333,7 +373,74 @@ class RealtimeDialogueManager:
         if self._speak is not None:
             # 텍스트 발행 직후 음성 합성을 시작한다(W04). 미주입이면 텍스트 전용.
             self._speak(ai_turn.turn_id, ai_turn.turn_seq, response_id, text)
-        return True
+        return _AiTurnRef(ai_turn.turn_id, ai_turn.turn_seq, response_id)
+
+    # --- Stream 발행 (W05) ---------------------------------------------------
+
+    def _emit_child_turn_finalized(self, turn: SttTurn, result: SttResult) -> None:
+        if self._stream is None:
+            return
+        completed_at = self._clock()
+        # 발화 시작 시각은 근사한다: SttResult에 wall 시각이 없고 오디오 길이는
+        # 정확하므로 오차는 finalize 지연(수십 ms)뿐이다(§11-E).
+        started_at = completed_at - timedelta(seconds=result.audio_seconds)
+        self._stream.publish_child_turn_finalized(
+            turn_id=turn.turn_id,
+            turn_seq=turn.turn_seq,
+            text=result.text,
+            stt_confidence=result.confidence,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+
+    def _emit_ai_turn_generated(
+        self,
+        ref: _AiTurnRef,
+        text: str,
+        target: QuestionTarget | None,
+        topic: _TopicState,
+    ) -> None:
+        if self._stream is None:
+            return
+        self._stream.publish_ai_turn_generated(
+            turn_id=ref.turn_id,
+            turn_seq=ref.turn_seq,
+            response_id=ref.response_id,
+            text=text,
+            target_slot=target.value if target is not None else None,
+            topic_type=topic.snapshot.type.value,
+            topic_slots=topic.slots,
+        )
+
+    def _emit_session_completed(self, reason: str | None) -> None:
+        if self._stream is None:
+            return
+        self._stream.publish_session_completed(
+            reason=reason or "COMPLETED",
+            completed_at=self._clock(),
+        )
+
+    def emit_ai_turn_completed(
+        self,
+        turn_id: str,
+        turn_seq: int,
+        response_id: str,
+        text: str,
+        audio_started_at: datetime,
+        audio_completed_at: datetime,
+    ) -> None:
+        """synthesis의 on_completed 콜백이 호출한다(§11 호환 수정 5)."""
+
+        if self._stream is None:
+            return
+        self._stream.publish_ai_turn_completed(
+            turn_id=turn_id,
+            turn_seq=turn_seq,
+            response_id=response_id,
+            text=text,
+            audio_started_at=audio_started_at,
+            audio_completed_at=audio_completed_at,
+        )
 
 
 def _reason_value(response: DialogueTurnResponse) -> str | None:
@@ -354,11 +461,13 @@ class RealtimeDialogueSession:
         manager: RealtimeDialogueManager,
         state: DialogueSessionState,
         synthesis: SpeechSynthesisService | None = None,
+        stream_producer: ConversationStreamProducer | None = None,
     ) -> None:
         self.audio_sink = audio_sink
         self.manager = manager
         self.state = state
         self.synthesis = synthesis
+        self.stream_producer = stream_producer
 
     def is_response_cancelled(self, response_id: str) -> bool:
         return self.manager.is_response_cancelled(response_id)
@@ -372,14 +481,18 @@ class RealtimeDialogueSession:
         if self.synthesis is not None:
             await self.synthesis.aclose()
         await self.audio_sink.aclose()
+        # Stream은 마지막에 닫는다 — 위 정리 중 발행된 이벤트도 배출하도록.
+        if self.stream_producer is not None:
+            await self.stream_producer.aclose()
 
 
 SttPipelineFactory = Callable[..., SessionSttPipeline]
 SnapshotReader = Callable[[str], Awaitable[ContextSnapshot | None]]
-# (speaker, publisher, response_registry) -> service. 음성 출력이 있을 때만 만든다.
-SynthesisServiceFactory = Callable[
-    [SpeakerHandle, ConversationEventPublisher, ResponseRegistry],
-    SpeechSynthesisService,
+# (speaker, publisher, response_registry, on_completed) -> service.
+SynthesisServiceFactory = Callable[..., SpeechSynthesisService]
+# (publisher) -> producer. 발행이 필요할 때만 주입(미주입 시 발행 없음).
+StreamProducerFactory = Callable[
+    [ConversationEventPublisher], ConversationStreamProducer
 ]
 
 
@@ -396,6 +509,7 @@ async def create_realtime_dialogue_session(
     logger: logging.Logger,
     speaker: SpeakerHandle | None = None,
     synthesis_service_factory: SynthesisServiceFactory | None = None,
+    stream_producer_factory: StreamProducerFactory | None = None,
 ) -> RealtimeDialogueSession:
     """Assemble one connection's dialogue session (T11 read-once included).
 
@@ -417,12 +531,17 @@ async def create_realtime_dialogue_session(
         snapshot = default_snapshot(conversation_id)
 
     state = DialogueSessionState(snapshot)
-    turn_sequencer = TurnSequencer()  # 아이 턴과 AI 턴이 공유하는 단일 수열(§4)
+    # 재연결 시 저장된 마지막 turnSeq 다음부터 발급한다(§11-A). 아이 턴과 AI 턴이
+    # 이 단일 수열을 공유한다(§4).
+    turn_sequencer = TurnSequencer(
+        start_seq=snapshot.conversation.last_turn_seq + 1
+    )
     response_registry = ResponseRegistry()
 
-    synthesis: SpeechSynthesisService | None = None
-    if speaker is not None and synthesis_service_factory is not None:
-        synthesis = synthesis_service_factory(speaker, publisher, response_registry)
+    stream_producer: ConversationStreamProducer | None = None
+    if stream_producer_factory is not None:
+        stream_producer = stream_producer_factory(publisher)
+        stream_producer.start()
 
     manager = RealtimeDialogueManager(
         dialogue_pipeline=dialogue_pipeline,
@@ -433,8 +552,21 @@ async def create_realtime_dialogue_session(
         response_registry=response_registry,
         is_epoch_current=is_epoch_current,
         logger=logger,
-        speak=synthesis.speak if synthesis is not None else None,
+        stream_producer=stream_producer,
     )
+
+    synthesis: SpeechSynthesisService | None = None
+    if speaker is not None and synthesis_service_factory is not None:
+        # synthesis는 완료 시각을 manager로 넘겨 AI_TURN_COMPLETED를 발행하고,
+        # manager는 synthesis.speak로 발화를 시작한다 — 순환은 speak를 나중에 건다.
+        synthesis = synthesis_service_factory(
+            speaker, publisher, response_registry, manager.emit_ai_turn_completed
+        )
+        manager.set_speak(synthesis.speak)
+
+    if stream_producer is not None:
+        stream_producer.publish_session_started(datetime.now(timezone.utc))
+
     audio_sink = stt_pipeline_factory(
         publisher,
         turn_sequencer=turn_sequencer,
@@ -442,5 +574,9 @@ async def create_realtime_dialogue_session(
         on_no_speech=manager.handle_no_speech,
     )
     return RealtimeDialogueSession(
-        audio_sink=audio_sink, manager=manager, state=state, synthesis=synthesis
+        audio_sink=audio_sink,
+        manager=manager,
+        state=state,
+        synthesis=synthesis,
+        stream_producer=stream_producer,
     )

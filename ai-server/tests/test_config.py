@@ -75,6 +75,9 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.tts_model == "gpt-4o-mini-tts"
     assert settings.tts_voice == "alloy"
     assert settings.tts_timeout_seconds == 10.0
+    assert settings.stream_publish_max_attempts == 3
+    assert settings.stream_publish_retry_seconds == 0.5
+    assert settings.stream_outbox_size == 256
 
 
 def test_reads_realtime_settings_from_environment() -> None:
@@ -103,6 +106,9 @@ def test_reads_realtime_settings_from_environment() -> None:
             "TTS_MODEL": "tts-x",
             "TTS_VOICE": "verse",
             "TTS_TIMEOUT_SECONDS": "7",
+            "STREAM_PUBLISH_MAX_ATTEMPTS": "5",
+            "STREAM_PUBLISH_RETRY_SECONDS": "1.5",
+            "STREAM_OUTBOX_SIZE": "64",
         }
     )
 
@@ -133,6 +139,9 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.tts_model == "tts-x"
     assert settings.tts_voice == "verse"
     assert settings.tts_timeout_seconds == 7.0
+    assert settings.stream_publish_max_attempts == 5
+    assert settings.stream_publish_retry_seconds == 1.5
+    assert settings.stream_outbox_size == 64
 
 
 def test_supports_legacy_model_for_analysis_only() -> None:
@@ -185,6 +194,9 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "TTS_MODEL": " "},
         {"GMS_KEY": "key", "TTS_VOICE": " "},
         {"GMS_KEY": "key", "TTS_TIMEOUT_SECONDS": "0"},
+        {"GMS_KEY": "key", "STREAM_PUBLISH_MAX_ATTEMPTS": "0"},
+        {"GMS_KEY": "key", "STREAM_OUTBOX_SIZE": "0"},
+        {"GMS_KEY": "key", "STREAM_PUBLISH_RETRY_SECONDS": "0"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

@@ -233,3 +233,63 @@ class TestEmptyAudio:
             await asyncio.sleep(0)
 
         assert channel.sent == []
+
+
+class TestOnCompleted:
+    @pytest.mark.asyncio
+    async def test_on_completed_fires_with_wall_times(self) -> None:
+        from datetime import datetime, timezone
+
+        seen: list = []
+        synth = FakeSpeechSynthesizer([_CHUNK])
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel, conversation_id="c", realtime_session_id="r",
+            session_epoch=1, logger=_LOGGER)
+        registry = ResponseRegistry(response_id_factory=lambda: "resp_x")
+        speaker = SpeakerHandle(SpeakerAudioTrack(), max_queue_frames=500)
+        service = SpeechSynthesisService(
+            synth, speaker, publisher, registry.is_cancelled, _LOGGER,
+            on_completed=lambda *a: seen.append(a),
+            clock=lambda: datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc),
+        )
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+        async def _drain() -> None:
+            while not seen:
+                q = speaker._current  # noqa: SLF001
+                if q is not None:
+                    while q.get_nowait() is not None:
+                        pass
+                await asyncio.sleep(0.01)
+        await asyncio.wait_for(_drain(), timeout=2)
+
+        turn_id, turn_seq, response_id, text, started, completed = seen[0]
+        assert (turn_id, turn_seq, response_id, text) == ("turn_2", 2, "resp_1", "질문")
+        assert started.tzinfo is not None and completed.tzinfo is not None
+
+    @pytest.mark.asyncio
+    async def test_on_completed_not_called_on_cancel(self) -> None:
+        seen: list = []
+        synth = FakeSpeechSynthesizer([_CHUNK, _CHUNK, _CHUNK])
+        synth.release = asyncio.Event()
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel, conversation_id="c", realtime_session_id="r",
+            session_epoch=1, logger=_LOGGER)
+        registry = ResponseRegistry(response_id_factory=lambda: "resp_x")
+        speaker = SpeakerHandle(SpeakerAudioTrack(), max_queue_frames=500)
+        service = SpeechSynthesisService(
+            synth, speaker, publisher, registry.is_cancelled, _LOGGER,
+            on_completed=lambda *a: seen.append(a))
+
+        registry.issue()
+        service.speak("turn_2", 2, "resp_x", "질문")
+        await synth.started.wait()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        registry.cancel("resp_x")
+        synth.release.set()
+        await service.aclose()
+
+        assert seen == []

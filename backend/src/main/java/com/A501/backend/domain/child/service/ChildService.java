@@ -48,7 +48,10 @@ public class ChildService {
     public void softDeleteChildrenOf(Long parentId) {
         LocalDateTime now = LocalDateTime.now(KST);
         childRepository.findAllByParentIdAndDeletedAtIsNull(parentId)
-                .forEach(child -> child.softDelete(now));
+                .forEach(child -> {
+                    child.softDelete(now);
+                    purgeUploadedImage(child);
+                });
     }
 
     @Transactional
@@ -113,6 +116,13 @@ public class ChildService {
         Child child = findOwnedChild(parentId, childId);
         pinService.verifyPin(parentId, pin);
         child.softDelete(LocalDateTime.now(KST));
+        purgeUploadedImage(child);
+    }
+
+    // 소프트 삭제라 DB 행은 남지만 아이 실물 사진은 즉시 파기한다. 대화·게임·리포트 등 타 도메인의
+    // hard-delete purge는 팀 논의 대기 중이지만, 이 사진은 child 도메인 소유 리소스라 지금 처리한다.
+    private void purgeUploadedImage(Child child) {
+        child.changeProfileImage(profileImageService.purgeUploadedImage(child.getProfileImageKey()));
     }
 
     // 생성 시점에는 childId가 없어 웹캠 사진의 키를 만들 수 없으므로 프리셋만 허용한다.

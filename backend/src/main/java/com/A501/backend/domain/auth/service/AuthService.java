@@ -167,6 +167,9 @@ public class AuthService {
         }
 
         parent.withdraw(LocalDateTime.now(KST));
+        // 소프트 삭제라 계정 행은 남지만 업로드한 실물 사진은 즉시 파기한다. 자녀 쪽 파기는
+        // childService가 같은 정책으로 처리한다.
+        parent.changeProfileImage(profileImageService.purgeUploadedImage(parent.getProfileImageKey()));
         childService.softDeleteChildrenOf(parentId);
         refreshTokenRepository.findAllByParentAndRevokedFalse(parent).forEach(RefreshToken::revoke);
     }

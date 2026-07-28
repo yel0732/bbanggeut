@@ -95,6 +95,22 @@ public class ProfileImageService {
         }
     }
 
+    // 자녀 삭제·회원 탈퇴용. 업로드(아이 실물 사진) 객체를 파기하고 **이후 저장해야 할 키**를 돌려준다.
+    // 소프트 삭제라 DB 행은 남지만 사진은 즉시 파기하며, 지워진 객체를 가리키는 키가 남지 않도록
+    // 기본 프리셋으로 되돌린다.
+    //
+    // 프리셋이었다면 아무것도 지우지 않고 그 키를 그대로 돌려준다 — 공유 자원이라 지우면 안 되고,
+    // 사용자가 고른 프리셋을 굳이 기본값으로 덮을 이유도 없다.
+    //
+    // 부모(auth)와 자녀(child) 두 도메인이 같은 정책을 쓰므로 여기 한 곳에 둔다.
+    public String purgeUploadedImage(String currentKey) {
+        if (!storageProperties.isUpload(currentKey)) {
+            return currentKey;
+        }
+        imageStorage.delete(currentKey);
+        return storageProperties.defaultPresetKey();
+    }
+
     private String normalizeContentType(String contentType) {
         if (contentType == null) {
             return null;

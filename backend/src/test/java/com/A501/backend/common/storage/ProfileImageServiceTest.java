@@ -238,6 +238,27 @@ class ProfileImageServiceTest {
         assertThat(profileImageService.defaultPresetKey()).isEqualTo(PRESET_KEY);
     }
 
+    // 자녀 삭제·회원 탈퇴 시 아이 실물 사진은 즉시 파기하고, 지워진 객체를 가리키는 키가 남지
+    // 않도록 기본 프리셋으로 되돌린다.
+    @Test
+    void purgeUploadedImage_deletesObjectAndReturnsDefaultPreset() {
+        String uploadKey = UPLOAD_PREFIX + "abc";
+
+        String nextKey = profileImageService.purgeUploadedImage(uploadKey);
+
+        verify(imageStorage).delete(uploadKey);
+        assertThat(nextKey).isEqualTo(PRESET_KEY);
+    }
+
+    // 프리셋은 공유 자원이라 지우면 안 되고, 사용자가 고른 프리셋을 기본값으로 덮을 이유도 없다.
+    @Test
+    void purgeUploadedImage_keepsPresetKeyUntouched() {
+        String nextKey = profileImageService.purgeUploadedImage("profile-presets/preset-2");
+
+        verify(imageStorage, never()).delete(any());
+        assertThat(nextKey).isEqualTo("profile-presets/preset-2");
+    }
+
     @Test
     void resolveUrl_delegatesToStorage() {
         when(imageStorage.resolveUrl(PRESET_KEY)).thenReturn("https://cdn.example.com/" + PRESET_KEY);

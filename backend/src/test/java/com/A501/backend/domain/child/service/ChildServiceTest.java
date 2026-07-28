@@ -336,6 +336,49 @@ class ChildServiceTest {
         assertThat(child.isDeleted()).isTrue();
     }
 
+    // 소프트 삭제라 DB 행은 남지만 아이 실물 사진은 즉시 파기되어야 한다.
+    @Test
+    void deleteChild_purgesUploadedImageAndResetsKey() {
+        Child child = Child.create(1L, "chorong", UPLOAD_KEY);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(profileImageService.purgeUploadedImage(UPLOAD_KEY)).thenReturn(PRESET_KEY);
+
+        childService.deleteChild(1L, 10L, "1234");
+
+        assertThat(child.isDeleted()).isTrue();
+        assertThat(child.getProfileImageKey()).isEqualTo(PRESET_KEY);
+    }
+
+    // PIN이 틀려 삭제가 거절되면 사진도 남아 있어야 한다.
+    @Test
+    void deleteChild_doesNotPurgeImageWhenPinRejected() {
+        Child child = Child.create(1L, "chorong", UPLOAD_KEY);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH)).when(pinService).verifyPin(1L, "0000");
+
+        assertThatThrownBy(() -> childService.deleteChild(1L, 10L, "0000"))
+                .isInstanceOf(BusinessException.class);
+        verify(profileImageService, never()).purgeUploadedImage(any());
+        assertThat(child.getProfileImageKey()).isEqualTo(UPLOAD_KEY);
+    }
+
+    // 탈퇴 경유 경로. 자녀가 여럿이면 각자의 사진이 모두 파기되어야 한다.
+    @Test
+    void softDeleteChildrenOf_purgesUploadedImageOfEveryChild() {
+        Child uploaded = Child.create(1L, "chorong", UPLOAD_KEY);
+        Child preset = Child.create(1L, "banjjak", OTHER_PRESET_KEY);
+        when(childRepository.findAllByParentIdAndDeletedAtIsNull(1L)).thenReturn(List.of(uploaded, preset));
+        when(profileImageService.purgeUploadedImage(UPLOAD_KEY)).thenReturn(PRESET_KEY);
+        when(profileImageService.purgeUploadedImage(OTHER_PRESET_KEY)).thenReturn(OTHER_PRESET_KEY);
+
+        childService.softDeleteChildrenOf(1L);
+
+        assertThat(uploaded.getProfileImageKey()).isEqualTo(PRESET_KEY);
+        assertThat(preset.getProfileImageKey()).isEqualTo(OTHER_PRESET_KEY);
+        verify(profileImageService).purgeUploadedImage(UPLOAD_KEY);
+        verify(profileImageService).purgeUploadedImage(OTHER_PRESET_KEY);
+    }
+
     @Test
     void deleteChild_throwsNotFoundBeforeCheckingPinWhenChildMissing() {
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.empty());

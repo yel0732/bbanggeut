@@ -670,6 +670,40 @@ class AuthServiceTest {
         assertThat(token.isRevoked()).isTrue();
     }
 
+    // 소프트 삭제라 계정 행은 남지만 부모가 올린 실물 사진은 즉시 파기되어야 한다.
+    @Test
+    void withdraw_purgesUploadedProfileImageAndResetsKey() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        parent.changeProfileImage("profile-uploads/1/parent/abc");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent)).thenReturn(List.of());
+        when(profileImageService.purgeUploadedImage("profile-uploads/1/parent/abc"))
+                .thenReturn("profile-presets/preset-1");
+
+        authService.withdraw(1L, null);
+
+        assertThat(parent.getProfileImageKey()).isEqualTo("profile-presets/preset-1");
+        // 자녀 사진 파기는 child 도메인이 같은 정책으로 처리한다.
+        verify(childService).softDeleteChildrenOf(1L);
+    }
+
+    // PIN이 틀려 탈퇴가 거절되면 사진도 남아 있어야 한다.
+    @Test
+    void withdraw_doesNotPurgeProfileImageWhenPinRejected() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        parent.changeProfileImage("profile-uploads/1/parent/abc");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH)).when(pinService).verifyPin(1L, "0000");
+
+        assertThatThrownBy(() -> authService.withdraw(1L, "0000")).isInstanceOf(BusinessException.class);
+
+        verify(profileImageService, never()).purgeUploadedImage(any());
+        assertThat(parent.getProfileImageKey()).isEqualTo("profile-uploads/1/parent/abc");
+    }
+
     @Test
     void withdraw_allowsWithoutPinWhenAccountHasNoPin() {
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));

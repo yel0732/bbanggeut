@@ -231,7 +231,7 @@ function parseSseBlock(block: string): ReportNotificationEvent | null {
     ) {
       return null
     }
-    const childName = [
+    const explicitChildName = [
       data.name,
       data.childName,
       data.childNickname,
@@ -239,12 +239,16 @@ function parseSseBlock(block: string): ReportNotificationEvent | null {
     ].find(
       (value): value is string => typeof value === 'string' && value.trim().length > 0,
     )
+    const childName =
+      explicitChildName?.trim() ??
+      data.message.match(/^(.+?)의 일일 리포트/)?.[1]?.trim() ??
+      ''
     return {
       id,
       type,
       reportDate: data.reportDate,
       message: data.message,
-      childName: childName?.trim() ?? '',
+      childName,
     }
   } catch {
     return null

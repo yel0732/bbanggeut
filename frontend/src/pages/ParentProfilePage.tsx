@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { completeNewSignupOnboarding } from '@/api/auth'
+import { completeNewSignupOnboarding, getStoredAccessToken } from '@/api/auth'
+import {
+  createChildProfile as createBackendChildProfile,
+  setParentPin,
+} from '@/api/profiles'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -23,6 +27,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
+  childImageNumFromPhoto,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
   saveChildProfiles,
@@ -30,6 +35,16 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
+const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
+
+function loadOnboardingPinDraft() {
+  try {
+    const pin = window.sessionStorage.getItem(ONBOARDING_PIN_DRAFT_KEY)
+    return /^\d{4}$/.test(pin ?? '') ? pin : null
+  } catch {
+    return null
+  }
+}
 const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 
 export function ParentProfilePage() {
@@ -52,13 +67,14 @@ export function ParentProfilePage() {
   const [childFormMessage, setChildFormMessage] = useState('')
   const childProfileCount = loadChildProfiles().length
   const isChildProfileLimitReached = childProfileCount >= MAX_CHILD_PROFILES
-  const [pin, setPin] = useState('')
-  const [firstPin, setFirstPin] = useState<string | null>(null)
+  const [pin, setPin] = useState(() => loadOnboardingPinDraft() ?? '')
+  const [firstPin, setFirstPin] = useState<string | null>(() =>
+    loadOnboardingPinDraft(),
+  )
   const [pinMessage, setPinMessage] = useState('')
   const [isPinError, setIsPinError] = useState(false)
   const isEditMode = searchParams.get('edit') === '1'
-  const isPinConfirmed =
-    firstPin !== null && pin.length === PIN_LENGTH && pin === firstPin
+  const isPinConfirmed = firstPin !== null && pin === firstPin
 
   useEffect(() => {
     return () => {
@@ -108,6 +124,7 @@ export function ParentProfilePage() {
       }
 
       if (nextPin === firstPin) {
+        window.sessionStorage.setItem(ONBOARDING_PIN_DRAFT_KEY, nextPin)
         setPinMessage('핀번호가 설정되었어요 ✓')
         return
       }
@@ -222,7 +239,7 @@ export function ParentProfilePage() {
     setChildFormMessage('')
   }
 
-  const createChildProfile = () => {
+  const createChildProfile = async () => {
     const profiles = loadChildProfiles()
     if (profiles.length >= MAX_CHILD_PROFILES) {
       setChildFormMessage(
@@ -246,27 +263,62 @@ export function ParentProfilePage() {
       setChildFormMessage('같은 이름의 아이 프로필이 이미 있어요.')
       return
     }
+    const localProfile = {
+      id:
+        typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()}`,
+      name,
+      photoUrl: childPhotoUrl,
+      profileImageNum: childImageNumFromPhoto(childPhotoUrl),
+    }
+
+    try {
+      if (getStoredAccessToken()) {
+        const created = await createBackendChildProfile(
+          name,
+          localProfile.profileImageNum,
+        )
+        localProfile.id = String(created.childId)
+        localProfile.profileImageNum = created.profileImageNum
+      }
+    } catch (error) {
+      setChildFormMessage(
+        error instanceof Error
+          ? error.message
+          : '?꾩씠 ?꾨줈?꾩쓣 留뚮뱾吏 紐삵뻽?댁슂.',
+      )
+      return
+    }
+
     saveChildProfiles([
       ...profiles,
-      {
-        id:
-          typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`,
-        name,
-        photoUrl: childPhotoUrl,
-      },
+      localProfile,
     ])
     stopCamera()
     navigate('/profiles/children')
   }
 
-  const finish = () => {
+  const finish = async () => {
     if (!isPinConfirmed) {
       setIsPinError(true)
       setPinMessage('핀번호 설정과 확인을 완료해 주세요.')
       return
     }
+    try {
+      if (getStoredAccessToken() && firstPin) {
+        await setParentPin(firstPin)
+      }
+    } catch (error) {
+      setIsPinError(true)
+      setPinMessage(
+        error instanceof Error
+          ? error.message
+          : '? 踰덊샇瑜???ν븯吏 紐삵뻽?댁슂.',
+      )
+      return
+    }
+    window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
     completeNewSignupOnboarding()
     navigate('/profiles')
   }
@@ -446,8 +498,8 @@ export function ParentProfilePage() {
         </main>
 
         <button
-          className="absolute right-11 bottom-0 z-30 h-[86px] w-[245px] bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white active:translate-y-0.5"
-          onClick={finish}
+          className="absolute right-[25px] bottom-[85px] z-40 h-[86px] w-[245px] bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white active:translate-y-0.5"
+          onClick={() => void finish()}
           style={{
             ...jua,
             backgroundImage: `url(${completeButtonUrl})`,
@@ -572,7 +624,7 @@ export function ParentProfilePage() {
               <button
                 className="absolute top-[65.5%] left-1/2 h-[84px] w-[370px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isChildProfileLimitReached}
-                onClick={createChildProfile}
+                onClick={() => void createChildProfile()}
                 style={{
                   ...jua,
                   backgroundImage: `url(${completeButtonUrl})`,

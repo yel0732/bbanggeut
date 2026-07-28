@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
+import signupCompleteButtonUrl from '@/assets/images/auth/btn-go-login.webp'
 import signupCompleteFrameUrl from '@/assets/images/auth/signup-complete-frame.webp'
+import signupCompleteStarUrl from '@/assets/images/auth/signup-complete-star.webp'
 import signupBoardUrl from '@/assets/images/auth/signup-board.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
@@ -49,6 +51,19 @@ function ageOf(birth: string) {
     age -= 1
   }
   return age
+}
+
+function passwordValidationMessage(password: string) {
+  if (!password) return ''
+  if (password.length < 8) return '비밀번호는 8자 이상 입력해 주세요.'
+  if (password.length > 16) return '비밀번호는 16자 이하로 입력해 주세요.'
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return '영문, 숫자, 특수문자를 모두 포함해 주세요.'
+  }
+  if (!/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/.test(password)) {
+    return '영문, 숫자, 특수문자를 모두 포함해 주세요.'
+  }
+  return '사용할 수 없는 문자가 포함되어 있어요.'
 }
 
 export function EmailSignupPage() {
@@ -192,7 +207,6 @@ export function EmailSignupPage() {
       </button>
 
       <div className="relative z-20" style={boardSize}>
-        <div className="absolute top-[12%] left-[10%] h-[76%] w-[80%] rounded-[40px] bg-[#f5df9f] shadow-[0_20px_48px_rgba(24,45,20,0.34),inset_0_0_0_5px_rgba(117,92,42,0.22)]" />
         <img
           alt=""
           className="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
@@ -246,7 +260,7 @@ export function EmailSignupPage() {
         </div>
 
         <input
-          className="absolute top-[50.5%] left-[17.5%] z-20 h-[7%] w-[56%] border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:outline-none"
+          className="auth-transparent-input absolute top-[50.5%] left-[17.5%] z-20 h-[7%] w-[56%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
           onChange={(event) => setPassword(event.target.value)}
           placeholder="비밀번호 (8자 이상)"
           style={jua}
@@ -265,7 +279,9 @@ export function EmailSignupPage() {
           className="absolute top-[58%] left-[17.5%] z-20 text-[clamp(11px,2.8vw,13px)]"
           style={{ ...jua, color: passwordValid ? '#3a7d2c' : '#c7563a' }}
         >
-          {passwordMessage}
+          {passwordValid
+            ? ''
+            : passwordMessage && passwordValidationMessage(password)}
         </div>
 
         <div
@@ -311,6 +327,11 @@ export function EmailSignupPage() {
               className="pointer-events-none absolute inset-0 size-full object-contain"
               src={signupCompleteFrameUrl}
             />
+            <img
+              alt=""
+              className="pointer-events-none absolute top-[10%] left-[238px] w-[25%] -translate-x-1/2 object-contain"
+              src={signupCompleteStarUrl}
+            />
             <h2
               className="absolute top-[35%] right-0 left-0 text-center text-[28px] text-[#5a7d3a]"
               style={jua}
@@ -326,14 +347,14 @@ export function EmailSignupPage() {
               아래 버튼을 눌러 로그인해 주세요.
             </p>
             <button
-              className="absolute top-[68%] left-1/2 flex h-[10%] w-[62%] -translate-x-1/2 items-center justify-center rounded-full text-[22px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill]"
+              className="absolute top-[69%] left-1/2 flex h-[20%] w-[62%] -translate-x-1/2 items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill]"
               onClick={() =>
                 navigate('/auth/login', {
                   replace: true,
                   state: { email: email.trim().toLowerCase() },
                 })
               }
-              style={jua}
+              style={{ ...jua, backgroundImage: `url(${signupCompleteButtonUrl})` }}
               type="button"
             >
               로그인하기

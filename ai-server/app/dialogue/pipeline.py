@@ -375,6 +375,11 @@ class DialogueTurnPipeline:
             relevance_decision is not None
             and relevance_decision.answered is False
         ):
+            # 의도된 트레이드오프: 딴 이야기로 판정된 턴의 추출 결과는 통째로 버린다.
+            # 무관한 발화("지금 배가 고파")에서 추출된 값이 일기 슬롯을 오염시키는
+            # 것을 막는 쪽이, 오판 1회로 같은 질문을 한 번 더 묻는 비용(복구 가능)
+            # 보다 낫다. 판정 실패(None)는 이 분기를 타지 않으므로 추출 결과가
+            # 보존된다 — LLM 판정 불능이 슬롯 손실로 이어지지 않는다.
             updated_slots = request.current_slots.model_copy(deep=True)
         else:
             updated_slots = enrich_explicit_people(

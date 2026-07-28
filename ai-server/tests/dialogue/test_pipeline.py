@@ -324,6 +324,36 @@ async def test_redirects_off_topic_answer_with_brief_acknowledgement() -> None:
 
 
 @pytest.mark.asyncio
+async def test_relevance_failure_keeps_extracted_slots_and_moves_on() -> None:
+    """관련성 판정이 실패(None)해도 정상 추출된 슬롯은 폐기되지 않는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":"즐거웠어","emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            RuntimeError("relevance classification unavailable"),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="친구와 공놀이"),
+            "current_question": "그때 어떤 기분이었어?",
+            "child_answer": "정말 즐거웠어!",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.updated_slots.emotion == "즐거웠어"
+    # 추출로 목표 슬롯이 채워졌으므로 같은 질문을 되묻지 않고 다음 목표로 진행한다.
+    assert result.assistant_question == "왜 그런 마음이 들었는지 말해 줄래?"
+
+
+@pytest.mark.asyncio
 async def test_briefly_answers_child_question_before_redirecting() -> None:
     client = FakeClient(
         [

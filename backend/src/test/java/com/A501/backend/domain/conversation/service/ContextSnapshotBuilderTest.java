@@ -108,6 +108,31 @@ class ContextSnapshotBuilderTest {
     }
 
     @Test
+    void 재연결_스냅숏에_저장된_질문_수를_담는다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_question_progress", 15L, ConversationTopic.DAILY, 6);
+        session.synchronizeQuestionCount(3);
+        ConversationTopicState topic = ConversationTopicState.create(
+                "topic_question_progress",
+                "conv_question_progress",
+                ConversationTopic.DAILY,
+                1,
+                6,
+                serialize(DialogueSlotsPayload.empty()),
+                serialize(DialogueTopicContextPayload.empty(ConversationTopic.DAILY)));
+        topic.synchronizeQuestionCount(3);
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc(
+                        "conv_question_progress"))
+                .thenReturn(List.of(topic));
+
+        ContextSnapshot snapshot = builder.build(session);
+
+        assertThat(snapshot.conversation().questionCount()).isEqualTo(3);
+        assertThat(snapshot.topics().get(0).questionCount()).isEqualTo(3);
+    }
+
+    @Test
     void 턴이_없으면_lastTurnSeq는_0이다() {
         ConversationSession session = ConversationSession.create(
                 "conv_fresh", 15L, ConversationTopic.DAILY, 6);

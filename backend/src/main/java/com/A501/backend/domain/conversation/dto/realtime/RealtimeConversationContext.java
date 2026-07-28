@@ -15,5 +15,15 @@ public record RealtimeConversationContext(
         String language,
         ConversationTopic currentTopic,
         int totalMaxQuestionCount,
+        int questionCount,
         int lastTurnSeq) {
+
+    public RealtimeConversationContext(
+            ConversationGoal goal,
+            String language,
+            ConversationTopic currentTopic,
+            int totalMaxQuestionCount,
+            int lastTurnSeq) {
+        this(goal, language, currentTopic, totalMaxQuestionCount, 0, lastTurnSeq);
+    }
 }

@@ -165,6 +165,15 @@ public class ConversationTopicState extends BaseTimeEntity
         this.slotsJson = requireText(slotsJson, "슬롯 JSON이 필요합니다.");
     }
 
+    public void synchronizeQuestionCount(int count) {
+        if (count < 0 || count > maxQuestionCount) {
+            throw new IllegalArgumentException("Question count is outside the topic limit.");
+        }
+        if (count > questionCount) {
+            questionCount = count;
+        }
+    }
+
     public void complete(
             LocalDateTime completedAt,
             TerminationReason completionReason) {

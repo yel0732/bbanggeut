@@ -54,6 +54,9 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
     @Column(name = "current_session_epoch", nullable = false)
     private int currentSessionEpoch;
 
+    @Column(name = "current_session_epoch_started_at")
+    private LocalDateTime currentSessionEpochStartedAt;
+
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
@@ -145,11 +148,25 @@ public class ConversationSession extends BaseTimeEntity implements Persistable<S
      * Epoch 검증·비교는 W02(T07)에서 다루며, 여기서는 발급 시점의 세대 확정만 담당한다.
      */
     public int startRealtimeSession() {
+        return startRealtimeSession(null);
+    }
+
+    public int startRealtimeSession(LocalDateTime epochStartedAt) {
         if (status.isTerminal()) {
             throw new IllegalStateException("종료된 대화 세션에는 Realtime Session을 발급할 수 없습니다.");
         }
         currentSessionEpoch++;
+        currentSessionEpochStartedAt = epochStartedAt;
         return currentSessionEpoch;
+    }
+
+    public void synchronizeQuestionCount(int count) {
+        if (count < 0 || count > maxQuestionCount) {
+            throw new IllegalArgumentException("Question count is outside the session limit.");
+        }
+        if (count > questionCount) {
+            questionCount = count;
+        }
     }
 
     public void switchTopic(ConversationTopic nextTopic) {

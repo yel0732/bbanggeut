@@ -2,9 +2,7 @@ package com.A501.backend.domain.conversation.service;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -228,18 +226,15 @@ public class ConversationSessionService {
     }
 
     private List<CompletedGameSessionSummary> findTodayGames(Long childId) {
+        // game_session.completed_at에는 클라이언트가 보낸 KST wall-clock이 offset 변환 없이
+        // 저장된다. 조회 경계도 같은 기준의 naive KST 자정으로 맞춘다(report 도메인의
+        // ReportPeriodCalculator와 동일) — UTC로 변환해 비교하면 KST 15시 이후 완료된
+        // 게임이 그날 대화에서 누락된다.
         LocalDate today = LocalDate.now(utcClock.withZone(KST));
-        LocalDateTime startedAt = today.atStartOfDay(KST)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
-        LocalDateTime endedAt = today.plusDays(1)
-                .atStartOfDay(KST)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
         return gameSessionService.findCompletedSessionsForChild(
                 childId,
-                startedAt,
-                endedAt);
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay());
     }
 
     private ConversationTopicState createTopic(

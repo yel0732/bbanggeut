@@ -141,7 +141,8 @@ class ConversationSessionServiceTest {
     }
 
     @Test
-    void usesKstTodayConvertedToUtcForGameLookup() {
+    void usesNaiveKstDayBoundariesForGameLookup() {
+        // completed_at은 KST wall-clock으로 저장되므로 조회 경계도 naive KST 자정이어야 한다.
         when(gameSessionService.findCompletedSessionsForChild(
                 eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(List.of());
@@ -155,9 +156,47 @@ class ConversationSessionServiceTest {
         verify(gameSessionService).findCompletedSessionsForChild(
                 eq(15L), startedAt.capture(), endedAt.capture());
         assertThat(startedAt.getValue())
-                .isEqualTo(LocalDateTime.of(2026, 7, 21, 15, 0));
+                .isEqualTo(LocalDateTime.of(2026, 7, 22, 0, 0));
         assertThat(endedAt.getValue())
-                .isEqualTo(LocalDateTime.of(2026, 7, 22, 15, 0));
+                .isEqualTo(LocalDateTime.of(2026, 7, 23, 0, 0));
+    }
+
+    @Test
+    void eveningConversationStillSeesSameKstDayGames() {
+        // KST 21시(= 12:00Z)에 대화를 시작해도 조회 창은 같은 KST 날짜여야 한다.
+        // 과거 UTC 변환 방식에서는 이 시각에 20시(KST) 완료 게임이 누락됐다.
+        ConversationSessionService eveningService = new ConversationSessionService(
+                conversationSessionRepository,
+                conversationTurnRepository,
+                topicStateRepository,
+                conversationGameSessionRepository,
+                gameSessionService,
+                childAccessVerifier,
+                currentMemberProvider,
+                conversationTerminationCoordinator,
+                new ConversationTopicProperties(6, 6),
+                new ObjectMapper(),
+                Clock.fixed(Instant.parse("2026-07-22T12:00:00Z"), ZoneOffset.UTC));
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        eveningService.create(15L);
+
+        ArgumentCaptor<LocalDateTime> startedAt =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> endedAt =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(gameSessionService).findCompletedSessionsForChild(
+                eq(15L), startedAt.capture(), endedAt.capture());
+        assertThat(startedAt.getValue())
+                .isEqualTo(LocalDateTime.of(2026, 7, 22, 0, 0));
+        assertThat(endedAt.getValue())
+                .isEqualTo(LocalDateTime.of(2026, 7, 23, 0, 0));
+        // 20:00(KST) 완료 게임이 창 안에 들어온다.
+        assertThat(LocalDateTime.of(2026, 7, 22, 20, 0))
+                .isAfterOrEqualTo(startedAt.getValue())
+                .isBefore(endedAt.getValue());
     }
 
     @Test

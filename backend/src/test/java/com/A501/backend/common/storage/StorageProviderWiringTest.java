@@ -13,9 +13,7 @@ import org.springframework.context.annotation.Configuration;
 class StorageProviderWiringTest {
 
     private static final String[] BUCKET_SETTINGS = {
-            "app.storage.preset-bucket=test-preset-bucket",
             "app.storage.upload-bucket=test-upload-bucket",
-            "app.storage.preset-public-base-url=https://cdn.example.com",
             "app.storage.region=ap-northeast-2"
     };
 
@@ -25,8 +23,10 @@ class StorageProviderWiringTest {
             .withPropertyValues(
                     "app.storage.preset-prefix=profile-presets/",
                     "app.storage.upload-prefix=profile-uploads/",
-                    "app.storage.default-preset-key=profile-presets/preset-1",
-                    "app.storage.preset-keys[0]=profile-presets/preset-1",
+                    "app.storage.default-parent-preset-key=profile-presets/parent-avatar",
+                    "app.storage.default-child-preset-key=profile-presets/child-avatar",
+                    "app.storage.preset-keys[0]=profile-presets/parent-avatar",
+                    "app.storage.preset-keys[1]=profile-presets/child-avatar",
                     "app.storage.max-image-size=2MB",
                     "app.storage.presigned-url-ttl=5m");
 
@@ -60,21 +60,19 @@ class StorageProviderWiringTest {
                         .hasFailed()
                         .getFailure()
                         .rootCause()
-                        .hasMessageContaining("S3_PRESET_BUCKET"));
+                        .hasMessageContaining("S3_UPLOAD_BUCKET"));
     }
 
     @Test
-    void failsToStartWhenUploadBucketMissing() {
+    void failsToStartWhenRegionMissing() {
         contextRunner
                 .withPropertyValues("app.storage.provider=s3")
-                .withPropertyValues(
-                        "app.storage.preset-bucket=test-preset-bucket",
-                        "app.storage.preset-public-base-url=https://cdn.example.com")
+                .withPropertyValues("app.storage.upload-bucket=test-upload-bucket", "app.storage.region=")
                 .run(context -> assertThat(context)
                         .hasFailed()
                         .getFailure()
                         .rootCause()
-                        .hasMessageContaining("S3_UPLOAD_BUCKET"));
+                        .hasMessageContaining("AWS_REGION"));
     }
 
     @Configuration

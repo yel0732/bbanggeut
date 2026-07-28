@@ -93,33 +93,30 @@ app:
     # Spring 프로필과 분리한 이유: 프로필로 묶으면 "로컬 H2 + 진짜 S3" 조합이 불가능해져
     # 개발자가 개인 AWS 버킷으로 미리 검증할 수 없다.
     provider: ${STORAGE_PROVIDER:local}
-    # 버킷·리전·공개 URL은 배포 환경마다 다르므로 환경변수로 주입한다. 자격증명은 여기에 두지 않고
+    # 버킷·리전은 배포 환경마다 다르므로 환경변수로 주입한다. 자격증명은 여기에 두지 않고
     # AWS 기본 자격증명 체인(환경변수·IAM 역할)에 맡긴다.
     #
-    # 버킷을 둘로 나눈 이유: S3의 Block Public Access가 버킷 단위 설정이라, 한 버킷에서 프리셋만
-    # 공개하려면 아이 실물 사진이 든 버킷의 공개 차단을 풀어야 한다. 분리하면 업로드 버킷은 공개
-    # 차단을 전부 켠 채로 둘 수 있어 잘못된 공개 정책이 AWS에서 거부된다.
+    # S3 버킷은 업로드(웹캠 촬영, 아이 실물 사진)용 하나뿐이다. 프리셋은 프론트엔드 번들 이미지라
+    # S3에 두지 않으며, 공개 버킷을 아예 만들지 않으므로 공개 설정 실수 자체가 불가능하다.
     #
     # 기본값을 비워둔다 — 값을 넣어두면 우리가 소유하지도 않은 버킷 이름으로 조용히 뜬 뒤 아이
     # 사진을 올리는 시점에야 실패한다. provider=s3 인데 비어 있으면 S3StorageConfig가 기동을 막는다.
-    preset-bucket: ${S3_PRESET_BUCKET:}
     upload-bucket: ${S3_UPLOAD_BUCKET:}
     region: ${AWS_REGION:ap-northeast-2}
-    # 프리셋 버킷(또는 그 앞단 CDN)의 공개 베이스 URL. 업로드 버킷에는 공개 URL이 없다.
-    preset-public-base-url: ${S3_PRESET_PUBLIC_BASE_URL:}
-    # DB에는 키만 저장되므로 접두사가 곧 소속 버킷을 결정한다.
+    # 접두사가 "프론트 번들 프리셋 식별자"와 "S3 객체 키"를 구분한다.
     preset-prefix: profile-presets/
     upload-prefix: profile-uploads/
-    default-preset-key: profile-presets/preset-1
-    # TODO: 프리셋 키 집합(개수·네이밍)은 디자인 확정 후 갱신한다. 프론트 에셋과 1:1로 맞춰야 하며,
+    # 부모와 자녀의 기본 이미지가 서로 다르다.
+    default-parent-preset-key: profile-presets/parent-avatar
+    default-child-preset-key: profile-presets/child-avatar
+    # 프론트 에셋(frontend/src/assets/images/profile/*.webp) 파일명과 1:1로 대응한다.
+    # 확장자는 키에 넣지 않는다 — 이미지 포맷이 바뀌어도 DB 값을 고치지 않기 위함.
     # 여기에 없는 키는 클라이언트가 지정해도 거부된다(ProfileImageService.assertValidPreset).
     preset-keys:
-      - profile-presets/preset-1
-      - profile-presets/preset-2
-      - profile-presets/preset-3
-      - profile-presets/preset-4
-      - profile-presets/preset-5
-      - profile-presets/preset-6
+      - profile-presets/parent-avatar
+      - profile-presets/child-avatar
+      - profile-presets/child-avatar-tiger
+      - profile-presets/child-avatar-rabbit
     max-image-size: 2MB
     presigned-url-ttl: 5m
 

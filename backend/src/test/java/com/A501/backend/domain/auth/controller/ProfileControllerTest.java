@@ -31,6 +31,7 @@ import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.security.JwtAuthenticationEntryPoint;
 import com.A501.backend.domain.auth.security.JwtAuthenticationFilter;
 import com.A501.backend.domain.auth.security.JwtProperties;
+import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.service.ProfileService;
 
@@ -48,8 +49,8 @@ class ProfileControllerTest {
     @MockitoBean
     private ProfileService profileService;
 
-    private static final String PRESET_KEY = "profile-presets/preset-3";
-    private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
+    private static final String PRESET_KEY = "profile-presets/child-avatar-rabbit";
+    private static final String UPLOAD_KEY = "profile-uploads/1/parent/abc";
     private static final String UPLOAD_URL = "https://upload.example.com/signed";
 
     @Test
@@ -63,14 +64,15 @@ class ProfileControllerTest {
     @Test
     void updateProfileImage_returnsResolvedUrlWithValidBearerToken() throws Exception {
         String accessToken = generateAccessToken();
-        when(profileService.updateProfileImage(1L, PRESET_KEY)).thenReturn(PRESET_URL);
+        when(profileService.updateProfileImage(1L, PRESET_KEY))
+                .thenReturn(ProfileImageResponse.of(PRESET_KEY, null));
 
         mockMvc.perform(patch("/api/profile/image")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"imageKey\":\"" + PRESET_KEY + "\"}"))
                 .andExpect(status().isOk())
-                .andExpect(content().json("{\"profileImageUrl\":\"" + PRESET_URL + "\"}"));
+                .andExpect(content().json("{\"profileImageKey\":\"" + PRESET_KEY + "\",\"profileImageUrl\":null}"));
 
         verify(profileService).updateProfileImage(1L, PRESET_KEY);
     }
@@ -84,7 +86,8 @@ class ProfileControllerTest {
     @Test
     void uploadProfileImage_returnsResolvedUrlWithValidBearerToken() throws Exception {
         String accessToken = generateAccessToken();
-        when(profileService.uploadProfileImage(eq(1L), any())).thenReturn(UPLOAD_URL);
+        when(profileService.uploadProfileImage(eq(1L), any()))
+                .thenReturn(ProfileImageResponse.of(UPLOAD_KEY, UPLOAD_URL));
 
         mockMvc.perform(multipart("/api/profile/image/upload")
                         .file(webcamFile())

@@ -46,8 +46,8 @@ import com.A501.backend.domain.child.service.ChildService;
 @EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
 class ChildControllerTest {
 
-    private static final String PRESET_KEY = "profile-presets/preset-1";
-    private static final String OTHER_PRESET_KEY = "profile-presets/preset-2";
+    private static final String PRESET_KEY = "profile-presets/child-avatar";
+    private static final String OTHER_PRESET_KEY = "profile-presets/child-avatar-tiger";
     private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
     private static final String OTHER_PRESET_URL = "https://cdn.example.com/" + OTHER_PRESET_KEY;
     private static final String UPLOAD_URL = "https://upload.example.com/signed";
@@ -105,7 +105,7 @@ class ChildControllerTest {
     void create_returnsUnauthorizedWithoutBearerToken() throws Exception {
         mockMvc.perform(post("/api/children")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/preset-1\"}"))
+                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/child-avatar\"}"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -113,12 +113,12 @@ class ChildControllerTest {
     void create_returnsCreatedWithChildResponse() throws Exception {
         String accessToken = generateAccessToken();
         when(childService.createChild(1L, "chorong", PRESET_KEY))
-                .thenReturn(new ChildResponse(10L, "chorong", PRESET_URL));
+                .thenReturn(new ChildResponse(10L, "chorong", PRESET_KEY, PRESET_URL));
 
         mockMvc.perform(post("/api/children")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/preset-1\"}"))
+                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/child-avatar\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(content().json("{\"childId\":10,\"name\":\"chorong\",\"profileImageUrl\":\"" + PRESET_URL + "\"}"));
     }
@@ -130,7 +130,7 @@ class ChildControllerTest {
         mockMvc.perform(post("/api/children")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"\",\"imageKey\":\"profile-presets/preset-1\"}"))
+                        .content("{\"name\":\"\",\"imageKey\":\"profile-presets/child-avatar\"}"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -143,7 +143,7 @@ class ChildControllerTest {
         mockMvc.perform(post("/api/children")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/preset-1\"}"))
+                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/child-avatar\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -156,7 +156,7 @@ class ChildControllerTest {
         mockMvc.perform(post("/api/children")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/preset-1\"}"))
+                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/child-avatar\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -169,7 +169,7 @@ class ChildControllerTest {
         mockMvc.perform(post("/api/children")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/preset-1\"}"))
+                        .content("{\"name\":\"chorong\",\"imageKey\":\"profile-presets/child-avatar\"}"))
                 .andExpect(status().isConflict());
     }
 
@@ -182,7 +182,7 @@ class ChildControllerTest {
     void list_returnsChildrenForAuthenticatedParent() throws Exception {
         String accessToken = generateAccessToken();
         when(childService.listChildren(1L))
-                .thenReturn(List.of(new ChildResponse(10L, "chorong", PRESET_URL)));
+                .thenReturn(List.of(new ChildResponse(10L, "chorong", PRESET_KEY, PRESET_URL)));
 
         mockMvc.perform(get("/api/children").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk())
@@ -203,7 +203,7 @@ class ChildControllerTest {
     void update_returnsUnauthorizedWithoutBearerToken() throws Exception {
         mockMvc.perform(patch("/api/children/10")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/preset-2\"}"))
+                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/child-avatar-tiger\"}"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -211,12 +211,12 @@ class ChildControllerTest {
     void update_returnsOkWithUpdatedChildResponse() throws Exception {
         String accessToken = generateAccessToken();
         when(childService.updateChild(1L, 10L, "banjjak", OTHER_PRESET_KEY))
-                .thenReturn(new ChildResponse(10L, "banjjak", OTHER_PRESET_URL));
+                .thenReturn(new ChildResponse(10L, "banjjak", OTHER_PRESET_KEY, OTHER_PRESET_URL));
 
         mockMvc.perform(patch("/api/children/10")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/preset-2\"}"))
+                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/child-avatar-tiger\"}"))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"childId\":10,\"name\":\"banjjak\",\"profileImageUrl\":\"" + OTHER_PRESET_URL + "\"}"));
     }
@@ -228,7 +228,7 @@ class ChildControllerTest {
         mockMvc.perform(patch("/api/children/10")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"\",\"imageKey\":\"profile-presets/preset-2\"}"))
+                        .content("{\"name\":\"\",\"imageKey\":\"profile-presets/child-avatar-tiger\"}"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -241,7 +241,7 @@ class ChildControllerTest {
         mockMvc.perform(patch("/api/children/10")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/preset-2\"}"))
+                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/child-avatar-tiger\"}"))
                 .andExpect(status().isNotFound());
     }
 
@@ -254,7 +254,7 @@ class ChildControllerTest {
         mockMvc.perform(patch("/api/children/10")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/preset-2\"}"))
+                        .content("{\"name\":\"banjjak\",\"imageKey\":\"profile-presets/child-avatar-tiger\"}"))
                 .andExpect(status().isConflict());
     }
 
@@ -270,7 +270,7 @@ class ChildControllerTest {
     void uploadImage_returnsUpdatedChildResponse() throws Exception {
         String accessToken = generateAccessToken();
         when(childService.uploadChildImage(eq(1L), eq(10L), any()))
-                .thenReturn(new ChildResponse(10L, "chorong", UPLOAD_URL));
+                .thenReturn(new ChildResponse(10L, "chorong", "profile-uploads/1/10/abc", UPLOAD_URL));
 
         mockMvc.perform(multipart("/api/children/10/image")
                         .file(webcamFile())

@@ -26,8 +26,6 @@ public class LocalImageStorage implements ImageStorage {
 
     private final Map<String, byte[]> objects = new ConcurrentHashMap<>();
 
-    private final StorageProperties storageProperties;
-
     @Override
     public String upload(String keyPrefix, byte[] content, String contentType) {
         String key = keyPrefix + UUID.randomUUID();
@@ -37,18 +35,10 @@ public class LocalImageStorage implements ImageStorage {
     }
 
     @Override
-    public String resolveUrl(String key) {
-        if (storageProperties.isUpload(key)) {
-            // 업로드 이미지는 실제 환경에서 비공개 버킷의 presigned GET URL로만 나간다. 로컬에는
-            // 대응하는 실제 객체가 없으므로, 열리는 척하는 http URL 대신 가짜임이 드러나는 형태를 준다.
-            return "local://uploads/" + key + "?signed=true";
-        }
-        // 프리셋 공개 URL이 설정돼 있으면 그대로 써서 운영과 같은 형태를 보여주고, 없으면(로컬 기본)
-        // 가짜임이 드러나는 형태를 돌려준다 — 빈 베이스 URL로 "/profile-presets/..."를 만들지 않는다.
-        String presetBaseUrl = storageProperties.presetPublicBaseUrl();
-        return (presetBaseUrl == null || presetBaseUrl.isBlank())
-                ? "local://presets/" + key
-                : presetBaseUrl + "/" + key;
+    public String resolveUploadUrl(String key) {
+        // 로컬에는 대응하는 실제 객체가 없다. 열리는 척하는 http URL 대신 가짜임이 드러나는 형태를
+        // 돌려줘, 연동 중인 프론트가 "왜 이미지가 안 뜨지?"로 시간을 쓰지 않게 한다.
+        return "local://uploads/" + key + "?signed=true";
     }
 
     @Override

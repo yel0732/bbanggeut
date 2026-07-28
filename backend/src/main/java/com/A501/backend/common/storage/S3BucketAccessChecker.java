@@ -26,17 +26,16 @@ public class S3BucketAccessChecker {
 
     @EventListener(ApplicationReadyEvent.class)
     public void checkBucketsOnStartup() {
-        checkBucket("프리셋", storageProperties.presetBucket());
-        checkBucket("업로드", storageProperties.uploadBucket());
+        checkBucket(storageProperties.uploadBucket());
     }
 
-    private void checkBucket(String label, String bucket) {
+    private void checkBucket(String bucket) {
         try {
             s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
-            log.info("S3 {} 버킷 접근 확인: {}", label, bucket);
+            log.info("S3 업로드 버킷 접근 확인: {}", bucket);
         } catch (RuntimeException e) {
-            log.error("S3 {} 버킷에 접근할 수 없습니다: {} — 자격증명·IAM 권한·버킷명·리전을 확인하세요."
-                    + " 프로필 사진 기능이 동작하지 않습니다.", label, bucket, e);
+            log.error("S3 업로드 버킷에 접근할 수 없습니다: {} — 자격증명·IAM 권한·버킷명·리전을 확인하세요."
+                    + " 웹캠 사진 업로드가 동작하지 않습니다.", bucket, e);
         }
     }
 }

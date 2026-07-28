@@ -20,7 +20,7 @@ class ParentRepositoryTest {
 
     // 운영 코드에서는 AuthService가 설정값(app.storage.default-preset-key)을 넣어준다. 이 테스트는
     // AuthService를 거치지 않고 엔티티를 직접 저장하므로, NOT NULL인 프로필 이미지 키를 직접 채운다.
-    private static final String PRESET_KEY = "profile-presets/preset-1";
+    private static final String PRESET_KEY = "profile-presets/parent-avatar";
 
     @Autowired
     private ParentRepository parentRepository;

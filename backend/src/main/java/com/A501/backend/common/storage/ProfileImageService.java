@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 
 // 프로필 사진의 검증 규칙과 키 정책을 담당한다. 실제 저장/조회/삭제는 ImageStorage가 맡고,
 // 이 서비스는 "무엇을 허용할지"만 결정한다.
+//
+// 프리셋(프론트 번들 이미지)과 업로드(S3 객체)를 키 접두사로 구분하며, S3에 닿는 것은 업로드뿐이다.
 @Service
 @RequiredArgsConstructor
 public class ProfileImageService {
@@ -29,7 +31,7 @@ public class ProfileImageService {
     private final StorageProperties storageProperties;
 
     public String uploadImage(String keyPrefix, MultipartFile file) {
-        // 호출부 실수로 공개 영역(프리셋)에 아이 사진이 올라가는 사고를 막는 내부 불변식이다.
+        // 호출부 실수로 프리셋 식별자 영역에 업로드 키가 생기는 것을 막는 내부 불변식이다.
         // 사용자 입력이 아니라 코드 버그이므로 ErrorCode로 다루지 않는다.
         if (!storageProperties.isUpload(keyPrefix)) {
             throw new IllegalStateException("업로드 키 접두사가 아닙니다: " + keyPrefix);
@@ -55,8 +57,10 @@ public class ProfileImageService {
         return imageStorage.upload(keyPrefix, content, contentType);
     }
 
+    // 프리셋은 프론트 번들 이미지라 서버가 URL을 만들 수 없다. null을 돌려주면 클라이언트가
+    // profileImageKey로 로컬 에셋을 찾는다. 업로드만 presigned GET URL을 발급한다.
     public String resolveUrl(String key) {
-        return imageStorage.resolveUrl(key);
+        return storageProperties.isUpload(key) ? imageStorage.resolveUploadUrl(key) : null;
     }
 
     // 클라이언트가 키를 직접 보낼 수 있는 유일한 지점이다. 접두사만 보면 profile-presets/../ 같은
@@ -71,9 +75,12 @@ public class ProfileImageService {
         return storageProperties.isUpload(key);
     }
 
-    // 신규 계정·자녀의 기본 이미지이자, 업로드 사진을 파기한 뒤 되돌릴 키다.
-    public String defaultPresetKey() {
-        return storageProperties.defaultPresetKey();
+    public String defaultParentPresetKey() {
+        return storageProperties.defaultParentPresetKey();
+    }
+
+    public String defaultChildPresetKey() {
+        return storageProperties.defaultChildPresetKey();
     }
 
     // 업로드 키는 서버만 만든다 — 클라이언트가 경로를 지정할 수 있으면 타인 소유 경로에 쓰거나
@@ -87,7 +94,7 @@ public class ProfileImageService {
         return storageProperties.uploadPrefix() + parentId + "/" + childId + "/";
     }
 
-    // 프리셋은 모든 사용자가 공유하는 이미지라 지우면 안 된다. 사진 교체·자녀 삭제·회원 탈퇴처럼
+    // 프리셋은 프론트 번들 이미지라 지울 대상이 아니다. 사진 교체·자녀 삭제·회원 탈퇴처럼
     // "이전 이미지를 정리하는" 자리에서 업로드 객체만 골라 지우기 위한 메서드다.
     public void deleteIfUpload(String key) {
         if (storageProperties.isUpload(key)) {
@@ -97,18 +104,16 @@ public class ProfileImageService {
 
     // 자녀 삭제·회원 탈퇴용. 업로드(아이 실물 사진) 객체를 파기하고 **이후 저장해야 할 키**를 돌려준다.
     // 소프트 삭제라 DB 행은 남지만 사진은 즉시 파기하며, 지워진 객체를 가리키는 키가 남지 않도록
-    // 기본 프리셋으로 되돌린다.
+    // 호출부가 지정한 기본 프리셋으로 되돌린다(부모와 자녀의 기본값이 다르므로 인자로 받는다).
     //
-    // 프리셋이었다면 아무것도 지우지 않고 그 키를 그대로 돌려준다 — 공유 자원이라 지우면 안 되고,
-    // 사용자가 고른 프리셋을 굳이 기본값으로 덮을 이유도 없다.
-    //
-    // 부모(auth)와 자녀(child) 두 도메인이 같은 정책을 쓰므로 여기 한 곳에 둔다.
-    public String purgeUploadedImage(String currentKey) {
+    // 프리셋이었다면 아무것도 지우지 않고 그 키를 그대로 돌려준다 — 사용자가 고른 프리셋을 굳이
+    // 기본값으로 덮을 이유가 없다.
+    public String purgeUploadedImage(String currentKey, String replacementKey) {
         if (!storageProperties.isUpload(currentKey)) {
             return currentKey;
         }
         imageStorage.delete(currentKey);
-        return storageProperties.defaultPresetKey();
+        return replacementKey;
     }
 
     private String normalizeContentType(String contentType) {

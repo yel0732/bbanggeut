@@ -26,7 +26,7 @@ import com.A501.backend.common.exception.BusinessException;
 @ExtendWith(MockitoExtension.class)
 class ProfileImageServiceTest {
 
-    private static final String PRESET_KEY = "profile-presets/preset-1";
+    private static final String PRESET_KEY = "profile-presets/child-avatar";
     private static final String UPLOAD_PREFIX = "profile-uploads/1/parent/";
 
     // 실제 아동 사진을 픽스처로 쓰지 않는다(AGENTS.md 민감정보 규칙). 포맷 판별에 필요한 것은
@@ -35,14 +35,13 @@ class ProfileImageServiceTest {
     private static final byte[] PNG_HEADER = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
 
     private static final StorageProperties PROPERTIES = new StorageProperties(
-            "test-preset-bucket",
             "test-upload-bucket",
             "ap-northeast-2",
             "profile-presets/",
             "profile-uploads/",
-            "https://cdn.example.com",
+            "profile-presets/parent-avatar",
             PRESET_KEY,
-            Set.of(PRESET_KEY, "profile-presets/preset-2"),
+            Set.of(PRESET_KEY, "profile-presets/parent-avatar"),
             DataSize.ofKilobytes(100),
             Duration.ofMinutes(5));
 
@@ -163,7 +162,7 @@ class ProfileImageServiceTest {
 
     @Test
     void assertValidPreset_rejectsUnknownPresetKey() {
-        assertThatThrownBy(() -> profileImageService.assertValidPreset("profile-presets/preset-99"))
+        assertThatThrownBy(() -> profileImageService.assertValidPreset("profile-presets/unknown-avatar"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
@@ -234,8 +233,9 @@ class ProfileImageServiceTest {
     }
 
     @Test
-    void defaultPresetKey_comesFromConfiguration() {
-        assertThat(profileImageService.defaultPresetKey()).isEqualTo(PRESET_KEY);
+    void defaultPresetKeys_comeFromConfiguration() {
+        assertThat(profileImageService.defaultChildPresetKey()).isEqualTo(PRESET_KEY);
+        assertThat(profileImageService.defaultParentPresetKey()).isEqualTo("profile-presets/parent-avatar");
     }
 
     // 자녀 삭제·회원 탈퇴 시 아이 실물 사진은 즉시 파기하고, 지워진 객체를 가리키는 키가 남지
@@ -244,7 +244,7 @@ class ProfileImageServiceTest {
     void purgeUploadedImage_deletesObjectAndReturnsDefaultPreset() {
         String uploadKey = UPLOAD_PREFIX + "abc";
 
-        String nextKey = profileImageService.purgeUploadedImage(uploadKey);
+        String nextKey = profileImageService.purgeUploadedImage(uploadKey, PRESET_KEY);
 
         verify(imageStorage).delete(uploadKey);
         assertThat(nextKey).isEqualTo(PRESET_KEY);
@@ -253,17 +253,26 @@ class ProfileImageServiceTest {
     // 프리셋은 공유 자원이라 지우면 안 되고, 사용자가 고른 프리셋을 기본값으로 덮을 이유도 없다.
     @Test
     void purgeUploadedImage_keepsPresetKeyUntouched() {
-        String nextKey = profileImageService.purgeUploadedImage("profile-presets/preset-2");
+        String nextKey = profileImageService.purgeUploadedImage("profile-presets/parent-avatar", PRESET_KEY);
 
         verify(imageStorage, never()).delete(any());
-        assertThat(nextKey).isEqualTo("profile-presets/preset-2");
+        assertThat(nextKey).isEqualTo("profile-presets/parent-avatar");
+    }
+
+    // 프리셋은 프론트 번들 이미지라 서버가 URL을 만들 수 없다. null을 받은 클라이언트가
+    // profileImageKey로 로컬 에셋을 찾는다.
+    @Test
+    void resolveUrl_returnsNullForPresetKey() {
+        assertThat(profileImageService.resolveUrl(PRESET_KEY)).isNull();
+        verify(imageStorage, never()).resolveUploadUrl(any());
     }
 
     @Test
-    void resolveUrl_delegatesToStorage() {
-        when(imageStorage.resolveUrl(PRESET_KEY)).thenReturn("https://cdn.example.com/" + PRESET_KEY);
+    void resolveUrl_returnsPresignedUrlForUploadKey() {
+        String uploadKey = UPLOAD_PREFIX + "abc";
+        when(imageStorage.resolveUploadUrl(uploadKey)).thenReturn("https://signed.example.com/x");
 
-        assertThat(profileImageService.resolveUrl(PRESET_KEY)).isEqualTo("https://cdn.example.com/" + PRESET_KEY);
+        assertThat(profileImageService.resolveUrl(uploadKey)).isEqualTo("https://signed.example.com/x");
     }
 
     private MockMultipartFile imageFile(String contentType, byte[] header, int totalSize) {

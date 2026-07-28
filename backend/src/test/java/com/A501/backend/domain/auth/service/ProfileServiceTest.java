@@ -23,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.common.storage.ImageErrorCode;
 import com.A501.backend.common.storage.ProfileImageService;
+import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
@@ -30,9 +31,8 @@ import com.A501.backend.domain.auth.repository.ParentRepository;
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
 
-    private static final String PRESET_KEY = "profile-presets/preset-2";
+    private static final String PRESET_KEY = "profile-presets/child-avatar-tiger";
     private static final String UPLOAD_KEY = "profile-uploads/1/parent/abc";
-    private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
     private static final String UPLOAD_URL = "https://upload.example.com/signed";
 
     @Mock
@@ -54,12 +54,14 @@ class ProfileServiceTest {
     void updateProfileImage_changesKeyAndReturnsResolvedUrl() {
         Parent parent = newParent();
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
-        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(PRESET_URL);
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(null);
 
-        String url = profileService.updateProfileImage(1L, PRESET_KEY);
+        ProfileImageResponse response = profileService.updateProfileImage(1L, PRESET_KEY);
 
         assertThat(parent.getProfileImageKey()).isEqualTo(PRESET_KEY);
-        assertThat(url).isEqualTo(PRESET_URL);
+        assertThat(response.profileImageKey()).isEqualTo(PRESET_KEY);
+        // 프리셋은 프론트 번들 이미지라 서버가 URL을 만들지 않는다.
+        assertThat(response.profileImageUrl()).isNull();
     }
 
     // 웹캠 사진에서 프리셋으로 바꾸면 더 이상 참조되지 않는 실물 사진을 즉시 파기해야 한다.
@@ -68,7 +70,7 @@ class ProfileServiceTest {
         Parent parent = newParent();
         parent.changeProfileImage(UPLOAD_KEY);
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
-        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(PRESET_URL);
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(null);
 
         profileService.updateProfileImage(1L, PRESET_KEY);
 
@@ -122,10 +124,11 @@ class ProfileServiceTest {
         when(profileImageService.uploadImage("profile-uploads/1/parent/", file)).thenReturn(UPLOAD_KEY);
         when(profileImageService.resolveUrl(UPLOAD_KEY)).thenReturn(UPLOAD_URL);
 
-        String url = profileService.uploadProfileImage(1L, file);
+        ProfileImageResponse response = profileService.uploadProfileImage(1L, file);
 
         assertThat(parent.getProfileImageKey()).isEqualTo(UPLOAD_KEY);
-        assertThat(url).isEqualTo(UPLOAD_URL);
+        assertThat(response.profileImageKey()).isEqualTo(UPLOAD_KEY);
+        assertThat(response.profileImageUrl()).isEqualTo(UPLOAD_URL);
     }
 
     // 이전 사진도 웹캠 사진이면 교체와 동시에 파기한다.

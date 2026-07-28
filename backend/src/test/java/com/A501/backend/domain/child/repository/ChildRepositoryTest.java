@@ -21,8 +21,8 @@ class ChildRepositoryTest {
 
     @Test
     void findAllByParentIdAndDeletedAtIsNull_excludesSoftDeletedChildren() {
-        Child alive = childRepository.save(Child.create(1L, "alive", "profile-presets/preset-1"));
-        Child deleted = childRepository.save(Child.create(1L, "deleted", "profile-presets/preset-1"));
+        Child alive = childRepository.save(Child.create(1L, "alive", "profile-presets/child-avatar"));
+        Child deleted = childRepository.save(Child.create(1L, "deleted", "profile-presets/child-avatar"));
         deleted.softDelete(LocalDateTime.now());
         childRepository.save(deleted);
 
@@ -33,29 +33,29 @@ class ChildRepositoryTest {
 
     @Test
     void existsByParentIdAndNameAndDeletedAtIsNull_ignoresSoftDeletedNames() {
-        Child deleted = childRepository.save(Child.create(1L, "chorong", "profile-presets/preset-1"));
+        Child deleted = childRepository.save(Child.create(1L, "chorong", "profile-presets/child-avatar"));
         deleted.softDelete(LocalDateTime.now());
         childRepository.save(deleted);
 
         // 소프트 삭제된 이름은 재사용 가능해야 한다.
         assertThat(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).isFalse();
 
-        childRepository.save(Child.create(1L, "chorong", "profile-presets/preset-2"));
+        childRepository.save(Child.create(1L, "chorong", "profile-presets/child-avatar-tiger"));
 
         assertThat(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).isTrue();
     }
 
     @Test
     void existsByParentIdAndNameAndDeletedAtIsNull_isScopedToParent() {
-        childRepository.save(Child.create(1L, "chorong", "profile-presets/preset-1"));
+        childRepository.save(Child.create(1L, "chorong", "profile-presets/child-avatar"));
 
         assertThat(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(2L, "chorong")).isFalse();
     }
 
     @Test
     void countByParentIdAndDeletedAtIsNull_excludesSoftDeletedChildren() {
-        childRepository.save(Child.create(1L, "one", "profile-presets/preset-1"));
-        Child deleted = childRepository.save(Child.create(1L, "two", "profile-presets/preset-1"));
+        childRepository.save(Child.create(1L, "one", "profile-presets/child-avatar"));
+        Child deleted = childRepository.save(Child.create(1L, "two", "profile-presets/child-avatar"));
         deleted.softDelete(LocalDateTime.now());
         childRepository.save(deleted);
 
@@ -64,7 +64,7 @@ class ChildRepositoryTest {
 
     @Test
     void findByChildIdAndDeletedAtIsNull_excludesSoftDeletedChild() {
-        Child child = childRepository.save(Child.create(1L, "chorong", "profile-presets/preset-1"));
+        Child child = childRepository.save(Child.create(1L, "chorong", "profile-presets/child-avatar"));
         child.softDelete(LocalDateTime.now());
         childRepository.save(child);
 

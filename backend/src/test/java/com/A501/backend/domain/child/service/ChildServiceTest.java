@@ -34,8 +34,8 @@ class ChildServiceTest {
 
     private static final ChildProperties CHILD_PROPERTIES = new ChildProperties(10);
 
-    private static final String PRESET_KEY = "profile-presets/preset-1";
-    private static final String OTHER_PRESET_KEY = "profile-presets/preset-2";
+    private static final String PRESET_KEY = "profile-presets/child-avatar";
+    private static final String OTHER_PRESET_KEY = "profile-presets/child-avatar-tiger";
     private static final String UPLOAD_KEY = "profile-uploads/1/10/abc";
     private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
     private static final String OTHER_PRESET_URL = "https://cdn.example.com/" + OTHER_PRESET_KEY;
@@ -119,7 +119,7 @@ class ChildServiceTest {
         when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(false);
         when(childRepository.save(any(Child.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(profileImageService.defaultPresetKey()).thenReturn(PRESET_KEY);
+        when(profileImageService.defaultChildPresetKey()).thenReturn(PRESET_KEY);
         when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(PRESET_URL);
 
         ChildResponse child = childService.createChild(1L, "chorong", null);
@@ -341,7 +341,8 @@ class ChildServiceTest {
     void deleteChild_purgesUploadedImageAndResetsKey() {
         Child child = Child.create(1L, "chorong", UPLOAD_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
-        when(profileImageService.purgeUploadedImage(UPLOAD_KEY)).thenReturn(PRESET_KEY);
+        when(profileImageService.defaultChildPresetKey()).thenReturn(PRESET_KEY);
+        when(profileImageService.purgeUploadedImage(UPLOAD_KEY, PRESET_KEY)).thenReturn(PRESET_KEY);
 
         childService.deleteChild(1L, 10L, "1234");
 
@@ -358,7 +359,7 @@ class ChildServiceTest {
 
         assertThatThrownBy(() -> childService.deleteChild(1L, 10L, "0000"))
                 .isInstanceOf(BusinessException.class);
-        verify(profileImageService, never()).purgeUploadedImage(any());
+        verify(profileImageService, never()).purgeUploadedImage(any(), any());
         assertThat(child.getProfileImageKey()).isEqualTo(UPLOAD_KEY);
     }
 
@@ -368,15 +369,16 @@ class ChildServiceTest {
         Child uploaded = Child.create(1L, "chorong", UPLOAD_KEY);
         Child preset = Child.create(1L, "banjjak", OTHER_PRESET_KEY);
         when(childRepository.findAllByParentIdAndDeletedAtIsNull(1L)).thenReturn(List.of(uploaded, preset));
-        when(profileImageService.purgeUploadedImage(UPLOAD_KEY)).thenReturn(PRESET_KEY);
-        when(profileImageService.purgeUploadedImage(OTHER_PRESET_KEY)).thenReturn(OTHER_PRESET_KEY);
+        when(profileImageService.defaultChildPresetKey()).thenReturn(PRESET_KEY);
+        when(profileImageService.purgeUploadedImage(UPLOAD_KEY, PRESET_KEY)).thenReturn(PRESET_KEY);
+        when(profileImageService.purgeUploadedImage(OTHER_PRESET_KEY, PRESET_KEY)).thenReturn(OTHER_PRESET_KEY);
 
         childService.softDeleteChildrenOf(1L);
 
         assertThat(uploaded.getProfileImageKey()).isEqualTo(PRESET_KEY);
         assertThat(preset.getProfileImageKey()).isEqualTo(OTHER_PRESET_KEY);
-        verify(profileImageService).purgeUploadedImage(UPLOAD_KEY);
-        verify(profileImageService).purgeUploadedImage(OTHER_PRESET_KEY);
+        verify(profileImageService).purgeUploadedImage(UPLOAD_KEY, PRESET_KEY);
+        verify(profileImageService).purgeUploadedImage(OTHER_PRESET_KEY, PRESET_KEY);
     }
 
     @Test

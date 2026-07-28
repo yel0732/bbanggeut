@@ -87,7 +87,7 @@ class RefreshTokenRepositoryTest {
     // AuthService를 거치지 않고 엔티티를 직접 저장하므로, NOT NULL인 프로필 이미지 키를 직접 채운다.
     private Parent localParent(String email) {
         Parent parent = Parent.createLocal(email, "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.changeProfileImage("profile-presets/preset-1");
+        parent.changeProfileImage("profile-presets/parent-avatar");
         return parent;
     }
 }

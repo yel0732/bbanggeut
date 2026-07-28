@@ -169,7 +169,8 @@ public class AuthService {
         parent.withdraw(LocalDateTime.now(KST));
         // 소프트 삭제라 계정 행은 남지만 업로드한 실물 사진은 즉시 파기한다. 자녀 쪽 파기는
         // childService가 같은 정책으로 처리한다.
-        parent.changeProfileImage(profileImageService.purgeUploadedImage(parent.getProfileImageKey()));
+        parent.changeProfileImage(profileImageService.purgeUploadedImage(
+                parent.getProfileImageKey(), profileImageService.defaultParentPresetKey()));
         childService.softDeleteChildrenOf(parentId);
         refreshTokenRepository.findAllByParentAndRevokedFalse(parent).forEach(RefreshToken::revoke);
     }
@@ -254,7 +255,7 @@ public class AuthService {
     // 신규 계정의 프로필 사진은 기본 프리셋으로 시작한다. 자녀 생성(ChildService)과 동일하게
     // 설정값을 단일 출처로 삼기 위해, 엔티티 상수가 아니라 여기서 채워 넣는다.
     private Parent withDefaultProfileImage(Parent parent) {
-        parent.changeProfileImage(profileImageService.defaultPresetKey());
+        parent.changeProfileImage(profileImageService.defaultParentPresetKey());
         return parent;
     }
 

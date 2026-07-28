@@ -1,7 +1,6 @@
 package com.A501.backend.common.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.Set;
@@ -9,50 +8,41 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.unit.DataSize;
 
-// 키 접두사가 곧 소속 버킷을 결정한다. 아이 실물 사진이 공개 버킷으로 새지 않는 것이 이 규칙의
-// 목적이므로, 버킷 선택 자체를 테스트로 고정한다.
+// 접두사가 "프론트 번들 프리셋 식별자"와 "S3 객체 키"를 가른다. 이 판정이 흔들리면 프리셋을
+// S3에서 지우려 하거나(존재하지 않는 객체), 아이 실물 사진을 프리셋으로 오인해 파기하지 않게 된다.
 class StoragePropertiesTest {
 
-    private static final String PRESET_BUCKET = "a501-profile-presets";
-    private static final String UPLOAD_BUCKET = "a501-profile-uploads";
-
     private static final StorageProperties PROPERTIES = new StorageProperties(
-            PRESET_BUCKET,
-            UPLOAD_BUCKET,
+            "a501-profile-uploads",
             "ap-northeast-2",
             "profile-presets/",
             "profile-uploads/",
-            "https://cdn.example.com",
-            "profile-presets/preset-1",
-            Set.of("profile-presets/preset-1"),
+            "profile-presets/parent-avatar",
+            "profile-presets/child-avatar",
+            Set.of("profile-presets/parent-avatar", "profile-presets/child-avatar"),
             DataSize.ofMegabytes(2),
             Duration.ofMinutes(5));
 
     @Test
-    void bucketFor_routesPresetKeyToPresetBucket() {
-        assertThat(PROPERTIES.bucketFor("profile-presets/preset-1")).isEqualTo(PRESET_BUCKET);
-    }
-
-    @Test
-    void bucketFor_routesUploadKeyToUploadBucket() {
-        assertThat(PROPERTIES.bucketFor("profile-uploads/1/parent/abc")).isEqualTo(UPLOAD_BUCKET);
-        assertThat(PROPERTIES.bucketFor("profile-uploads/1/7/abc")).isEqualTo(UPLOAD_BUCKET);
-    }
-
-    // 접두사가 없는 키를 임의로 한쪽 버킷에 매핑하면 아이 사진이 공개 버킷에 쓰일 수 있다.
-    @Test
-    void bucketFor_failsForUnknownPrefix() {
-        assertThatThrownBy(() -> PROPERTIES.bucketFor("something-else/abc"))
-                .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> PROPERTIES.bucketFor(null))
-                .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
     void isPresetAndIsUpload_areMutuallyExclusive() {
-        assertThat(PROPERTIES.isPreset("profile-presets/preset-1")).isTrue();
-        assertThat(PROPERTIES.isUpload("profile-presets/preset-1")).isFalse();
+        assertThat(PROPERTIES.isPreset("profile-presets/child-avatar-tiger")).isTrue();
+        assertThat(PROPERTIES.isUpload("profile-presets/child-avatar-tiger")).isFalse();
+
         assertThat(PROPERTIES.isUpload("profile-uploads/1/parent/abc")).isTrue();
         assertThat(PROPERTIES.isPreset("profile-uploads/1/parent/abc")).isFalse();
+    }
+
+    @Test
+    void unknownPrefixIsNeitherPresetNorUpload() {
+        assertThat(PROPERTIES.isPreset("something-else/abc")).isFalse();
+        assertThat(PROPERTIES.isUpload("something-else/abc")).isFalse();
+        assertThat(PROPERTIES.isPreset(null)).isFalse();
+        assertThat(PROPERTIES.isUpload(null)).isFalse();
+    }
+
+    // 부모와 자녀의 기본 이미지는 서로 다르다.
+    @Test
+    void parentAndChildDefaultsDiffer() {
+        assertThat(PROPERTIES.defaultParentPresetKey()).isNotEqualTo(PROPERTIES.defaultChildPresetKey());
     }
 }

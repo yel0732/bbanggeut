@@ -33,8 +33,7 @@ public class ProfileController {
     public ResponseEntity<ProfileImageResponse> updateProfileImage(
             Authentication authentication, @Valid @RequestBody UpdateProfileImageRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
-        String profileImageUrl = profileService.updateProfileImage(parentId, request.imageKey());
-        return ResponseEntity.ok(ProfileImageResponse.of(profileImageUrl));
+        return ResponseEntity.ok(profileService.updateProfileImage(parentId, request.imageKey()));
     }
 
     @Operation(summary = "부모 프로필 사진 업로드 (웹캠 촬영)")
@@ -42,7 +41,6 @@ public class ProfileController {
     public ResponseEntity<ProfileImageResponse> uploadProfileImage(
             Authentication authentication, @RequestPart("file") MultipartFile file) {
         Long parentId = (Long) authentication.getPrincipal();
-        String profileImageUrl = profileService.uploadProfileImage(parentId, file);
-        return ResponseEntity.ok(ProfileImageResponse.of(profileImageUrl));
+        return ResponseEntity.ok(profileService.uploadProfileImage(parentId, file));
     }
 }

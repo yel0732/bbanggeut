@@ -29,9 +29,7 @@ public class S3StorageConfig {
     // 조용히 뜬 뒤, 아이 사진을 올리는 시점에야 실패한다 — 그 전에 드러나야 한다.
     @PostConstruct
     void validateRequiredSettings() {
-        requireConfigured("S3_PRESET_BUCKET", storageProperties.presetBucket());
         requireConfigured("S3_UPLOAD_BUCKET", storageProperties.uploadBucket());
-        requireConfigured("S3_PRESET_PUBLIC_BASE_URL", storageProperties.presetPublicBaseUrl());
         requireConfigured("AWS_REGION", storageProperties.region());
     }
 

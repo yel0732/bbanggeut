@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -678,12 +679,12 @@ class AuthServiceTest {
         parent.changeProfileImage("profile-uploads/1/parent/abc");
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
         when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent)).thenReturn(List.of());
-        when(profileImageService.purgeUploadedImage("profile-uploads/1/parent/abc"))
-                .thenReturn("profile-presets/preset-1");
+        when(profileImageService.purgeUploadedImage(eq("profile-uploads/1/parent/abc"), any()))
+                .thenReturn("profile-presets/parent-avatar");
 
         authService.withdraw(1L, null);
 
-        assertThat(parent.getProfileImageKey()).isEqualTo("profile-presets/preset-1");
+        assertThat(parent.getProfileImageKey()).isEqualTo("profile-presets/parent-avatar");
         // 자녀 사진 파기는 child 도메인이 같은 정책으로 처리한다.
         verify(childService).softDeleteChildrenOf(1L);
     }
@@ -700,7 +701,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.withdraw(1L, "0000")).isInstanceOf(BusinessException.class);
 
-        verify(profileImageService, never()).purgeUploadedImage(any());
+        verify(profileImageService, never()).purgeUploadedImage(any(), any());
         assertThat(parent.getProfileImageKey()).isEqualTo("profile-uploads/1/parent/abc");
     }
 

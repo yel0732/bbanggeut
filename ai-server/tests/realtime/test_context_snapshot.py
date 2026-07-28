@@ -178,3 +178,14 @@ async def test_redis_failure_degrades_to_none_instead_of_raising() -> None:
     reader = RedisContextSnapshotReader(_BrokenRedis(), _LOGGER)
 
     assert await reader.read("conv_1") is None
+
+
+def test_last_turn_seq_parses_and_defaults_to_zero() -> None:
+    """§11-A: 재연결 turnSeq 연속성. 구버전 스냅숏(필드 없음)은 0으로 관용."""
+
+    with_field = dict(_SNAPSHOT_JSON)
+    with_field["conversation"] = dict(_SNAPSHOT_JSON["conversation"], lastTurnSeq=7)
+    assert ContextSnapshot.model_validate(with_field).conversation.last_turn_seq == 7
+
+    # 필드가 없는 구버전 스냅숏도 파싱되고 0이 된다(배포 순서 무관).
+    assert ContextSnapshot.model_validate(_SNAPSHOT_JSON).conversation.last_turn_seq == 0

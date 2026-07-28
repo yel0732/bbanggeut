@@ -504,3 +504,151 @@ class TestSpeakWiring:
             "assistant.response.created",
             "assistant.text.final",
         ]
+
+
+class _RecordingStreamProducer:
+    """Captures publish_* calls in order (Stream 발행 검증용)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+        self.closed = 0
+
+    def start(self) -> None:
+        pass
+
+    def publish_session_started(self, connected_at) -> None:
+        self.calls.append(("SESSION_STARTED",))
+
+    def publish_child_turn_finalized(self, *, turn_id, turn_seq, text, stt_confidence,
+                                     started_at, completed_at) -> None:
+        self.calls.append(("CHILD_TURN_FINALIZED", turn_id, turn_seq, text,
+                           (completed_at - started_at).total_seconds()))
+
+    def publish_ai_turn_generated(self, *, turn_id, turn_seq, response_id, text,
+                                  target_slot, topic_type, topic_slots) -> None:
+        self.calls.append(("AI_TURN_GENERATED", turn_id, turn_seq, response_id,
+                           target_slot, topic_type, topic_slots.event))
+
+    def publish_ai_turn_completed(self, *, turn_id, turn_seq, response_id, text,
+                                  audio_started_at, audio_completed_at) -> None:
+        self.calls.append(("AI_TURN_COMPLETED", turn_id, response_id))
+
+    def publish_session_completed(self, *, reason, completed_at) -> None:
+        self.calls.append(("SESSION_COMPLETED", reason))
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
+def _build_manager_with_stream(pipeline=None, snapshot=_TWO_TOPIC_SNAPSHOT):
+    manager, state, channel, pipeline, registry, sequencer = _build_manager(
+        pipeline, snapshot
+    )
+    stream = _RecordingStreamProducer()
+    manager._stream = stream  # noqa: SLF001
+    manager._clock = lambda: datetime(2026, 7, 28, 10, 0, 5, tzinfo=timezone.utc)  # noqa: SLF001
+    return manager, state, channel, stream, sequencer
+
+
+class TestStreamPublishing:
+    @pytest.mark.asyncio
+    async def test_child_and_ai_turns_publish_in_order(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream(
+            _FakeDialoguePipeline([_continue_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        types = [c[0] for c in stream.calls]
+        assert types == ["CHILD_TURN_FINALIZED", "AI_TURN_GENERATED"]
+
+    @pytest.mark.asyncio
+    async def test_child_turn_finalized_carries_approx_started_at(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer),
+            SttResult(text="응.", audio_seconds=2.0, avg_logprob=-0.3, no_speech_prob=0.0),
+        )
+
+        child = next(c for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED")
+        # startedAt = completedAt - audio_seconds (§11-E)
+        assert child[4] == pytest.approx(2.0)
+
+    @pytest.mark.asyncio
+    async def test_ai_turn_generated_carries_target_and_topic_slots(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream(
+            _FakeDialoguePipeline([_continue_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        ai = next(c for c in stream.calls if c[0] == "AI_TURN_GENERATED")
+        # target은 갱신 슬롯으로 재계산된다(event 채워짐 → 다음 목표는 emotion 계열)
+        assert ai[4] is not None
+        assert ai[5] == "GAME"  # topic_type
+        assert ai[6] == "과일 게임"  # topic_slots.event
+
+    @pytest.mark.asyncio
+    async def test_switch_topic_publishes_null_target(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream(
+            _FakeDialoguePipeline([_switch_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        ai = next(c for c in stream.calls if c[0] == "AI_TURN_GENERATED")
+        assert ai[4] is None  # 전환 질문은 목표 없음
+
+    @pytest.mark.asyncio
+    async def test_terminate_publishes_session_completed(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream(
+            _FakeDialoguePipeline([_terminate_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert ("SESSION_COMPLETED", "MAX_QUESTION_REACHED") in stream.calls
+        assert not any(c[0] == "AI_TURN_GENERATED" for c in stream.calls)
+
+    @pytest.mark.asyncio
+    async def test_discarded_response_is_not_streamed(self) -> None:
+        """취소·낮은 epoch로 발행이 막힌 턴은 Stream에도 없다(확정만 발행)."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+        manager._is_epoch_current = lambda: False  # noqa: SLF001
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        # CHILD는 확정됐으니 발행되지만 AI_TURN_GENERATED는 발행 안 됨
+        assert any(c[0] == "CHILD_TURN_FINALIZED" for c in stream.calls)
+        assert not any(c[0] == "AI_TURN_GENERATED" for c in stream.calls)
+
+    def test_no_speech_terminate_publishes_session_completed(self) -> None:
+        manager, _, _, stream, _ = _build_manager_with_stream()
+
+        for _ in range(5):
+            manager.handle_no_speech()
+
+        assert any(c[0] == "SESSION_COMPLETED" for c in stream.calls)
+
+    @pytest.mark.asyncio
+    async def test_emit_ai_turn_completed_forwards_to_stream(self) -> None:
+        manager, _, _, stream, _ = _build_manager_with_stream()
+        now = datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc)
+
+        manager.emit_ai_turn_completed("turn_3", 3, "resp_3", "질문", now, now)
+
+        assert ("AI_TURN_COMPLETED", "turn_3", "resp_3") in stream.calls
+
+    @pytest.mark.asyncio
+    async def test_no_stream_producer_keeps_working(self) -> None:
+        """producer 미주입 시 회귀 — 이벤트만 없고 대화는 그대로."""
+
+        manager, _, channel, _, _, sequencer = _build_manager(
+            _FakeDialoguePipeline([_continue_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert channel.sent[-1]["type"] == "assistant.text.final"

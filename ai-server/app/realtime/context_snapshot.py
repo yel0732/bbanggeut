@@ -43,6 +43,9 @@ class ConversationContext(BaseModel):
     language: str
     current_topic: DialogueTopic = Field(alias="currentTopic")
     total_max_question_count: int = Field(alias="totalMaxQuestionCount", gt=0)
+    # 이 대화에 저장된 마지막 turnSeq(없으면 0). 재연결 시 다음부터 발급해
+    # 연결 메모리 카운터가 1로 되돌아가 충돌하는 것을 막는다(W05 §11-A).
+    last_turn_seq: int = Field(default=0, alias="lastTurnSeq", ge=0)
 
 
 class TopicSnapshot(BaseModel):

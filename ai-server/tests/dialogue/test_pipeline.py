@@ -101,6 +101,53 @@ async def test_first_turn_uses_child_text_when_slot_analysis_fails() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stt_confidence_reaches_the_slot_analysis_payload() -> None:
+    """실시간 경로가 준 sttConfidence가 분석 프롬프트의 user JSON까지 닿는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":"블록 놀이","people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            "그때 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = _request().model_copy(update={"stt_confidence": 0.52})
+
+    await _pipeline(client).process(request)
+
+    analysis_user = next(
+        message for message in client.calls[0] if message.role == "user"
+    )
+    assert json.loads(analysis_user.content)["sttConfidence"] == 0.52
+
+
+@pytest.mark.asyncio
+async def test_text_turn_leaves_stt_confidence_null_in_the_payload() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":"블록 놀이","people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            "그때 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+
+    await _pipeline(client).process(_request())
+
+    analysis_user = next(
+        message for message in client.calls[0] if message.role == "user"
+    )
+    assert json.loads(analysis_user.content)["sttConfidence"] is None
+
+
+@pytest.mark.asyncio
 async def test_updates_slots_and_generates_next_question() -> None:
     client = FakeClient(
         [

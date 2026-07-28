@@ -39,7 +39,10 @@ from app.dialogue.question.prompts import (
     QuestionRedirectContext,
 )
 from app.dialogue.policy.recovery import (
+    ASK_TO_REPEAT_PROMPT,
+    CHOICE_QUESTION_BY_TARGET,
     DEFAULT_NO_RESPONSE_RECOVERY_POLICY,
+    SIMPLIFIED_QUESTION_BY_TARGET,
     evaluate_dialogue_policy,
 )
 from app.dialogue.schemas import (
@@ -113,6 +116,14 @@ class DialogueTurnRequest(BaseModel):
         min_length=1,
         max_length=2000,
         repr=False,
+    )
+    # childAnswer가 음성 인식(STT) 결과일 때의 신뢰도. 텍스트 턴(Spring 경유)은
+    # 보내지 않으며 None으로 남는다 — 하위 호환 옵션 필드.
+    stt_confidence: float | None = Field(
+        default=None,
+        alias="sttConfidence",
+        ge=0.0,
+        le=1.0,
     )
     current_question: str | None = Field(
         default=None,
@@ -300,6 +311,7 @@ class DialogueTurnPipeline:
             DiaryAnswerAnalysisRequest(
                 current_question=request.current_question,
                 child_answer=request.child_answer,
+                stt_confidence=request.stt_confidence,
                 current_slots=request.current_slots,
                 game_context=request.game_context,
             ),
@@ -519,6 +531,39 @@ class DialogueTurnPipeline:
             ),
             question_generation_failure_code=None,
         )
+
+
+def fixed_assistant_messages() -> tuple[str, ...]:
+    """AI가 말하는 문장 중 **매번 완전히 동일한** 것들 (사전 합성 대상).
+
+    일반 질문 경로는 포함하지 않는다 — 그 메시지는 아이 답변에서 파생된 호응으로
+    시작하므로 매 턴 달라진다(``_join_answer_and_question``).
+
+    여기 담기는 것:
+
+    - 무응답 복구 프롬프트(단순화·되묻기·선택지)와 규칙 기반 Fallback 질문. 둘 다
+      ``SIMPLIFIED_QUESTION_BY_TARGET``을 공유한다.
+    - 낮은 STT 신뢰도 되묻기(``ASK_TO_REPEAT_PROMPT``).
+    - 주제 전환 메시지. 전환 질문을 문장에 품고 있어 조합이 유한하다.
+    """
+
+    messages: list[str] = [
+        *SIMPLIFIED_QUESTION_BY_TARGET.values(),
+        *CHOICE_QUESTION_BY_TARGET.values(),
+        ASK_TO_REPEAT_PROMPT,
+    ]
+    for current in DialogueTopic:
+        for following in DialogueTopic:
+            if current is following:
+                continue
+            messages.append(
+                _topic_transition_message(
+                    current,
+                    following,
+                    _topic_opening_question(following),
+                )
+            )
+    return tuple(dict.fromkeys(messages))  # 순서 유지 + 중복 제거
 
 
 def _current_unanswered_target(

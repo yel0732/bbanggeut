@@ -192,6 +192,58 @@ class ConversationEventProcessorIntegrationTest {
     }
 
     @Test
+    void completesAiTurnEvenWhenCompletedTextDiffersFromGeneratedText() {
+        // finding ③: COMPLETED의 정체성은 식별자로 판정한다 — text가 GENERATED와
+        // 달라도(향후 TTS가 다른 텍스트를 실을 수 있음) 턴은 정상 완료돼야 한다.
+        ConversationStreamDelivery generated = delivery(
+                "2100-0",
+                "evt-ai-generated-diff",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-ai-diff",
+                2,
+                "resp-ai-diff",
+                """
+                {
+                  "text": "그때 어떤 기분이 들었어?",
+                  "questionText": "그때 어떤 기분이 들었어?",
+                  "targetSlot": "emotion",
+                  "topicType": "GAME",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "공원에서 달리기", "emotion": null },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": null
+                }
+                """);
+        ConversationStreamDelivery completed = delivery(
+                "2100-1",
+                "evt-ai-completed-diff",
+                "AI_TURN_COMPLETED",
+                1,
+                "turn-ai-diff",
+                2,
+                "resp-ai-diff",
+                """
+                {
+                  "text": "그때 어떤 기분이 들었어? (음성으로 다시 표현)",
+                  "audioStartedAt": "2026-07-28T01:00:05Z",
+                  "audioCompletedAt": "2026-07-28T01:00:08Z"
+                }
+                """);
+
+        assertThat(eventProcessor.process(generated))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+        assertThat(eventProcessor.process(completed))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+
+        ConversationTurn turn = turnRepository.findById("turn-ai-diff").orElseThrow();
+        assertThat(turn.getStatus()).isEqualTo(TurnStatus.COMPLETED);
+        // content는 GENERATED가 저장한 값 그대로 유지된다.
+        assertThat(turn.getContent()).isEqualTo("그때 어떤 기분이 들었어?");
+    }
+
+    @Test
     void appliesConfirmedPriorEpochTurnThatOccurredBeforeReconnectCutover() {
         ConversationSession session = sessionRepository.findById(CONVERSATION_ID).orElseThrow();
         session.startRealtimeSession(LocalDateTime.parse("2026-07-28T01:00:05"));

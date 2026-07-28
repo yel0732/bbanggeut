@@ -37,6 +37,7 @@ from app.dialogue.pipeline import (
     DialogueTurnResponse,
 )
 from app.dialogue.policy.recovery import (
+    ASK_TO_REPEAT_PROMPT,
     DEFAULT_NO_RESPONSE_RECOVERY_POLICY,
     evaluate_dialogue_policy,
 )
@@ -65,6 +66,7 @@ SpeakCallback = Callable[[str, int, str, str], None]
 
 _RECENT_QUESTION_LIMIT = 5
 _LLM_ERROR_CODE = "LLM_TIMEOUT"  # §22의 LLM 계열 공개 코드(복구: Fallback)
+_STT_LOW_CONFIDENCE_CODE = "STT_LOW_CONFIDENCE"  # §22 — 복구: 확인 질문
 
 
 def _default_request_id_factory() -> str:
@@ -118,6 +120,7 @@ class DialogueSessionState:
         self.recent_questions: list[str] = []
         self.last_question: str | None = None
         self.consecutive_no_responses = 0
+        self.consecutive_low_confidence_reasks = 0
         self.terminated = False
         self.known_turn_ids: set[str] = set()
 
@@ -164,6 +167,8 @@ class RealtimeDialogueManager:
         speak: SpeakCallback | None = None,
         stream_producer: ConversationStreamProducer | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        low_confidence_threshold: float = 0.67,
+        low_confidence_reask_limit: int = 1,
     ) -> None:
         self._pipeline = dialogue_pipeline
         self._termination_policy = termination_policy
@@ -177,6 +182,8 @@ class RealtimeDialogueManager:
         self._speak = speak
         self._stream = stream_producer
         self._clock = clock
+        self._low_confidence_threshold = low_confidence_threshold
+        self._low_confidence_reask_limit = low_confidence_reask_limit
 
     def set_speak(self, speak: SpeakCallback) -> None:
         """Wire the synthesis speak callback after construction.
@@ -212,11 +219,17 @@ class RealtimeDialogueManager:
         state.known_turn_ids.add(turn.turn_id)
         self._emit_child_turn_finalized(turn, result)
 
+        if self._should_reask_low_confidence(result):
+            self._reask_low_confidence(turn)
+            return
+        state.consecutive_low_confidence_reasks = 0
+
         topic = state.current_topic
         request = DialogueTurnRequest(
             request_id=self._request_id_factory(),
             conversation_id=state.snapshot.conversation_id,
             child_answer=result.text,
+            stt_confidence=result.confidence,
             current_question=state.last_question,
             current_topic=topic.snapshot.type,
             next_topic=state.next_topic_type,
@@ -298,6 +311,57 @@ class RealtimeDialogueManager:
                 topic,
             )
         state.remember_question(response.assistant_question)
+
+    # --- 낮은 STT 신뢰도 되묻기 (§22 STT_LOW_CONFIDENCE) ----------------------
+
+    def _should_reask_low_confidence(self, result: SttResult) -> bool:
+        """되묻기 게이트: 신뢰도가 낮은 Final을 대화에 넣기 전에 확인 질문으로 돌린다.
+
+        오인식된 전사가 슬롯·일기로 흘러가는 것을 막는 유일한 회복 수단이다 —
+        아이의 재발화가 추측 없이 원문을 복원한다. 연속 상한에 도달하면 낮은
+        신뢰도라도 진행한다(무한 되묻기 방지). 그때는 ``sttConfidence``를 함께
+        받은 슬롯 분석 LLM이 보수적으로 해석한다.
+        """
+
+        confidence = result.confidence
+        return (
+            confidence is not None
+            and confidence < self._low_confidence_threshold
+            and self._state.consecutive_low_confidence_reasks
+            < self._low_confidence_reask_limit
+        )
+
+    def _reask_low_confidence(self, turn: SttTurn) -> None:
+        state = self._state
+        state.consecutive_low_confidence_reasks += 1
+        self._logger.info(
+            "child turn re-asked: low stt confidence",
+            extra={
+                "turn_id": turn.turn_id,
+                "consecutive_reasks": state.consecutive_low_confidence_reasks,
+            },
+        )
+        self._publisher.publish(
+            "error",
+            {
+                "code": _STT_LOW_CONFIDENCE_CODE,
+                "message": "음성 인식 신뢰도가 낮습니다.",
+                "recoverable": True,
+            },
+            turn_id=turn.turn_id,
+            turn_seq=turn.turn_seq,
+        )
+        topic = state.current_topic
+        ai_ref = self._publish_assistant_text(ASK_TO_REPEAT_PROMPT)
+        if ai_ref is not None:
+            target = select_next_question_target(
+                topic.slots, excluded_targets=topic.skipped_targets
+            )
+            self._emit_ai_turn_generated(
+                ai_ref, ASK_TO_REPEAT_PROMPT, ASK_TO_REPEAT_PROMPT, target, topic
+            )
+        # last_question은 갱신하지 않는다 — 재발화는 원래 질문에 대한 답으로
+        # 평가되어야 한다. 질문 수도 세지 않는다(무응답 재질문 §7-E와 동일).
 
     # --- no-response (ADR-018 연결) -----------------------------------------
 
@@ -543,12 +607,14 @@ async def create_realtime_dialogue_session(
     speaker: SpeakerHandle | None = None,
     synthesis_service_factory: SynthesisServiceFactory | None = None,
     stream_producer_factory: StreamProducerFactory | None = None,
+    low_confidence_threshold: float = 0.67,
+    low_confidence_reask_limit: int = 1,
 ) -> RealtimeDialogueSession:
     """Assemble one connection's dialogue session (T11 read-once included).
 
-    ``stt_pipeline_factory(publisher, turn_sequencer, on_final, on_no_speech)``
-    keeps the STT wiring (recognizer/VAD/config) where it already lives —
-    ``main.py`` — instead of duplicating it here.
+    ``stt_pipeline_factory(publisher, turn_sequencer, on_final, on_no_speech,
+    is_output_active)`` keeps the STT wiring (recognizer/VAD/config) where it
+    already lives — ``main.py`` — instead of duplicating it here.
 
     ``speaker`` is the outbound AI voice; it is ``None`` for an audio-less
     offer, in which case the session runs text-only (no synthesis).
@@ -586,6 +652,8 @@ async def create_realtime_dialogue_session(
         is_epoch_current=is_epoch_current,
         logger=logger,
         stream_producer=stream_producer,
+        low_confidence_threshold=low_confidence_threshold,
+        low_confidence_reask_limit=low_confidence_reask_limit,
     )
 
     synthesis: SpeechSynthesisService | None = None
@@ -605,6 +673,13 @@ async def create_realtime_dialogue_session(
         turn_sequencer=turn_sequencer,
         on_final=manager.handle_child_turn,
         on_no_speech=manager.handle_no_speech,
+        # AI가 말하는 동안 입력을 받지 않는다(ADR-020). 오디오 없는 연결은 합성이
+        # 없으므로 게이트도 없다 — 그때는 애초에 재생될 오디오가 없다.
+        # is_speaking은 프로퍼티다 — 여기서 평가하면 조립 시점의 bool이 박제된다.
+        # 프레임마다 현재 값을 읽도록 반드시 콜러블로 감싼다(실 스택에서 발견된 결함).
+        is_output_active=(
+            None if synthesis is None else (lambda: synthesis.is_speaking)
+        ),
     )
     return RealtimeDialogueSession(
         audio_sink=audio_sink,

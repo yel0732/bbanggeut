@@ -148,14 +148,75 @@ class TestTurnEnd:
         assert events.turn_ends == 0
         assert detector.phase is TurnPhase.SPEAKING
 
-    def test_speaking_audio_is_returned_including_trailing_silence(self) -> None:
+    def test_a_resumed_pause_is_restored_in_full(self) -> None:
+        """트림은 종료된 턴에만 적용된다 — 중간 멈춤은 한 바이트도 잃지 않는다.
+
+        보류는 '언제 나가는가'만 바꾸고 '무엇이 나가는가'는 바꾸지 않는다. 그래서
+        프레임 경계와 무관한 총량 보존으로 확인한다(선행 침묵이 없는 시나리오).
+        """
+
+        events = _Events()
+        detector = _detector(events)
+
+        emitted = _feed_ms(detector, _speech(300))
+        withheld = _feed_ms(detector, _silence(2000))   # 판단 보류: 아직 안 나감
+        emitted += withheld
+        emitted += _feed_ms(detector, _speech(500))     # 재개 → 멈춤 구간 복원
+
+        assert withheld == 0
+        assert emitted == STT_INPUT_FORMAT.bytes_per_second * 2800 // 1000
+        assert events.turn_ends == 0
+
+    def test_trailing_silence_is_trimmed_to_the_hangover(self) -> None:
+        """종료 판정용 침묵 3초를 whisper에 보내지 않는다(실측 입력 153% 문제)."""
+
         events = _Events()
         detector = _detector(events)
         _feed_ms(detector, _speech(300))
 
-        returned = _feed_ms(detector, _silence(1000))
+        returned = _feed_ms(detector, _silence(3000))
 
-        assert returned == STT_INPUT_FORMAT.bytes_per_second  # 1초 전부
+        assert events.turn_ends == 1
+        assert returned == STT_INPUT_FORMAT.bytes_per_second * 200 // 1000
+
+    def test_isolated_noise_blips_do_not_postpone_the_turn_end(self) -> None:
+        """간헐적 잡음(문 닫힘·의자 끌림)이 종료를 무한정 미루지 못한다.
+
+        수정 전에는 speech 한 프레임(20ms)이 쌓인 침묵을 통째로 리셋했다.
+
+        주의: FakeVoiceActivityDetector에는 webrtcvad의 내부 hangover(약 80ms)가
+        없다. 실제로는 같은 길이의 버스트가 4프레임쯤 더 길게 speech로 보고되므로,
+        여기 120ms는 실환경의 40ms급 버스트에 해당한다.
+        """
+
+        events = _Events()
+        detector = _detector(events)
+        _feed_ms(detector, _speech(300))
+
+        for _ in range(20):  # blip을 끼운 침묵을 3초 넘게 흘린다
+            _feed_ms(detector, _silence(160))
+            _feed_ms(detector, _speech(120))  # 6프레임 = max_speech_blip_frames
+
+        assert events.turn_ends == 1
+
+    def test_sustained_background_speech_still_blocks_the_end(self) -> None:
+        """한계를 고정한다: 지속적인 배경 음성은 이 관용으로 막지 못한다.
+
+        연속 run이 허용치를 넘으면 발화 재개로 판정하는 것이 맞다 — 아이의 짧은
+        대답과 길이가 겹쳐 관용치를 더 올릴 수 없다. TV 같은 지속 배경음은 입력 단
+        잡음 억제와 AI 발화 구간 게이팅의 몫이다(ADR-020).
+        """
+
+        events = _Events()
+        detector = _detector(events)
+        _feed_ms(detector, _speech(300))
+
+        for _ in range(20):
+            _feed_ms(detector, _silence(100))
+            _feed_ms(detector, _speech(200))  # 10프레임 연속 = 재개로 판정
+
+        assert events.turn_ends == 0
+        assert detector.phase is TurnPhase.SPEAKING
 
     def test_a_new_turn_can_start_after_the_previous_one_ends(self) -> None:
         events = _Events()

@@ -115,6 +115,14 @@ class DiaryAnswerAnalysisRequest(BaseModel):
         repr=False,
     )
     child_answer: str = Field(alias="childAnswer", repr=False)
+    # childAnswer가 STT 결과일 때의 신뢰도(0~1). None이면 타이핑 등 정확한 텍스트
+    # 입력이다 — 분석 프롬프트가 오인식 해석을 시도할지 판단하는 근거(§22).
+    stt_confidence: float | None = Field(
+        default=None,
+        alias="sttConfidence",
+        ge=0.0,
+        le=1.0,
+    )
     current_slots: DiarySlots = Field(alias="currentSlots", repr=False)
     game_context: GameContext | DialogueTopicContext | None = Field(
         default=None,

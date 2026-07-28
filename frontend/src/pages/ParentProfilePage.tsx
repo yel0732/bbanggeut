@@ -58,11 +58,12 @@ export function ParentProfilePage() {
   const isOnboardingChildFlow = searchParams.get('source') === 'onboarding'
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const photoInputRef = useRef<HTMLInputElement>(null)
-  const childPhotoInputRef = useRef<HTMLInputElement>(null)
+  const parentVideoRef = useRef<HTMLVideoElement>(null)
+  const parentStreamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [isParentCameraOn, setIsParentCameraOn] = useState(false)
   const [showChildForm, setShowChildForm] = useState(
     searchParams.get('add') === '1',
   )
@@ -84,10 +85,19 @@ export function ParentProfilePage() {
 
   useEffect(() => {
     return () => {
-      if (photoUrl) URL.revokeObjectURL(photoUrl)
+      parentStreamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current?.getTracks().forEach((track) => track.stop())
     }
-  }, [photoUrl])
+  }, [])
+
+  useEffect(() => {
+    const video = parentVideoRef.current
+    const stream = parentStreamRef.current
+    if (!isParentCameraOn || !video || !stream) return
+
+    video.srcObject = stream
+    void video.play()
+  }, [isParentCameraOn])
 
   useEffect(() => {
     const video = videoRef.current
@@ -170,24 +180,50 @@ export function ParentProfilePage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [pressKey])
 
-  const selectPhoto = (file: File | undefined) => {
-    if (!file) return
-    setPhotoUrl((currentUrl) => {
-      if (currentUrl) URL.revokeObjectURL(currentUrl)
-      return URL.createObjectURL(file)
-    })
+  const stopParentCamera = () => {
+    parentStreamRef.current?.getTracks().forEach((track) => track.stop())
+    parentStreamRef.current = null
+    setIsParentCameraOn(false)
   }
 
-  const selectChildPhoto = (file: File | undefined) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setChildPhotoUrl(reader.result)
-        setChildFormMessage('')
+  const toggleParentCamera = async () => {
+    if (!isParentCameraOn) {
+      try {
+        parentStreamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: { width: 480, height: 480 },
+        })
+        setIsParentCameraOn(true)
+      } catch {
+        return
+      }
+      return
+    }
+
+    const video = parentVideoRef.current
+    if (video?.videoWidth) {
+      const sourceSize = Math.min(video.videoWidth, video.videoHeight)
+      const canvas = document.createElement('canvas')
+      canvas.width = 300
+      canvas.height = 300
+      const context = canvas.getContext('2d')
+      if (context) {
+        context.translate(300, 0)
+        context.scale(-1, 1)
+        context.drawImage(
+          video,
+          (video.videoWidth - sourceSize) / 2,
+          (video.videoHeight - sourceSize) / 2,
+          sourceSize,
+          sourceSize,
+          0,
+          0,
+          300,
+          300,
+        )
+        setPhotoUrl(canvas.toDataURL('image/webp', 0.9))
       }
     }
-    reader.readAsDataURL(file)
+    stopParentCamera()
   }
 
   const stopCamera = () => {
@@ -415,34 +451,40 @@ export function ParentProfilePage() {
             {isEditMode ? '부모 프로필 수정' : '부모 프로필 만들기'}
           </h1>
 
-          <img
-            alt="부모 프로필"
-            className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
-            src={photoUrl ?? parentAvatarUrl}
-          />
+          {isParentCameraOn ? (
+            <video
+              autoPlay
+              className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
+              muted
+              playsInline
+              ref={parentVideoRef}
+            />
+          ) : (
+            <img
+              alt="부모 프로필"
+              className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
+              src={photoUrl ?? parentAvatarUrl}
+            />
+          )}
           <button
             className="absolute top-[19%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
-            onClick={() => photoInputRef.current?.click()}
+            onClick={() => void toggleParentCamera()}
             style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
             type="button"
           >
-            사진 추가
+            {isParentCameraOn ? '사진 찍기' : '웹캠 촬영'}
           </button>
           <button
             className="absolute top-[25.5%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
-            onClick={() => setPhotoUrl(null)}
+            onClick={() => {
+              stopParentCamera()
+              setPhotoUrl(null)
+            }}
             style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
             type="button"
           >
             기본으로 사용
           </button>
-          <input
-            accept="image/*"
-            className="hidden"
-            onChange={(event) => selectPhoto(event.target.files?.[0])}
-            ref={photoInputRef}
-            type="file"
-          />
 
           <div className="absolute top-[37%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
           <div
@@ -570,17 +612,6 @@ export function ParentProfilePage() {
               <div className="absolute top-[18.2%] right-[18%] flex flex-col">
                 <button
                   className="h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
-                  onClick={() => {
-                    stopCamera()
-                    childPhotoInputRef.current?.click()
-                  }}
-                  style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
-                  type="button"
-                >
-                  사진 추가
-                </button>
-                <button
-                  className="-mt-5 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
                   onClick={() => void toggleCamera()}
                   style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
                   type="button"
@@ -596,13 +627,6 @@ export function ParentProfilePage() {
                   기본 이미지
                 </button>
               </div>
-              <input
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => selectChildPhoto(event.target.files?.[0])}
-                ref={childPhotoInputRef}
-                type="file"
-              />
 
               <p
                 className="absolute top-[42%] right-0 left-0 text-center text-[15px] text-[#8a7a55]"

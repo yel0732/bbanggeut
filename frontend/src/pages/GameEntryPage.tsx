@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
-import dinoUrl from '@/assets/images/child-home/dino-2.webp'
+import dino2Url from '@/assets/images/child-home/dino-2.webp'
+import dino3Url from '@/assets/images/child-home/dino-3.webp'
+import dino4Url from '@/assets/images/child-home/dino-4.webp'
+import dino5Url from '@/assets/images/child-home/dino-5.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
@@ -16,12 +19,32 @@ import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
+const DINO_FRAMES: Record<number, string> = {
+  2: dino2Url,
+  3: dino3Url,
+  4: dino4Url,
+  5: dino5Url,
+}
+const DINO_STEP_SEQUENCE = [3, 2, 5, 4, 5, 2, 3]
+const DINO_STEP_INTERVAL_MS = 320
 
 export function GameEntryPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const [hoveredGameId, setHoveredGameId] = useState<string>()
+  const [dinoStep, setDinoStep] = useState(0)
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.hidden) return
+      setDinoStep((step) => (step + 1) % DINO_STEP_SEQUENCE.length)
+    }, DINO_STEP_INTERVAL_MS)
+
+    return () => window.clearInterval(id)
+  }, [])
+
+  const activeDinoFrame = DINO_STEP_SEQUENCE[dinoStep]
 
   return (
     <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
@@ -105,7 +128,7 @@ export function GameEntryPage() {
                         src={gameMenuPanelUrl}
                       />
                       <span
-                        className="absolute top-[48px] right-6 left-6 text-center text-[22px] leading-none text-white [text-shadow:0_3px_0_#724216,0_6px_10px_rgba(58,31,11,0.22)]"
+                        className="absolute top-[48px] right-6 left-6 text-center text-[30px] leading-none text-white [text-shadow:0_3px_0_#724216,0_6px_10px_rgba(58,31,11,0.22)]"
                         style={jua}
                       >
                         {game.label}
@@ -127,7 +150,7 @@ export function GameEntryPage() {
                 </span>
               </span>
               <span
-                className="relative z-20 rounded-full bg-[#173618]/45 px-5 py-2 text-[28px] leading-none text-white shadow-[0_5px_12px_rgba(12,38,13,0.22),inset_0_0_0_2px_rgba(255,255,255,0.12)] backdrop-blur-[1px] [text-shadow:0_3px_0_#2e6d2e,0_6px_8px_rgba(9,35,10,0.52)]"
+                className="relative z-20 rounded-full bg-[#173618]/45 px-5 py-2 text-[30px] leading-none text-white shadow-[0_5px_12px_rgba(12,38,13,0.22),inset_0_0_0_2px_rgba(255,255,255,0.12)] backdrop-blur-[1px] [text-shadow:0_3px_0_#2e6d2e,0_6px_8px_rgba(9,35,10,0.52)]"
                 style={jua}
               >
                 {game.label}
@@ -145,7 +168,7 @@ export function GameEntryPage() {
               src={bubbleBigUrl}
             />
             <span
-              className="absolute top-[41%] right-0 left-0 -translate-y-1/2 text-center text-[28px] whitespace-nowrap text-[#2f6d3a]"
+              className="absolute top-[44%] right-0 left-0 -translate-y-1/2 text-center text-[32px] whitespace-nowrap text-[#2f6d3a]"
               style={jua}
             >
               무슨 게임 할까?
@@ -155,16 +178,22 @@ export function GameEntryPage() {
 
         <div
           aria-label="공룡"
-          className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2 [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
+          className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2"
           role="img"
         >
           <div className="absolute bottom-2 left-1/2 h-10 w-[210px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,_rgba(60,110,50,0.42),_rgba(60,110,50,0)_100%)]" />
-          <img
-            alt=""
-            className="absolute bottom-0 left-1/2 h-[340px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_12px_12px_rgba(0,0,0,0.22)]"
-            decoding="async"
-            src={dinoUrl}
-          />
+          {Object.entries(DINO_FRAMES).map(([frameNumber, frame]) => (
+            <img
+              alt=""
+              className="absolute bottom-0 left-1/2 h-[340px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_12px_12px_rgba(0,0,0,0.22)] will-change-[opacity]"
+              decoding="sync"
+              key={frame}
+              src={frame}
+              style={{
+                opacity: activeDinoFrame === Number(frameNumber) ? 1 : 0,
+              }}
+            />
+          ))}
         </div>
 
         <button
@@ -214,7 +243,7 @@ function GameMenuButton({
         src={gameMenuButtonUrl}
       />
       <span
-        className={`${isCardSize ? 'text-[20px] [text-shadow:0_2px_0_#744514,0_5px_8px_rgba(55,30,10,0.22)]' : 'text-[32px] [text-shadow:0_4px_0_#744514,0_7px_10px_rgba(55,30,10,0.22)]'} absolute inset-0 flex items-center justify-center pb-1 leading-none text-white`}
+        className={`${isCardSize ? 'text-[25px] [text-shadow:0_2px_0_#744514,0_5px_8px_rgba(55,30,10,0.22)]' : 'text-[32px] [text-shadow:0_4px_0_#744514,0_7px_10px_rgba(55,30,10,0.22)]'} absolute inset-0 flex items-center justify-center pb-0 leading-none text-white`}
         style={jua}
       >
         {label}

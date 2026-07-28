@@ -151,7 +151,7 @@ export function ChildHomePage() {
                 src={bubbleSmallUrl}
               />
               <span
-                className="relative z-[1] mb-3.5 text-[24px] whitespace-nowrap text-[#3a7d2c]"
+                className="relative z-[1] mb-1 text-[28px] whitespace-nowrap text-[#3a7d2c]"
                 style={jua}
               >
                 놀자!
@@ -198,7 +198,7 @@ export function ChildHomePage() {
                 src={bubbleMediumUrl}
               />
               <span
-                className="relative z-[1] mb-4 text-[21px] whitespace-nowrap text-[#c96a2e]"
+                className="relative z-[1] mb-1.5 text-[28px] whitespace-nowrap text-[#c96a2e]"
                 style={jua}
               >
                 대화 할래!
@@ -217,7 +217,7 @@ export function ChildHomePage() {
               src={bubbleBigUrl}
             />
             <span
-              className="absolute top-[41%] right-0 left-0 -translate-y-1/2 text-center text-[28px] whitespace-nowrap text-[#2f6d3a]"
+              className="absolute top-[43%] right-0 left-0 -translate-y-1/2 text-center text-[32px] whitespace-nowrap text-[#2f6d3a]"
               style={jua}
             >
               오늘은 뭘 할까?
@@ -226,7 +226,7 @@ export function ChildHomePage() {
 
           <div
             aria-label="공룡"
-            className="absolute top-[30px] left-[8px] h-[320px] w-[320px] [animation:child-home-dino-bob_3.2s_ease-in-out_infinite]"
+            className="absolute top-[30px] left-[8px] h-[320px] w-[320px]"
             role="img"
           >
             <div className="absolute bottom-2 left-1/2 h-10 w-[210px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,_rgba(60,110,50,0.42),_rgba(60,110,50,0)_100%)]" />
@@ -256,7 +256,7 @@ export function ChildHomePage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[12px] left-[78px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[85px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}

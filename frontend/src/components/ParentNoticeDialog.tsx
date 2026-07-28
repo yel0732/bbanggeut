@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 
 import errorPopupUrl from '@/assets/images/parent-mode/error-popup.webp'
+import noticeCancelButtonUrl from '@/assets/images/parent-mode/notice-cancel-button.webp'
+import noticeConfirmButtonUrl from '@/assets/images/parent-mode/notice-confirm-button.webp'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
@@ -40,12 +42,12 @@ export function ParentNoticeDialog({
           src={errorPopupUrl}
         />
         <div className="absolute top-[35%] right-[13%] left-[13%] text-center">
-          <h2 className="text-[24px] text-[#754b25]" style={jua}>
+          <h2 className="text-[29px] text-[#754b25]" style={jua}>
             {title}
           </h2>
           {message ? (
             <p
-              className="mt-2 text-[16px] leading-6 text-[#796443]"
+              className="mt-2 text-[19px] leading-6 text-[#796443]"
               style={jua}
             >
               {message}
@@ -53,24 +55,38 @@ export function ParentNoticeDialog({
           ) : null}
           {children}
         </div>
-        <div className="absolute right-[18%] bottom-[12%] left-[18%] flex justify-center gap-3">
+        <div className="absolute right-[18%] bottom-[14%] left-[18%] flex justify-center gap-3">
           {onCancel ? (
             <button
-              className="h-10 min-w-[112px] rounded-2xl border-[3px] border-[#c8aa70] bg-[#fff8e9] px-5 text-[16px] text-[#765d36] shadow-md transition hover:scale-103"
+              className="relative pt-[1px] h-[50px] w-[128px] border-0 bg-transparent p-0 text-[23px] text-[#765d36] drop-shadow-[0_5px_7px_rgba(75,48,20,.22)] transition hover:scale-103 active:scale-98"
               onClick={onCancel}
               style={jua}
               type="button"
             >
-              {cancelLabel}
+              <img
+                alt=""
+                className="pointer-events-none absolute inset-0 size-full object-fill"
+                src={noticeCancelButtonUrl}
+              />
+              <span className="relative z-0 inline-block translate-y-[5px]">
+                {cancelLabel}
+              </span>
             </button>
           ) : null}
           <button
-            className="h-10 min-w-[112px] rounded-2xl border-[3px] border-[#668c3c] bg-[#83ad4f] px-5 text-[16px] text-white shadow-md transition hover:scale-103"
+            className="relative h-[50px] w-[128px] border- bg-transparent p-0 text-[23px] text-white drop-shadow-[0_5px_7px_rgba(75,48,20,.22)] transition hover:scale-103 active:scale-98"
             onClick={onConfirm}
             style={jua}
             type="button"
           >
-            {confirmLabel}
+            <img
+              alt=""
+              className="pointer-events-none absolute inset-0 size-full object-fill"
+              src={noticeConfirmButtonUrl}
+            />
+            <span className="relative z-1 inline-block translate-y-[5px] drop-shadow-[0_2px_2px_rgba(70,93,25,.7)]">
+              {confirmLabel}
+            </span>
           </button>
         </div>
       </section>

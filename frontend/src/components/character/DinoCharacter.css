@@ -1,0 +1,163 @@
+.dino-character {
+  /*
+   * ===== 파츠 튜닝 영역 =====
+   * 위치는 전체 캐릭터 박스(기본 320x340) 기준 비율이다.
+   * 관절이 어긋나면 arm-top/side를 먼저, 회전축은 pivot-x/y를 조정한다.
+   */
+  --dino-body-left: 14.25%;
+  --dino-body-bottom: 9.5%;
+  --dino-body-width: 71.5%;
+
+  --dino-left-arm-top: 30%;
+  --dino-left-arm-left: -1.5%;
+  --dino-left-arm-width: 34%;
+  --dino-left-arm-pivot-x: 87%;
+  --dino-left-arm-pivot-y: 72%;
+
+  --dino-right-arm-top: 30%;
+  --dino-right-arm-right: 12%;
+  --dino-right-arm-width: 34%;
+  --dino-right-arm-pivot-x: 13%;
+  --dino-right-arm-pivot-y: 72%;
+
+  --dino-arm-duration: 2.45s;
+  --dino-left-arm-start: 22deg;
+  --dino-left-arm-end: -24deg;
+  --dino-right-arm-start: -22deg;
+  --dino-right-arm-end: 24deg;
+
+  --dino-bounce-y-negative: -2px;
+  --dino-bounce-duration: 2.8s;
+
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 17;
+  pointer-events: none;
+  user-select: none;
+  isolation: isolate;
+  filter: drop-shadow(0 12px 12px rgb(0 0 0 / 22%));
+}
+
+.dino-character__rig {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(0, 0, 0);
+  transform-origin: 50% 88%;
+  will-change: transform;
+}
+
+.dino-character__shadow {
+  position: absolute;
+  z-index: 0;
+  bottom: 1.5%;
+  left: 50%;
+  width: 66%;
+  height: 11%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgb(60 110 50 / 42%),
+    rgb(60 110 50 / 0%) 72%
+  );
+  transform: translate3d(-50%, 0, 0);
+}
+
+.dino-character__body,
+.dino-character__arm,
+.dino-character__arm img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+/* 몸통: 발이 캐릭터 박스 하단 기준선에 닿도록 고정한다. */
+.dino-character__body {
+  z-index: 2;
+  left: var(--dino-body-left);
+  bottom: var(--dino-body-bottom);
+  width: var(--dino-body-width);
+  height: auto;
+}
+
+.dino-character__arm {
+  z-index: 1;
+  width: 34%;
+  aspect-ratio: 1.08;
+}
+
+.dino-character__arm img {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 원본 팔의 소켓은 왼쪽 아래에 있다. 왼팔은 이미지만 반전한다. */
+.dino-character__arm--left {
+  top: var(--dino-left-arm-top);
+  left: var(--dino-left-arm-left);
+  width: var(--dino-left-arm-width);
+  transform-origin: var(--dino-left-arm-pivot-x) var(--dino-left-arm-pivot-y);
+}
+
+.dino-character__arm--left img {
+  transform: translate3d(0, 0, 0) scaleX(-1);
+}
+
+.dino-character__arm--right {
+  top: var(--dino-right-arm-top);
+  right: var(--dino-right-arm-right);
+  width: var(--dino-right-arm-width);
+  transform-origin: var(--dino-right-arm-pivot-x) var(--dino-right-arm-pivot-y);
+}
+
+.dino-character--idle .dino-character__rig {
+  animation: dino-character-breathe var(--dino-bounce-duration) ease-in-out infinite;
+}
+
+.dino-character--idle .dino-character__arm--left {
+  animation: dino-character-arm-wave var(--dino-arm-duration) ease-in-out infinite;
+  --dino-arm-start: var(--dino-left-arm-start);
+  --dino-arm-end: var(--dino-left-arm-end);
+}
+
+.dino-character--idle .dino-character__arm--right {
+  animation: dino-character-arm-wave var(--dino-arm-duration) ease-in-out infinite;
+  --dino-arm-start: var(--dino-right-arm-start);
+  --dino-arm-end: var(--dino-right-arm-end);
+}
+
+@keyframes dino-character-breathe {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, var(--dino-bounce-y-negative), 0);
+  }
+}
+
+@keyframes dino-character-arm-wave {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(var(--dino-arm-start));
+  }
+  50% {
+    transform: translate3d(0, 0, 0) rotate(var(--dino-arm-end));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dino-character--idle .dino-character__rig,
+  .dino-character--idle .dino-character__arm {
+    animation: none;
+  }
+
+  .dino-character__rig,
+  .dino-character__arm {
+    transform: translate3d(0, 0, 0);
+  }
+}

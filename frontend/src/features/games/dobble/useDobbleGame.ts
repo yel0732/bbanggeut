@@ -370,7 +370,12 @@ export function useDobbleGame(
         }
 
         // 조준·잡기 판정은 튜토리얼 실습과 같은 모듈을 쓴다.
-        const stepped = stepAim(aim, hand, engine.round, now)
+        const stepped = stepAim(
+          aim,
+          { x, y, fist: hand.fist },
+          engine.round,
+          now,
+        )
         paintAim(slot, stepped.progress)
         if (stepped.grabbed) {
           engine.selection[stepped.grabbed.side] = {

@@ -39,6 +39,13 @@ const SESSION_KEYS = [
 ] as const
 const REFRESH_BUFFER_MS = 60_000
 const NEW_SIGNUP_EMAIL_KEY = 'bbanggut-new-signup-email'
+const ACCOUNT_LOCAL_DATA_KEYS = [
+  'bbanggut-active-child-profile-id',
+  'bbanggut-child-profiles',
+  'bbanggut-parent-photo',
+  'bbanggut-report-arrivals',
+  'bbanggut-report-notification',
+] as const
 let refreshPromise: Promise<string | null> | null = null
 
 export async function loginWithEmail({
@@ -204,6 +211,26 @@ export async function verifyParentPin(pin: string) {
       .catch(() => null)) as ApiErrorResponse | null
     throw new Error(error?.message ?? '핀 번호가 올바르지 않아요.')
   }
+}
+
+export async function withdrawAccount(pin: string) {
+  const response = await authFetch(apiUrl('/api/auth/me'), {
+    body: JSON.stringify({ pin }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const error = (await response
+      .json()
+      .catch(() => null)) as ApiErrorResponse | null
+    throw new Error(
+      error?.message ?? '회원 탈퇴에 실패했어요. 잠시 후 다시 시도해 주세요.',
+    )
+  }
+  clearLoginSession()
+  ACCOUNT_LOCAL_DATA_KEYS.forEach((key) => window.localStorage.removeItem(key))
+  window.sessionStorage.removeItem(NEW_SIGNUP_EMAIL_KEY)
 }
 
 export function clearLoginSession() {

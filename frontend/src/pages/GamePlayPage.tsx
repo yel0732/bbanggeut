@@ -13,12 +13,9 @@ import {
   QuitButton,
 } from '@/components/game/PlayOverlays'
 import {
-  getActiveFruitNinjaRule,
   nowAsLocalDateTime,
   saveCompletedGameSession,
 } from '@/api/gameSessions'
-import type { FruitNinjaRule } from '@/api/gameSessions'
-import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { FRUIT_GAME_CONFIG } from '@/features/games/fruit/fruitGameConfig'
 import {
   useFruitGame,
@@ -53,25 +50,8 @@ export function GamePlayPage() {
   const selectedAtRef = useRef(nowAsLocalDateTime())
   const playStartedAtRef = useRef<string | null>(null)
   const clientPlayIdRef = useRef(crypto.randomUUID())
-  const [fruitRule, setFruitRule] = useState<FruitNinjaRule | null>(null)
-  const [ruleError, setRuleError] = useState('')
 
   const game = getGameById(gameId)
-
-  const loadFruitRule = useCallback(() => {
-    setRuleError('')
-    void getActiveFruitNinjaRule()
-      .then(setFruitRule)
-      .catch((error: unknown) => {
-        setRuleError(
-          error instanceof Error
-            ? error.message
-            : '과일 게임 규칙을 불러오지 못했어요.',
-        )
-      })
-  }, [])
-
-  useEffect(loadFruitRule, [loadFruitRule])
 
   const handleEnd = (result: FruitGameResult) => {
     // MGAME-21/22: 정합성 통과한 정상 결과만 결과 화면으로. 잘못되면 폐기.
@@ -161,12 +141,11 @@ export function GamePlayPage() {
 
   const fruitGame = useFruitGame(
     hand.playHandRef,
-    (status === 'granted' || status === 'error') && fruitRule !== null,
+    status === 'granted' || status === 'error',
     handleEnd,
     handleSlice,
     hand.redesignate,
     status === 'error',
-    fruitRule ?? undefined,
   )
 
   useEffect(() => {
@@ -332,15 +311,6 @@ export function GamePlayPage() {
           />
         )}
 
-        {ruleError ? (
-          <ParentNoticeDialog
-            compact
-            confirmLabel="다시 시도"
-            message={ruleError}
-            onConfirm={loadFruitRule}
-            title="게임 준비에 문제가 생겼어요"
-          />
-        ) : null}
       </div>
     </div>
   )
@@ -365,32 +335,9 @@ function PlayField({
 
   return (
     <div className="absolute inset-0 z-10">
-      {/* 피버 타임: 화면 가장자리를 달궈 과일이 쏟아지는 구간임을 알린다. */}
+      {/* 피버 타임: 렌더링이 무거운 전체 화면 광선 대신 가벼운 고정 테두리만 표시한다. */}
       {fever ? (
-        <>
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                'radial-gradient(100% 88% at 50% 50%, rgba(255,240,120,0.08) 35%, rgba(255,146,20,0.58) 100%)',
-              boxShadow:
-                'inset 0 0 50px 14px rgba(255,224,75,.78), inset 0 0 120px 35px rgba(255,82,10,.45)',
-              animation: 'fruit-fever-glow 520ms ease-in-out infinite',
-            }}
-          />
-          <div
-            className="pointer-events-none absolute -inset-[30%] opacity-30"
-            style={{
-              background:
-                'repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,241,130,.7) 0deg 7deg, transparent 7deg 20deg)',
-              animation: 'fruit-fever-rays 5s linear infinite',
-            }}
-          />
-          <div
-            className="pointer-events-none absolute inset-[12px] rounded-[34px] border-[7px] border-[#ffe86c]"
-            style={{ animation: 'fruit-fever-border 520ms ease-in-out infinite' }}
-          />
-        </>
+        <div className="pointer-events-none absolute inset-[12px] rounded-[34px] border-[4px] border-[rgba(255,232,108,.78)]" />
       ) : null}
 
       {/* 과일·칼·트레일 — 매 프레임 바뀌므로 캔버스에 직접 그린다. */}
@@ -405,10 +352,7 @@ function PlayField({
         <div className="absolute top-[132px] left-1/2 -translate-x-1/2 text-center">
           <span
             className="inline-block text-[56px] leading-none text-[#fff0a0] [text-shadow:0_4px_0_#c9450f,0_10px_18px_rgba(0,0,0,0.45)]"
-            style={{
-              ...jua,
-              animation: 'fruit-fever-bob 620ms ease-in-out infinite',
-            }}
+            style={jua}
           >
             피버 타임!
           </span>

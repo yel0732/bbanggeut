@@ -6,6 +6,8 @@ spring:
   batch:
     job:
       enabled: false
+  flyway:
+    enabled: false
   data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
@@ -147,6 +149,14 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  batch:
+    jdbc:
+      initialize-schema: never
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    clean-disabled: true
   jpa:
     hibernate:
       ddl-auto: validate

@@ -1,11 +1,11 @@
-DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는다.
+DIARY 스키마 기록. 운영 스키마 변경은 Flyway 마이그레이션으로 적용한다.
 
 - local(H2, MODE=MySQL): ddl-auto=create-drop — Hibernate가 Entity로부터 매번 스키마를 자동 생성한다. 개발 중에는 이 파일을 손으로 맞출 필요가 없다.
-- prod(MySQL): ddl-auto=validate — Hibernate는 스키마를 만들지 않고, 기동 시 "이 DDL이 이미 반영되어 있는지"만 검증한다. 즉 prod에서는 아래 DDL을 배포 전에 MySQL에 직접(수동으로) 적용해 둬야 하며, Entity를 바꿔도 이 파일을 갱신하고 실제 MySQL 스키마도 같이 바꾸지 않으면 앱이 기동하지 않는다.
+- prod(MySQL): Flyway가 db/migration의 SQL을 적용하고 ddl-auto=validate로 Entity와 결과 스키마의 일치 여부를 검증한다.
 
-이 파일은 prod에 실제로 적용해야 하는(또는 이미 적용된) 테이블 구조를 사람이 읽을 수 있게 기록해 두는 참고용 문서다.
-컬럼을 바꾸면 이 파일도 함께 갱신한다. 운영 DB에 DDL을 실제로 적용하는 절차(언제, 누가, 어떤 방식으로)는 아직
-정해지지 않았으며, 배포 작업 자체가 이 Epic의 범위 밖이라 별도 `[INFRA]` Epic에서 다룬다.
+이 파일은 사람이 읽기 위한 참고 문서다. 실행 가능한 기준 스키마는
+src/main/resources/db/migration/V1__initial_schema.sql이며, 이후 변경은 V2 이상으로 누적한다.
+컬럼을 바꾸면 Entity, 이 문서, Flyway 마이그레이션을 함께 갱신한다.
 
 -- External child-domain ownership contract used by report adapters:
 -- child.child_id BIGINT PRIMARY KEY
@@ -516,5 +516,5 @@ CREATE INDEX idx_child_diary_child_date
 -- Spring Batch metadata -----------------------------------------------------
 
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
--- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql을 배포 전에 수동 적용해야 한다.
+-- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql 내용을 Flyway V1에 포함한다.
 -- Resource: org/springframework/batch/core/schema-mysql.sql

@@ -414,6 +414,124 @@ class ConversationEventProcessorIntegrationTest {
     }
 
     @Test
+    void rejectsBackwardTransitionToCompletedTopic() {
+        // GAME→DAILY 전환을 정상 적용한 뒤, 완료된 GAME으로 되돌아가는 전환은 거부한다.
+        eventProcessor.process(delivery(
+                "7000-0",
+                "evt-forward-switch-1",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-forward-switch-1",
+                2,
+                "resp-forward-switch-1",
+                """
+                {
+                  "text": "이제 오늘 하루 이야기를 해 볼까?",
+                  "questionText": "오늘 하루 이야기를 해 볼래?",
+                  "targetSlot": null,
+                  "topicType": "DAILY",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "과일 게임", "emotion": "즐거움" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
+                }
+                """));
+        ConversationStreamDelivery backward = delivery(
+                "7000-1",
+                "evt-backward-switch-1",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-backward-switch-1",
+                3,
+                "resp-backward-switch-1",
+                """
+                {
+                  "text": "다시 게임 이야기를 해 볼까?",
+                  "questionText": "게임 이야기를 더 해 볼래?",
+                  "targetSlot": null,
+                  "topicType": "GAME",
+                  "slotsTopicType": "DAILY",
+                  "topicSlots": { "event": "산책" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 2,
+                  "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
+                }
+                """);
+
+        assertThatThrownBy(() -> eventProcessor.process(backward))
+                .isInstanceOf(ConversationEventContractException.class)
+                .hasMessageContaining("completed topic");
+
+        ConversationSession session =
+                sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        assertThat(session.getCurrentTopic()).isEqualTo(ConversationTopic.DAILY);
+        assertThat(session.getStatus().isTerminal()).isFalse();
+        assertThat(topicStateRepository
+                        .findByConversationIdAndTopicType(CONVERSATION_ID, ConversationTopic.DAILY)
+                        .orElseThrow()
+                        .getStatus())
+                .isEqualTo(ConversationTopicStatus.IN_PROGRESS);
+        assertThat(turnRepository.findById("turn-backward-switch-1")).isEmpty();
+    }
+
+    @Test
+    void rejectsStaleTransitionEventInsteadOfPartiallyApplyingIt() {
+        // 이미 저장된 AI 턴보다 작은 turnSeq의 전환 이벤트는 턴만 저장되고 전환이
+        // 유실되는 부분 적용 대신 계약 위반으로 거부한다.
+        eventProcessor.process(delivery(
+                "7100-0",
+                "evt-game-turn-seq4",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-game-seq4",
+                4,
+                "resp-game-seq4",
+                """
+                {
+                  "text": "그때 어떤 기분이 들었어?",
+                  "questionText": "그때 어떤 기분이 들었어?",
+                  "targetSlot": "emotion",
+                  "topicType": "GAME",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "과일 게임" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": null
+                }
+                """));
+        ConversationStreamDelivery staleTransition = delivery(
+                "7100-1",
+                "evt-stale-transition-1",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-stale-transition-1",
+                2,
+                "resp-stale-transition-1",
+                """
+                {
+                  "text": "이제 오늘 하루 이야기를 해 볼까?",
+                  "questionText": "오늘 하루 이야기를 해 볼래?",
+                  "targetSlot": null,
+                  "topicType": "DAILY",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "과일 게임" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
+                }
+                """);
+
+        assertThatThrownBy(() -> eventProcessor.process(staleTransition))
+                .isInstanceOf(ConversationEventContractException.class)
+                .hasMessageContaining("Stale topic transition");
+
+        assertThat(turnRepository.findById("turn-stale-transition-1")).isEmpty();
+        assertThat(sessionRepository.findById(CONVERSATION_ID).orElseThrow().getCurrentTopic())
+                .isEqualTo(ConversationTopic.GAME);
+    }
+
+    @Test
     void rejectsFutureEpochAndLeavesNoProcessingReceipt() {
         ConversationStreamDelivery future = delivery(
                 "4000-0",

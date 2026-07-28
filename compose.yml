@@ -1,0 +1,161 @@
+name: a501
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE is required}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes:
+      - redis_data:/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  ai-server:
+    build:
+      context: ./ai-server
+    restart: unless-stopped
+    environment:
+      GMS_KEY: ${GMS_KEY:?GMS_KEY is required}
+      GMS_BASE_URL: ${GMS_BASE_URL:-https://gms.ssafy.io/gmsapi/api.openai.com/v1}
+      GMS_ANALYSIS_MODEL: ${GMS_ANALYSIS_MODEL:-gpt-5.4-nano}
+      GMS_RESPONSE_MODEL: ${GMS_RESPONSE_MODEL:-gpt-5.4-mini}
+      GMS_REPORT_MODEL: ${GMS_REPORT_MODEL:-gpt-5.4-mini}
+      GMS_CHILD_DIARY_MODEL: ${GMS_CHILD_DIARY_MODEL:-gpt-5.4-mini}
+      REALTIME_REDIS_HOST: redis
+      REALTIME_REDIS_PORT: 6379
+      REALTIME_JWKS_URL: http://backend:8080/internal/v1/realtime/jwks
+      REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}
+      REALTIME_TICKET_AUDIENCE: ${REALTIME_TICKET_AUDIENCE:-ai-realtime}
+      REALTIME_STUN_URLS: ${REALTIME_STUN_URLS:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - edge
+      - data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${BACKEND_PROFILES:-prod}
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:?MYSQL_DATABASE is required}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_USERNAME: ${MYSQL_USER:?MYSQL_USER is required}
+      DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AI_SERVER_BASE_URL: http://ai-server:8000
+      REALTIME_SIGNALING_URL: ${REALTIME_SIGNALING_URL:-ws://localhost/realtime/signaling}
+      REALTIME_TICKET_PRIVATE_KEY_PEM: ${REALTIME_TICKET_PRIVATE_KEY_PEM:?REALTIME_TICKET_PRIVATE_KEY_PEM is required}
+      REALTIME_TICKET_PUBLIC_KEY_PEM: ${REALTIME_TICKET_PUBLIC_KEY_PEM:?REALTIME_TICKET_PUBLIC_KEY_PEM is required}
+      REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}
+      REALTIME_TICKET_AUDIENCE: ${REALTIME_TICKET_AUDIENCE:-ai-realtime}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+      REPORT_SCHEDULE_ENABLED: ${REPORT_SCHEDULE_ENABLED:-true}
+      REPORT_RECOVERY_ENABLED: ${REPORT_RECOVERY_ENABLED:-true}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-server:
+        condition: service_healthy
+    networks:
+      - edge
+      - data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O - http://127.0.0.1:8080/actuator/health >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging: *default-logging
+
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports:
+      - ${HTTP_PORT:-80}:80
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      ai-server:
+        condition: service_healthy
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+networks:
+  edge:
+  data:
+    internal: true
+
+volumes:
+  mysql_data:
+  redis_data:

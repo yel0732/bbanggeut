@@ -113,14 +113,13 @@ function LoginModal({ onClose }: { onClose: () => void }) {
       role="dialog"
     >
       <div
-        className="relative isolate"
+        className="relative isolate -translate-y-4"
         onClick={(event) => event.stopPropagation()}
         style={{
           aspectRatio: '1 / 1',
-          width: 'min(700px, calc(100vw - 32px), calc(100vh - 32px))',
+          width: 'min(650px, calc(100vw - 32px), calc(100vh - 32px))',
         }}
       >
-        <div className="absolute inset-[12%] z-0 rounded-[42px] bg-[#f4c079] shadow-[0_18px_42px_rgba(24,45,20,0.36),inset_0_0_0_5px_rgba(118,73,31,0.28)]" />
         <img
           alt=""
           className="absolute inset-0 z-10 size-full object-contain"
@@ -135,14 +134,14 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           들어갈 문
         </p>
 
-        <div className="absolute top-[24%] left-1/2 z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
+        <div className="absolute top-[24%] left-[318px] z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
           <ModalMenuButton
             color="#6a4a12"
             fontSize={32}
             imageUrl={yellowButtonUrl}
             label="구글로 들어가기"
-            textLeft="35%"
-            textTop="44%"
+            textLeft="34%"
+            textTop="43%"
             to="/auth/google"
           />
           <ModalMenuButton
@@ -150,8 +149,8 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             fontSize={32}
             imageUrl={whiteButtonUrl}
             label="이메일로 들어가기"
-            textLeft="33%"
-            textTop="35%"
+            textLeft="31%"
+            textTop="33%"
             to="/auth/login"
           />
           <ModalMenuButton
@@ -162,15 +161,15 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             label="이메일로 등록하기"
             strokeColor="#3f7d1e"
             strokeWidth={2.5}
-            textLeft="33%"
-            textTop="36%"
+            textLeft="31%"
+            textTop="35%"
             to="/auth/signup"
           />
         </div>
 
         <button
           aria-label="로그인 창 닫기"
-          className="absolute top-[9%] right-[14%] z-30 h-[11%] w-[11%] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white"
+          className="absolute top-[12%] right-[17%] z-30 h-[11%] w-[11%] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white"
           onClick={onClose}
           type="button"
         >

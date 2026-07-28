@@ -39,6 +39,7 @@ const SESSION_KEYS = [
 ] as const
 const REFRESH_BUFFER_MS = 60_000
 const NEW_SIGNUP_EMAIL_KEY = 'bbanggut-new-signup-email'
+const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
 const ACCOUNT_LOCAL_DATA_KEYS = [
   'bbanggut-active-child-profile-id',
   'bbanggut-child-profiles',
@@ -95,6 +96,8 @@ export function storeLoginSession(response: LoginResponse, remember: boolean) {
 }
 
 export function markNewSignup(email: string) {
+  // A previous, unfinished signup must never carry its PIN into this account.
+  window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
   window.sessionStorage.setItem(
     NEW_SIGNUP_EMAIL_KEY,
     email.trim().toLowerCase(),

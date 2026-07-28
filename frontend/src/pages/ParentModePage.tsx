@@ -38,6 +38,13 @@ import { useFitScale } from '@/hooks/useFitScale'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreateDialog'
 import {
+  createChildProfile as createBackendChildProfile,
+  getChildProfiles as getBackendChildProfiles,
+  updateChildProfile as updateBackendChildProfile,
+} from '@/api/profiles'
+import {
+  childImageNumFromPhoto,
+  childPhotoFromImageNum,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
   saveChildProfiles,
@@ -189,6 +196,40 @@ export function ParentModePage() {
   const [editingChildProfile, setEditingChildProfile] =
     useState<ChildProfile | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialog>(null)
+
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        const localProfiles = loadChildProfiles()
+        const nextProfiles = children.map((child) => {
+          const local = localProfiles.find(
+            (profile) => profile.id === String(child.childId),
+          )
+          return {
+            id: String(child.childId),
+            name: child.name,
+            photoUrl:
+              local?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+            profileImageNum: child.profileImageNum,
+          }
+        })
+        updateChildProfiles(nextProfiles)
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        setNotificationToast(
+          error instanceof Error
+            ? error.message
+            : '아이 프로필을 불러오지 못했어요.',
+        )
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -896,11 +937,27 @@ export function ParentModePage() {
           <ChildProfileCreateDialog
             onBack={() => setPopup('children')}
             onCreate={(profile) => {
-              updateChildProfiles([...profiles, profile])
-              setChildListPage(
-                Math.floor(profiles.length / 3),
-              )
-              setPopup('children')
+              const profileImageNum = childImageNumFromPhoto(profile.photoUrl)
+              void createBackendChildProfile(profile.name, profileImageNum)
+                .then((created) => {
+                  updateChildProfiles([
+                    ...profiles,
+                    {
+                      ...profile,
+                      id: String(created.childId),
+                      profileImageNum: created.profileImageNum,
+                    },
+                  ])
+                  setChildListPage(Math.floor(profiles.length / 3))
+                  setPopup('children')
+                })
+                .catch((error: unknown) =>
+                  setNotificationToast(
+                    error instanceof Error
+                      ? error.message
+                      : '아이 프로필을 만들지 못했어요.',
+                  ),
+                )
             }}
             profiles={profiles}
           />
@@ -914,13 +971,34 @@ export function ParentModePage() {
               setPopup('children')
             }}
             onCreate={(updatedProfile) => {
-              updateChildProfiles(
-                profiles.map((profile) =>
-                  profile.id === updatedProfile.id ? updatedProfile : profile,
-                ),
+              const childId = Number(updatedProfile.id)
+              const profileImageNum = childImageNumFromPhoto(
+                updatedProfile.photoUrl,
+                updatedProfile.profileImageNum,
               )
-              setEditingChildProfile(null)
-              setPopup('children')
+              void updateBackendChildProfile(
+                childId,
+                updatedProfile.name,
+                profileImageNum,
+              )
+                .then(() => {
+                  updateChildProfiles(
+                    profiles.map((profile) =>
+                      profile.id === updatedProfile.id
+                        ? { ...updatedProfile, profileImageNum }
+                        : profile,
+                    ),
+                  )
+                  setEditingChildProfile(null)
+                  setPopup('children')
+                })
+                .catch((error: unknown) =>
+                  setNotificationToast(
+                    error instanceof Error
+                      ? error.message
+                      : '아이 프로필을 수정하지 못했어요.',
+                  ),
+                )
             }}
             profiles={profiles}
           />

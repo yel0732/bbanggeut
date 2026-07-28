@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { logout } from '@/api/auth'
+import { getStoredAccessToken, logout } from '@/api/auth'
+import { getChildProfiles as getBackendChildProfiles } from '@/api/profiles'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
@@ -16,6 +17,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
+  childPhotoFromImageNum,
   loadActiveChildProfileId,
   loadChildProfiles,
   saveActiveChildProfileId,
@@ -59,7 +61,7 @@ export function ProfileSelectPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const [childProfiles] = useState(() => {
+  const [childProfiles, setChildProfiles] = useState(() => {
     const storedProfiles = loadChildProfiles()
     return storedProfiles.length ? storedProfiles : DEMO_CHILD_PROFILES
   })
@@ -78,6 +80,34 @@ export function ProfileSelectPage() {
   const [logoutError, setLogoutError] = useState('')
   const lockTimerRef = useRef<number | null>(null)
   const pinLockUntilRef = useRef(0)
+
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        const localProfiles = loadChildProfiles()
+        setChildProfiles(
+          children.map((child) => {
+            const local = localProfiles.find(
+              (profile) => profile.id === String(child.childId),
+            )
+            return {
+              id: String(child.childId),
+              name: child.name,
+              photoUrl:
+                local?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+              profileImageNum: child.profileImageNum,
+            }
+          }),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleLogout = async () => {
     if (isLoggingOut) return

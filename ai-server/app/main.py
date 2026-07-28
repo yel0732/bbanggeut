@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.health import router as health_router
 from app.api.dialogue import router as dialogue_router
 from app.api.child_diary import router as child_diary_router
 from app.api.report import router as report_router
@@ -116,6 +117,7 @@ def create_app(
         redis_client = create_redis_client(
             resolved_settings.realtime_redis_host, resolved_settings.realtime_redis_port
         )
+        app.state.redis_client = redis_client
         # 별도 httpx.AsyncClient: GMS용 http_client는 gms_base_url·GMS 전용 transport를
         # 갖고 있어 절대 URL 요청(JWKS)에는 base_url이 영향을 주지 않지만, transport
         # override까지 공유하면 테스트에서 GMS Mock이 JWKS 요청까지 가로채게 된다.
@@ -254,6 +256,7 @@ def create_app(
     app.include_router(child_diary_router)
     app.include_router(report_router)
     app.include_router(signaling_router)
+    app.include_router(health_router)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

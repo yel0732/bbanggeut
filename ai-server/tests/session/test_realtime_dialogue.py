@@ -495,6 +495,20 @@ class TestNoSpeechLadder:
 
         assert state.consecutive_no_responses == 0
 
+    @pytest.mark.asyncio
+    async def test_skipped_targets_reach_the_answer_pipeline(self) -> None:
+        """건너뛴 목표가 답변 턴의 파이프라인 요청까지 전달된다."""
+
+        pipeline = _FakeDialoguePipeline()
+        manager, state, _, _, _, sequencer = _build_manager(pipeline)
+        state.current_topic.skipped_targets = frozenset({QuestionTarget.EMOTION})
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert pipeline.requests[0].skipped_targets == frozenset(
+            {QuestionTarget.EMOTION}
+        )
+
     def test_no_speech_after_termination_is_ignored(self) -> None:
         manager, state, channel, _, _, _ = _build_manager()
         state.terminated = True

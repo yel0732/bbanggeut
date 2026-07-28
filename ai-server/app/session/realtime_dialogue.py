@@ -241,6 +241,7 @@ class RealtimeDialogueManager:
             ),
             question_count=min(topic.question_count, topic.snapshot.max_question_count),
             max_question_count=topic.snapshot.max_question_count,
+            skipped_targets=topic.skipped_targets,
         )
         try:
             response = await self._pipeline.process(request)

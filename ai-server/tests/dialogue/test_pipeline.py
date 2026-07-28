@@ -324,6 +324,40 @@ async def test_redirects_off_topic_answer_with_brief_acknowledgement() -> None:
 
 
 @pytest.mark.asyncio
+async def test_skipped_target_is_excluded_from_backfill_and_next_question() -> None:
+    """건너뛴 목표는 답변 턴에서도 제외된다 — 오배정·재질문 방지."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            '{"answered":true,"childQuestion":false,"bridgeResponse":null}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="과일 게임"),
+            "current_question": "왜 그런 마음이 들었는지 말해 줄래?",
+            "child_answer": "이겨서 기분이 좋았거든",
+            "skipped_targets": frozenset({QuestionTarget.EMOTION}),
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    # backfill은 skip을 반영한 실제 질문 목표(emotionReason)에 들어가야 하며,
+    # skip된 emotion에 오배정되면 안 된다.
+    assert result.updated_slots.emotion_reason == "이겨서 기분이 좋았거든"
+    assert result.updated_slots.emotion is None
+    # 다음 질문도 skip된 emotion을 다시 묻지 않고 남은 목표로 진행한다.
+    assert result.assistant_question == "가장 기억나는 순간을 말해 줄래?"
+
+
+@pytest.mark.asyncio
 async def test_relevance_failure_keeps_extracted_slots_and_moves_on() -> None:
     """관련성 판정이 실패(None)해도 정상 추출된 슬롯은 폐기되지 않는다."""
 

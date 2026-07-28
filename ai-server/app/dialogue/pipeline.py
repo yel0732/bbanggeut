@@ -167,6 +167,13 @@ class DialogueTurnRequest(BaseModel):
         ),
         gt=0,
     )
+    # 무응답 사다리에서 건너뛰기로 확정된 질문 목표. 목표 추정·다음 질문 선택·
+    # backfill에서 제외해 같은 목표를 다시 묻거나 답변을 오배정하지 않게 한다.
+    # 텍스트 턴(Spring 경유)은 건너뛰기 개념이 없어 빈 값으로 남는다.
+    skipped_targets: frozenset[QuestionTarget] = Field(
+        default_factory=frozenset,
+        alias="skippedTargets",
+    )
 
     @field_validator("request_id", "conversation_id", "child_answer")
     @classmethod
@@ -402,6 +409,7 @@ class DialogueTurnPipeline:
                 question_count=request.question_count,
                 max_question_count=request.max_question_count,
                 turn_signal=ChildTurnSignal.ANSWERED,
+                skipped_targets=request.skipped_targets,
             ),
             self._termination_policy,
             DEFAULT_NO_RESPONSE_RECOVERY_POLICY,
@@ -577,7 +585,12 @@ def _current_unanswered_target(
 ) -> QuestionTarget | None:
     if request.current_question is None:
         return None
-    return select_next_question_target(request.current_slots)
+    # 직전에 물은 목표를 추정한다. 건너뛴 목표를 제외하지 않으면 skip 이후의
+    # 실제 질문 목표와 어긋나 답변이 엉뚱한 슬롯에 backfill된다.
+    return select_next_question_target(
+        request.current_slots,
+        excluded_targets=request.skipped_targets,
+    )
 
 
 def _resolve_unanswered_target(

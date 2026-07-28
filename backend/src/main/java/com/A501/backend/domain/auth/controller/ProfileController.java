@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.auth.dto.request.UpdateProfileImageRequest;
+import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
 import com.A501.backend.domain.auth.service.ProfileService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,12 +24,12 @@ public class ProfileController {
 
     private final ProfileService profileService;
 
-    @Operation(summary = "부모 프로필 사진 변경")
+    @Operation(summary = "부모 프로필 사진 변경 (프리셋 선택)")
     @PatchMapping("/image")
-    public ResponseEntity<Void> updateProfileImage(
+    public ResponseEntity<ProfileImageResponse> updateProfileImage(
             Authentication authentication, @Valid @RequestBody UpdateProfileImageRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
-        profileService.updateProfileImage(parentId, request.profileImageNum());
-        return ResponseEntity.ok().build();
+        String profileImageUrl = profileService.updateProfileImage(parentId, request.imageKey());
+        return ResponseEntity.ok(ProfileImageResponse.of(profileImageUrl));
     }
 }

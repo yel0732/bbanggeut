@@ -18,21 +18,23 @@ import com.A501.backend.domain.auth.entity.Parent;
 @Import(JpaAuditingConfig.class)
 class ParentRepositoryTest {
 
+    // 운영 코드에서는 AuthService가 설정값(app.storage.default-preset-key)을 넣어준다. 이 테스트는
+    // AuthService를 거치지 않고 엔티티를 직접 저장하므로, NOT NULL인 프로필 이미지 키를 직접 채운다.
+    private static final String PRESET_KEY = "profile-presets/preset-1";
+
     @Autowired
     private ParentRepository parentRepository;
 
     @Test
     void savesAndFindsByEmail() {
-        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-
-        parentRepository.save(parent);
+        parentRepository.save(localParent("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
 
         assertThat(parentRepository.findByEmail("parent@example.com")).isPresent();
     }
 
     @Test
     void persistsBirthDate() {
-        parentRepository.save(Parent.createLocal("birthdate@example.com", "hashed-password", LocalDate.of(1990, 5, 17)));
+        parentRepository.save(localParent("birthdate@example.com", "hashed-password", LocalDate.of(1990, 5, 17)));
         parentRepository.flush();
         parentRepository.findByEmail("birthdate@example.com").ifPresentOrElse(
                 found -> assertThat(found.getBirthDate()).isEqualTo(LocalDate.of(1990, 5, 17)),
@@ -41,11 +43,11 @@ class ParentRepositoryTest {
 
     @Test
     void rejectsDuplicateEmail() {
-        parentRepository.save(Parent.createLocal("dup@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
+        parentRepository.save(localParent("dup@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
         parentRepository.flush();
 
         assertThatThrownBy(() -> {
-            parentRepository.save(Parent.createLocal("dup@example.com", "another-hash", LocalDate.of(1991, 2, 2)));
+            parentRepository.save(localParent("dup@example.com", "another-hash", LocalDate.of(1991, 2, 2)));
             parentRepository.flush();
         }).isInstanceOf(DataIntegrityViolationException.class);
     }
@@ -53,9 +55,16 @@ class ParentRepositoryTest {
     @Test
     void findsByProviderId() {
         Parent parent = Parent.createGoogle("google@example.com", "google-sub-id", LocalDate.of(1995, 5, 5));
+        parent.changeProfileImage(PRESET_KEY);
 
         parentRepository.save(parent);
 
         assertThat(parentRepository.findByProviderId("google-sub-id")).isPresent();
+    }
+
+    private Parent localParent(String email, String passwordHash, LocalDate birthDate) {
+        Parent parent = Parent.createLocal(email, passwordHash, birthDate);
+        parent.changeProfileImage(PRESET_KEY);
+        return parent;
     }
 }

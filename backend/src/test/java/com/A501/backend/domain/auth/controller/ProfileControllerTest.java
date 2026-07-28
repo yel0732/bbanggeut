@@ -1,7 +1,9 @@
 package com.A501.backend.domain.auth.controller;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
@@ -40,35 +42,40 @@ class ProfileControllerTest {
     @MockitoBean
     private ProfileService profileService;
 
+    private static final String PRESET_KEY = "profile-presets/preset-3";
+    private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
+
     @Test
     void updateProfileImage_returnsUnauthorizedWithoutBearerToken() throws Exception {
         mockMvc.perform(patch("/api/profile/image")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"profileImageNum\":3}"))
+                        .content("{\"imageKey\":\"" + PRESET_KEY + "\"}"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void updateProfileImage_returnsOkWithValidBearerTokenAndImageNum() throws Exception {
+    void updateProfileImage_returnsResolvedUrlWithValidBearerToken() throws Exception {
         String accessToken = generateAccessToken();
+        when(profileService.updateProfileImage(1L, PRESET_KEY)).thenReturn(PRESET_URL);
 
         mockMvc.perform(patch("/api/profile/image")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"profileImageNum\":3}"))
-                .andExpect(status().isOk());
+                        .content("{\"imageKey\":\"" + PRESET_KEY + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"profileImageUrl\":\"" + PRESET_URL + "\"}"));
 
-        verify(profileService).updateProfileImage(1L, 3);
+        verify(profileService).updateProfileImage(1L, PRESET_KEY);
     }
 
     @Test
-    void updateProfileImage_returnsBadRequestForNonPositiveImageNum() throws Exception {
+    void updateProfileImage_returnsBadRequestForBlankImageKey() throws Exception {
         String accessToken = generateAccessToken();
 
         mockMvc.perform(patch("/api/profile/image")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"profileImageNum\":0}"))
+                        .content("{\"imageKey\":\"\"}"))
                 .andExpect(status().isBadRequest());
     }
 

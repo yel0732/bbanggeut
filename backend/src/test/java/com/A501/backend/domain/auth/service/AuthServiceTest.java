@@ -22,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
@@ -67,6 +68,9 @@ class AuthServiceTest {
     @Mock
     private ChildService childService;
 
+    @Mock
+    private ProfileImageService profileImageService;
+
     private AuthService authService;
 
     @BeforeEach
@@ -74,7 +78,8 @@ class AuthServiceTest {
         // ParentFinder는 목이 아니라 실제 구현을 끼운다 — 소프트 삭제 필터가 실제로 도는지까지
         // 이 테스트가 계속 검증하도록 하기 위함이다.
         authService = new AuthService(parentRepository, new ParentFinder(parentRepository), refreshTokenRepository,
-                passwordEncoder, jwtProvider, REFRESH_TOKEN_PROPERTIES, googleTokenVerifier, pinService, childService);
+                passwordEncoder, jwtProvider, REFRESH_TOKEN_PROPERTIES, googleTokenVerifier, pinService, childService,
+                profileImageService);
     }
 
     @Test

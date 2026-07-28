@@ -21,7 +21,6 @@ import com.A501.backend.domain.child.dto.request.DeleteChildRequest;
 import com.A501.backend.domain.child.dto.request.UpdateChildRequest;
 import com.A501.backend.domain.child.dto.response.ChildNameCheckResponse;
 import com.A501.backend.domain.child.dto.response.ChildResponse;
-import com.A501.backend.domain.child.entity.Child;
 import com.A501.backend.domain.child.service.ChildService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,18 +52,15 @@ public class ChildController {
     public ResponseEntity<ChildResponse> create(
             Authentication authentication, @Valid @RequestBody CreateChildRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
-        Child child = childService.createChild(parentId, request.name(), request.profileImageNum());
-        return ResponseEntity.status(HttpStatus.CREATED).body(ChildResponse.from(child));
+        ChildResponse child = childService.createChild(parentId, request.name(), request.imageKey());
+        return ResponseEntity.status(HttpStatus.CREATED).body(child);
     }
 
     @Operation(summary = "자녀 프로필 목록 조회")
     @GetMapping
     public ResponseEntity<List<ChildResponse>> list(Authentication authentication) {
         Long parentId = (Long) authentication.getPrincipal();
-        List<ChildResponse> children = childService.listChildren(parentId).stream()
-                .map(ChildResponse::from)
-                .toList();
-        return ResponseEntity.ok(children);
+        return ResponseEntity.ok(childService.listChildren(parentId));
     }
 
     @Operation(summary = "자녀 프로필 수정")
@@ -74,8 +70,7 @@ public class ChildController {
             @PathVariable Long childId,
             @Valid @RequestBody UpdateChildRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
-        Child child = childService.updateChild(parentId, childId, request.name(), request.profileImageNum());
-        return ResponseEntity.ok(ChildResponse.from(child));
+        return ResponseEntity.ok(childService.updateChild(parentId, childId, request.name(), request.imageKey()));
     }
 
     @Operation(summary = "자녀 프로필 삭제")

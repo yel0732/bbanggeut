@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
@@ -52,6 +53,7 @@ public class AuthService {
     private final GoogleTokenVerifier googleTokenVerifier;
     private final PinService pinService;
     private final ChildService childService;
+    private final ProfileImageService profileImageService;
 
     public boolean isEmailAvailable(String email) {
         return parentRepository.findByEmail(normalizeEmail(email)).isEmpty();
@@ -71,7 +73,7 @@ public class AuthService {
                 email,
                 passwordEncoder.encode(request.password()),
                 request.birthDate());
-        return parentRepository.save(parent);
+        return parentRepository.save(withDefaultProfileImage(parent));
     }
 
     @Transactional
@@ -189,8 +191,8 @@ public class AuthService {
 
         LocalDate resolvedBirthDate = resolveGoogleBirthDate(googleUser);
         if (resolvedBirthDate != null && !isUnderAge(resolvedBirthDate)) {
-            Parent parent = parentRepository.save(
-                    Parent.createGoogle(normalizeEmail(googleUser.email()), googleUser.providerId(), resolvedBirthDate));
+            Parent parent = parentRepository.save(withDefaultProfileImage(
+                    Parent.createGoogle(normalizeEmail(googleUser.email()), googleUser.providerId(), resolvedBirthDate)));
             return GoogleAuthResult.loginSuccess(issueTokens(parent, true));
         }
 
@@ -218,7 +220,7 @@ public class AuthService {
         }
 
         Parent parent = Parent.createGoogle(email, claims.providerId(), request.birthDate());
-        return parentRepository.save(parent);
+        return parentRepository.save(withDefaultProfileImage(parent));
     }
 
     @Transactional
@@ -244,6 +246,13 @@ public class AuthService {
 
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    // 신규 계정의 프로필 사진은 기본 프리셋으로 시작한다. 자녀 생성(ChildService)과 동일하게
+    // 설정값을 단일 출처로 삼기 위해, 엔티티 상수가 아니라 여기서 채워 넣는다.
+    private Parent withDefaultProfileImage(Parent parent) {
+        parent.changeProfileImage(profileImageService.defaultPresetKey());
+        return parent;
     }
 
     // ParentFinder를 쓰지 않는다 — 탈퇴·비밀번호 미설정·비밀번호 불일치를 모두 같은

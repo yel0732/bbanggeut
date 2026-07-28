@@ -71,6 +71,11 @@ public class ProfileImageService {
         return storageProperties.isUpload(key);
     }
 
+    // 신규 계정·자녀의 기본 이미지이자, 업로드 사진을 파기한 뒤 되돌릴 키다.
+    public String defaultPresetKey() {
+        return storageProperties.defaultPresetKey();
+    }
+
     // 프리셋은 모든 사용자가 공유하는 이미지라 지우면 안 된다. 사진 교체·자녀 삭제·회원 탈퇴처럼
     // "이전 이미지를 정리하는" 자리에서 업로드 객체만 골라 지우기 위한 메서드다.
     public void deleteIfUpload(String key) {

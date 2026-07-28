@@ -26,7 +26,7 @@ import com.A501.backend.common.exception.BusinessException;
 @ExtendWith(MockitoExtension.class)
 class ProfileImageServiceTest {
 
-    private static final String PRESET_KEY = "profile-presets/01.png";
+    private static final String PRESET_KEY = "profile-presets/preset-1";
     private static final String UPLOAD_PREFIX = "profile-uploads/1/parent/";
 
     // 실제 아동 사진을 픽스처로 쓰지 않는다(AGENTS.md 민감정보 규칙). 포맷 판별에 필요한 것은
@@ -42,7 +42,7 @@ class ProfileImageServiceTest {
             "profile-uploads/",
             "https://cdn.example.com",
             PRESET_KEY,
-            Set.of(PRESET_KEY, "profile-presets/02.png"),
+            Set.of(PRESET_KEY, "profile-presets/preset-2"),
             DataSize.ofKilobytes(100),
             Duration.ofMinutes(5));
 
@@ -163,7 +163,7 @@ class ProfileImageServiceTest {
 
     @Test
     void assertValidPreset_rejectsUnknownPresetKey() {
-        assertThatThrownBy(() -> profileImageService.assertValidPreset("profile-presets/99.png"))
+        assertThatThrownBy(() -> profileImageService.assertValidPreset("profile-presets/preset-99"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));

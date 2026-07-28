@@ -18,8 +18,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.common.storage.ImageErrorCode;
+import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.service.PinService;
+import com.A501.backend.domain.child.dto.response.ChildResponse;
 import com.A501.backend.domain.child.entity.Child;
 import com.A501.backend.domain.child.exception.ChildErrorCode;
 import com.A501.backend.domain.child.repository.ChildRepository;
@@ -30,17 +33,26 @@ class ChildServiceTest {
 
     private static final ChildProperties CHILD_PROPERTIES = new ChildProperties(10);
 
+    private static final String PRESET_KEY = "profile-presets/preset-1";
+    private static final String OTHER_PRESET_KEY = "profile-presets/preset-2";
+    private static final String UPLOAD_KEY = "profile-uploads/1/10/abc";
+    private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
+    private static final String OTHER_PRESET_URL = "https://cdn.example.com/" + OTHER_PRESET_KEY;
+
     @Mock
     private ChildRepository childRepository;
 
     @Mock
     private PinService pinService;
 
+    @Mock
+    private ProfileImageService profileImageService;
+
     private ChildService childService;
 
     @BeforeEach
     void setUp() {
-        childService = new ChildService(childRepository, CHILD_PROPERTIES, pinService);
+        childService = new ChildService(childRepository, CHILD_PROPERTIES, pinService, profileImageService);
     }
 
     @Test
@@ -57,18 +69,24 @@ class ChildServiceTest {
         assertThat(childService.isNameAvailable(1L, "chorong")).isFalse();
     }
 
+    // 응답에는 저장된 키가 아니라 해석된 URL이 실려야 한다.
     @Test
-    void listChildren_returnsChildrenOwnedByParent() {
-        Child child = Child.create(1L, "chorong", 1);
+    void listChildren_returnsResolvedImageUrlInsteadOfKey() {
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findAllByParentIdAndDeletedAtIsNull(1L)).thenReturn(List.of(child));
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(PRESET_URL);
 
-        assertThat(childService.listChildren(1L)).containsExactly(child);
+        List<ChildResponse> children = childService.listChildren(1L);
+
+        assertThat(children).hasSize(1);
+        assertThat(children.get(0).name()).isEqualTo("chorong");
+        assertThat(children.get(0).profileImageUrl()).isEqualTo(PRESET_URL);
     }
 
     @Test
     void softDeleteChildrenOf_softDeletesAllActiveChildren() {
-        Child first = Child.create(1L, "chorong", 1);
-        Child second = Child.create(1L, "banjjak", 2);
+        Child first = Child.create(1L, "chorong", PRESET_KEY);
+        Child second = Child.create(1L, "banjjak", OTHER_PRESET_KEY);
         when(childRepository.findAllByParentIdAndDeletedAtIsNull(1L)).thenReturn(List.of(first, second));
 
         childService.softDeleteChildrenOf(1L);
@@ -82,20 +100,53 @@ class ChildServiceTest {
         when(pinService.hasPin(1L)).thenReturn(true);
         when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(false);
-        when(childRepository.save(any(Child.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(childRepository.save(any(Child.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(profileImageService.resolveUrl(OTHER_PRESET_KEY)).thenReturn(OTHER_PRESET_URL);
 
-        Child child = childService.createChild(1L, "chorong", 3);
+        ChildResponse child = childService.createChild(1L, "chorong", OTHER_PRESET_KEY);
 
-        assertThat(child.getName()).isEqualTo("chorong");
-        assertThat(child.getProfileImageNum()).isEqualTo(3);
+        assertThat(child.name()).isEqualTo("chorong");
+        assertThat(child.profileImageUrl()).isEqualTo(OTHER_PRESET_URL);
+        verify(profileImageService).assertValidPreset(OTHER_PRESET_KEY);
+    }
+
+    // imageKey는 선택값이다 — 생략하면 기본 프리셋으로 생성된다.
+    @Test
+    void createChild_usesDefaultPresetWhenImageKeyOmitted() {
+        when(pinService.hasPin(1L)).thenReturn(true);
+        when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
+        when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(false);
+        when(childRepository.save(any(Child.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(profileImageService.defaultPresetKey()).thenReturn(PRESET_KEY);
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(PRESET_URL);
+
+        ChildResponse child = childService.createChild(1L, "chorong", null);
+
+        assertThat(child.profileImageUrl()).isEqualTo(PRESET_URL);
+        verify(profileImageService, never()).assertValidPreset(any());
+    }
+
+    // 클라이언트가 프리셋이 아닌 키(예: 타인의 업로드 키)를 보내면 생성 자체가 거절되어야 한다.
+    @Test
+    void createChild_rejectsNonPresetImageKey() {
+        when(pinService.hasPin(1L)).thenReturn(true);
+        when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
+        when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(false);
+        doThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY))
+                .when(profileImageService).assertValidPreset(UPLOAD_KEY);
+
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", UPLOAD_KEY))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+        verify(childRepository, never()).save(any());
     }
 
     @Test
     void createChild_throwsWhenPinNotSet() {
         when(pinService.hasPin(1L)).thenReturn(false);
 
-        assertThatThrownBy(() -> childService.createChild(1L, "chorong", 1))
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", PRESET_KEY))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(PinErrorCode.PIN_NOT_SET));
@@ -107,7 +158,7 @@ class ChildServiceTest {
         when(pinService.hasPin(1L)).thenReturn(true);
         when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(10L);
 
-        assertThatThrownBy(() -> childService.createChild(1L, "chorong", 1))
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", PRESET_KEY))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_LIMIT_EXCEEDED));
@@ -120,7 +171,7 @@ class ChildServiceTest {
         when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(true);
 
-        assertThatThrownBy(() -> childService.createChild(1L, "chorong", 1))
+        assertThatThrownBy(() -> childService.createChild(1L, "chorong", PRESET_KEY))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
@@ -129,24 +180,53 @@ class ChildServiceTest {
 
     @Test
     void updateChild_renamesAndChangesImageWhenOwnedAndNameAvailable() {
-        Child child = Child.create(1L, "chorong", 1);
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "banjjak")).thenReturn(false);
+        when(profileImageService.resolveUrl(OTHER_PRESET_KEY)).thenReturn(OTHER_PRESET_URL);
 
-        Child updated = childService.updateChild(1L, 10L, "banjjak", 5);
+        ChildResponse updated = childService.updateChild(1L, 10L, "banjjak", OTHER_PRESET_KEY);
 
-        assertThat(updated.getName()).isEqualTo("banjjak");
-        assertThat(updated.getProfileImageNum()).isEqualTo(5);
+        assertThat(updated.name()).isEqualTo("banjjak");
+        assertThat(updated.profileImageUrl()).isEqualTo(OTHER_PRESET_URL);
+        assertThat(child.getProfileImageKey()).isEqualTo(OTHER_PRESET_KEY);
+    }
+
+    // 웹캠 사진에서 프리셋으로 바꾸면 더 이상 참조되지 않는 아이 실물 사진을 즉시 파기해야 한다.
+    @Test
+    void updateChild_deletesPreviousUploadedImage() {
+        Child child = Child.create(1L, "chorong", UPLOAD_KEY);
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(PRESET_URL);
+
+        childService.updateChild(1L, 10L, "chorong", PRESET_KEY);
+
+        verify(profileImageService).deleteIfUpload(UPLOAD_KEY);
+    }
+
+    @Test
+    void updateChild_rejectsNonPresetImageKeyBeforeTouchingChild() {
+        doThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY))
+                .when(profileImageService).assertValidPreset(UPLOAD_KEY);
+
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", UPLOAD_KEY))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+        // 거절될 요청 때문에 이전 이미지를 지우면 안 된다.
+        verify(profileImageService, never()).deleteIfUpload(any());
+        verify(childRepository, never()).findByChildIdAndDeletedAtIsNull(any());
     }
 
     @Test
     void updateChild_allowsKeepingSameNameWithoutDuplicateCheck() {
-        Child child = Child.create(1L, "chorong", 1);
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(profileImageService.resolveUrl(OTHER_PRESET_KEY)).thenReturn(OTHER_PRESET_URL);
 
-        Child updated = childService.updateChild(1L, 10L, "chorong", 5);
+        ChildResponse updated = childService.updateChild(1L, 10L, "chorong", OTHER_PRESET_KEY);
 
-        assertThat(updated.getProfileImageNum()).isEqualTo(5);
+        assertThat(updated.profileImageUrl()).isEqualTo(OTHER_PRESET_URL);
         verify(childRepository, never()).existsByParentIdAndNameAndDeletedAtIsNull(any(), any());
     }
 
@@ -154,7 +234,7 @@ class ChildServiceTest {
     void updateChild_throwsWhenChildNotFound() {
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", 5))
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", PRESET_KEY))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
@@ -162,10 +242,10 @@ class ChildServiceTest {
 
     @Test
     void updateChild_throwsNotFoundWhenChildBelongsToAnotherParent() {
-        Child child = Child.create(2L, "chorong", 1);
+        Child child = Child.create(2L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
 
-        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", 5))
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", PRESET_KEY))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
@@ -173,11 +253,11 @@ class ChildServiceTest {
 
     @Test
     void updateChild_throwsWhenNewNameAlreadyUsedByAnotherChild() {
-        Child child = Child.create(1L, "chorong", 1);
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "banjjak")).thenReturn(true);
 
-        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", 5))
+        assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", PRESET_KEY))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
@@ -186,7 +266,7 @@ class ChildServiceTest {
 
     @Test
     void deleteChild_softDeletesWhenOwnedAndPinCorrect() {
-        Child child = Child.create(1L, "chorong", 1);
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
 
         childService.deleteChild(1L, 10L, "1234");
@@ -209,7 +289,7 @@ class ChildServiceTest {
 
     @Test
     void deleteChild_throwsNotFoundWhenChildBelongsToAnotherParent() {
-        Child child = Child.create(2L, "chorong", 1);
+        Child child = Child.create(2L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
 
         assertThatThrownBy(() -> childService.deleteChild(1L, 10L, "1234"))
@@ -221,7 +301,7 @@ class ChildServiceTest {
 
     @Test
     void deleteChild_propagatesPinMismatchAndLeavesChildAlive() {
-        Child child = Child.create(1L, "chorong", 1);
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
         doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH)).when(pinService).verifyPin(1L, "0000");
 

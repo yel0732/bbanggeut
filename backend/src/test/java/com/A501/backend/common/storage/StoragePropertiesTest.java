@@ -23,14 +23,14 @@ class StoragePropertiesTest {
             "profile-presets/",
             "profile-uploads/",
             "https://cdn.example.com",
-            "profile-presets/01.png",
-            Set.of("profile-presets/01.png"),
+            "profile-presets/preset-1",
+            Set.of("profile-presets/preset-1"),
             DataSize.ofMegabytes(2),
             Duration.ofMinutes(5));
 
     @Test
     void bucketFor_routesPresetKeyToPresetBucket() {
-        assertThat(PROPERTIES.bucketFor("profile-presets/01.png")).isEqualTo(PRESET_BUCKET);
+        assertThat(PROPERTIES.bucketFor("profile-presets/preset-1")).isEqualTo(PRESET_BUCKET);
     }
 
     @Test
@@ -50,8 +50,8 @@ class StoragePropertiesTest {
 
     @Test
     void isPresetAndIsUpload_areMutuallyExclusive() {
-        assertThat(PROPERTIES.isPreset("profile-presets/01.png")).isTrue();
-        assertThat(PROPERTIES.isUpload("profile-presets/01.png")).isFalse();
+        assertThat(PROPERTIES.isPreset("profile-presets/preset-1")).isTrue();
+        assertThat(PROPERTIES.isUpload("profile-presets/preset-1")).isFalse();
         assertThat(PROPERTIES.isUpload("profile-uploads/1/parent/abc")).isTrue();
         assertThat(PROPERTIES.isPreset("profile-uploads/1/parent/abc")).isFalse();
     }

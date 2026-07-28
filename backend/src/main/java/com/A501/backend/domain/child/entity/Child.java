@@ -37,28 +37,30 @@ public class Child extends BaseTimeEntity {
     @Column(nullable = false, length = 15)
     private String name;
 
-    @Column(name = "profile_image_num", nullable = false)
-    private int profileImageNum;
+    // 프리셋과 업로드(웹캠) 사진을 S3 키 하나로 표현하고, 공개 여부는 키 접두사가 결정한다
+    // (common/storage). 기본 프리셋 키는 ChildService가 설정값에서 채워 넣는다.
+    @Column(name = "profile_image_key", nullable = false, length = 512)
+    private String profileImageKey;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    private Child(Long parentId, String name, int profileImageNum) {
+    private Child(Long parentId, String name, String profileImageKey) {
         this.parentId = parentId;
         this.name = name;
-        this.profileImageNum = profileImageNum;
+        this.profileImageKey = profileImageKey;
     }
 
-    public static Child create(Long parentId, String name, int profileImageNum) {
-        return new Child(parentId, name, profileImageNum);
+    public static Child create(Long parentId, String name, String profileImageKey) {
+        return new Child(parentId, name, profileImageKey);
     }
 
     public void rename(String name) {
         this.name = name;
     }
 
-    public void changeProfileImage(int profileImageNum) {
-        this.profileImageNum = profileImageNum;
+    public void changeProfileImage(String profileImageKey) {
+        this.profileImageKey = profileImageKey;
     }
 
     public void softDelete(LocalDateTime now) {

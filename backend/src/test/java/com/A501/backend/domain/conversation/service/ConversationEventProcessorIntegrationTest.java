@@ -192,6 +192,40 @@ class ConversationEventProcessorIntegrationTest {
     }
 
     @Test
+    void ignoresLateTurnEventForTerminalSessionSoPurgedContentIsNotRecreated() {
+        // 이탈·중단으로 원문을 정리한 뒤 늦게 도착한 확정 턴 이벤트가 턴을 재생성하면 안 된다.
+        ConversationSession session = sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        session.terminate(
+                LocalDateTime.parse("2026-07-28T01:00:10"),
+                TerminationReason.CONNECTION_LOST);
+        sessionRepository.saveAndFlush(session);
+        ConversationStreamDelivery late = delivery(
+                "6000-0",
+                "evt-late-after-abort-1",
+                "CHILD_TURN_FINALIZED",
+                1,
+                "turn-late-after-abort-1",
+                1,
+                null,
+                """
+                {
+                  "text": "정리 후 늦게 도착한 말",
+                  "sttConfidence": 0.9,
+                  "startedAt": "2026-07-28T01:00:00Z",
+                  "completedAt": "2026-07-28T01:00:03Z"
+                }
+                """);
+
+        assertThat(eventProcessor.process(late))
+                .isEqualTo(ConversationEventProcessingOutcome.IGNORED_STALE);
+        assertThat(turnRepository.findById("turn-late-after-abort-1")).isEmpty();
+        assertThat(eventRepository.findById("evt-late-after-abort-1"))
+                .get()
+                .extracting(event -> event.getProcessingResult())
+                .isEqualTo(ConversationEventProcessingResult.IGNORED_STALE);
+    }
+
+    @Test
     void completesAiTurnEvenWhenCompletedTextDiffersFromGeneratedText() {
         // finding ③: COMPLETED의 정체성은 식별자로 판정한다 — text가 GENERATED와
         // 달라도(향후 TTS가 다른 텍스트를 실을 수 있음) 턴은 정상 완료돼야 한다.

@@ -10,6 +10,7 @@ public record CompleteConversationRequest(
                         "MAX_QUESTION_REACHED",
                         "CHILD_REQUESTED_STOP",
                         "REQUIRED_SLOTS_FILLED",
+                        "USER_ABANDONED",
                         "INACTIVITY_TIMEOUT",
                         "CONNECTION_LOST",
                         "PAGE_CLOSED",

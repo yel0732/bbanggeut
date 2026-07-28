@@ -11,6 +11,9 @@ public enum TerminationReason {
     MAX_QUESTION_REACHED(ConversationStatus.COMPLETED),
     CHILD_REQUESTED_STOP(ConversationStatus.COMPLETED),
     REQUIRED_SLOTS_FILLED(ConversationStatus.COMPLETED),
+    // 아이가 일기로 남기지 않고 대화를 명시적으로 그만둔 경우. 완료(COMPLETED)와 달리
+    // 이탈로 취급해 대화 원문을 정리한다.
+    USER_ABANDONED(ConversationStatus.ABORTED),
     INACTIVITY_TIMEOUT(ConversationStatus.EXPIRED),
     CONNECTION_LOST(ConversationStatus.ABORTED),
     PAGE_CLOSED(ConversationStatus.ABORTED),

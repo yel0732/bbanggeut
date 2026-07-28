@@ -29,8 +29,10 @@ import com.A501.backend.domain.conversation.entity.ConversationTopicStatus;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
+import com.A501.backend.domain.conversation.repository.ConversationGameSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 
 @ExtendWith(MockitoExtension.class)
 class ConversationTerminationExecutorTest {
@@ -44,6 +46,18 @@ class ConversationTerminationExecutorTest {
     @Mock
     private ConversationTopicStateRepository topicStateRepository;
 
+    @Mock
+    private ConversationTurnRepository turnRepository;
+
+    @Mock
+    private ConversationGameSessionRepository gameSessionRepository;
+
+    @Mock
+    private RealtimeContextStore realtimeContextStore;
+
+    @Mock
+    private RealtimeSessionLeaseStore realtimeSessionLeaseStore;
+
     private ConversationTerminationExecutor executor;
 
     @BeforeEach
@@ -51,11 +65,15 @@ class ConversationTerminationExecutorTest {
         executor = new ConversationTerminationExecutor(
                 conversationSessionRepository,
                 topicStateRepository,
+                turnRepository,
+                gameSessionRepository,
+                realtimeContextStore,
+                realtimeSessionLeaseStore,
                 FIXED_CLOCK);
     }
 
     @Test
-    void UTC_Clock으로_상태와_종료_정보를_함께_저장한다() {
+    void 완료_종료는_UTC_Clock으로_상태와_종료_정보를_저장하고_원문을_보존한다() {
         ConversationSession session = startedSession("conv_executor_001");
         ConversationTopicState topic = dailyTopic("conv_executor_001");
         topic.start(LocalDateTime.of(2026, 7, 22, 1, 0));
@@ -74,6 +92,48 @@ class ConversationTerminationExecutorTest {
         assertThat(topic.getStatus()).isEqualTo(ConversationTopicStatus.COMPLETED);
         assertThat(topic.getCompletionReason()).isEqualTo(TerminationReason.USER_FINISHED);
         verify(conversationSessionRepository).saveAndFlush(session);
+        // 완료 세션의 원문은 일기에 쓰이므로 삭제하지 않는다.
+        verify(turnRepository, never()).deleteByConversationId(any());
+        verify(topicStateRepository, never()).deleteByConversationId(any());
+        verify(gameSessionRepository, never()).deleteByConversationId(any());
+        verify(realtimeContextStore, never()).delete(any());
+        verify(realtimeSessionLeaseStore, never()).delete(any());
+    }
+
+    @Test
+    void 연결_끊김_종료는_세션은_ABORTED로_남기고_대화_원문을_정리한다() {
+        ConversationSession session = startedSession("conv_executor_004");
+        when(conversationSessionRepository.findById("conv_executor_004")).thenReturn(Optional.of(session));
+        when(conversationSessionRepository.saveAndFlush(session)).thenReturn(session);
+
+        ConversationSession result = executor.terminate(
+                "conv_executor_004", TerminationReason.CONNECTION_LOST);
+
+        assertThat(result.getStatus()).isEqualTo(ConversationStatus.ABORTED);
+        assertThat(result.getTerminationReason()).isEqualTo(TerminationReason.CONNECTION_LOST);
+        verify(turnRepository).deleteByConversationId("conv_executor_004");
+        verify(topicStateRepository).deleteByConversationId("conv_executor_004");
+        verify(gameSessionRepository).deleteByConversationId("conv_executor_004");
+        verify(realtimeContextStore).delete("conv_executor_004");
+        verify(realtimeSessionLeaseStore).delete("conv_executor_004");
+        // 정리 경로에서는 현재 토픽을 완료 처리하지 않는다(어차피 삭제).
+        verify(topicStateRepository, never())
+                .findByConversationIdAndTopicTypeForUpdate(any(), any());
+    }
+
+    @Test
+    void 사용자_명시_이탈_종료도_대화_원문을_정리한다() {
+        ConversationSession session = startedSession("conv_executor_005");
+        when(conversationSessionRepository.findById("conv_executor_005")).thenReturn(Optional.of(session));
+        when(conversationSessionRepository.saveAndFlush(session)).thenReturn(session);
+
+        ConversationSession result = executor.terminate(
+                "conv_executor_005", TerminationReason.USER_ABANDONED);
+
+        assertThat(result.getStatus()).isEqualTo(ConversationStatus.ABORTED);
+        verify(turnRepository).deleteByConversationId("conv_executor_005");
+        verify(topicStateRepository).deleteByConversationId("conv_executor_005");
+        verify(gameSessionRepository).deleteByConversationId("conv_executor_005");
     }
 
     @Test

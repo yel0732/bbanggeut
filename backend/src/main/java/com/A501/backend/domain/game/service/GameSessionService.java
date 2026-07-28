@@ -20,10 +20,8 @@ import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
-import com.A501.backend.domain.game.metric.DobbleResultCalculator;
-import com.A501.backend.domain.game.metric.DobbleResultMetrics;
+import com.A501.backend.domain.game.metric.FruitResultCount;
 import com.A501.backend.domain.game.metric.GameMetricType;
-import com.A501.backend.domain.game.metric.FruitNinjaCalculationResult;
 import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
@@ -36,7 +34,6 @@ public class GameSessionService {
 
     private final GameSessionRepository gameSessionRepository;
     private final GameSessionWriter gameSessionWriter;
-    private final FruitNinjaResultCalculator fruitNinjaResultCalculator;
 
     public boolean existsForChild(UUID gameSessionId, Long childId) {
         return gameSessionRepository.findById(gameSessionId)
@@ -72,16 +69,14 @@ public class GameSessionService {
     }
 
     private GameSessionResponse saveNewSession(SaveGameResultRequest request) {
+        validateScore(request.score());
+
         if (request.gameType() == GameMetricType.DOBBLE) {
             return saveNewDobbleSession(request);
         }
         if (request.gameType() == GameMetricType.FRUIT_NINJA) {
             return saveNewFruitNinjaSession(request);
         }
-        if (request.score() == null) {
-            throw new IllegalArgumentException("도블 이외의 게임 결과에는 점수가 필요합니다.");
-        }
-
         GameSession gameSession = GameSession.create(
                 request.childId(),
                 request.gameId(),
@@ -108,14 +103,8 @@ public class GameSessionService {
             throw new IllegalArgumentException("후르츠 게임 상세 결과는 필수입니다.");
         }
 
-        FruitNinjaCalculationResult calculated = fruitNinjaResultCalculator.calculate(
-                requestedResult.rulesVersion(),
-                requestedResult.totalFruitCount(),
-                requestedResult.slicedFruitCount(),
-                requestedResult.toMetrics());
-        if (request.playDurationSeconds() != calculated.plannedDurationSeconds()) {
-            throw new IllegalArgumentException("정상 완료된 후르츠 게임만 저장할 수 있습니다.");
-        }
+        List<FruitResultCount> resultCounts = requestedResult.toMetrics();
+        validateFruitNinjaTotals(requestedResult, resultCounts);
 
         GameSession gameSession = GameSession.create(
                 request.childId(),
@@ -126,13 +115,13 @@ public class GameSessionService {
                 request.playStartedAt(),
                 request.completedAt(),
                 request.playDurationSeconds(),
-                calculated.calculatedScore());
+                request.score());
         FruitNinjaResult fruitNinjaResult = FruitNinjaResult.create(
                 gameSession.getGameSessionId(),
-                calculated.rulesVersion(),
-                calculated.totalFruitCount(),
-                calculated.slicedFruitCount());
-        List<FruitNinjaFruitResult> fruitResults = calculated.fruitResults().stream()
+                requestedResult.rulesVersion(),
+                requestedResult.totalFruitCount(),
+                requestedResult.slicedFruitCount());
+        List<FruitNinjaFruitResult> fruitResults = resultCounts.stream()
                 .map(result -> FruitNinjaFruitResult.create(
                         gameSession.getGameSessionId(), result))
                 .toList();
@@ -154,7 +143,6 @@ public class GameSessionService {
         List<CardResultMetrics> cardResults = requestedRounds.stream()
                 .map(SaveDobbleCardResultRequest::toMetrics)
                 .toList();
-        DobbleResultMetrics metrics = DobbleResultCalculator.calculate(cardResults);
 
         GameSession gameSession = GameSession.create(
                 request.childId(),
@@ -165,7 +153,7 @@ public class GameSessionService {
                 request.playStartedAt(),
                 request.completedAt(),
                 request.playDurationSeconds(),
-                metrics.calculatedScore());
+                request.score());
 
         List<CardRound> cardRounds = createCardRounds(
                 gameSession.getGameSessionId(),
@@ -195,6 +183,38 @@ public class GameSessionService {
             if (!roundNumbers.add(round.roundNo())) {
                 throw new IllegalArgumentException("카드 제시 순서는 중복될 수 없습니다: " + round.roundNo());
             }
+        }
+    }
+
+    private void validateFruitNinjaTotals(
+            SaveFruitNinjaResultRequest requestedResult,
+            List<FruitResultCount> fruitResults) {
+        if (requestedResult.slicedFruitCount() > requestedResult.totalFruitCount()) {
+            throw new IllegalArgumentException("자른 과일 수는 생성된 과일 수를 초과할 수 없습니다.");
+        }
+
+        Set<String> fruitCodes = new HashSet<>();
+        long generatedCount = 0;
+        long slicedCount = 0;
+        for (FruitResultCount fruitResult : fruitResults) {
+            if (!fruitCodes.add(fruitResult.fruitCode())) {
+                throw new IllegalArgumentException(
+                        "과일별 결과에는 같은 과일 코드가 중복될 수 없습니다: "
+                                + fruitResult.fruitCode());
+            }
+            generatedCount += fruitResult.generatedCount();
+            slicedCount += fruitResult.slicedCount();
+        }
+
+        if (generatedCount != requestedResult.totalFruitCount()
+                || slicedCount != requestedResult.slicedFruitCount()) {
+            throw new IllegalArgumentException("과일별 집계와 전체 과일 집계가 일치하지 않습니다.");
+        }
+    }
+
+    private void validateScore(Integer score) {
+        if (score == null || score < 0) {
+            throw new IllegalArgumentException("완료된 게임 결과에는 0 이상의 점수가 필요합니다.");
         }
     }
 

@@ -54,13 +54,13 @@ class DobbleGameSessionControllerTest {
                 .andExpect(header().string("Location", startsWith("/api/game-sessions/")))
                 .andExpect(jsonPath("$.gameSessionId").isNotEmpty())
                 .andExpect(jsonPath("$.clientPlayId").value(clientPlayId.toString()))
-                .andExpect(jsonPath("$.score").value(2550))
+                .andExpect(jsonPath("$.score").value(4321))
                 .andExpect(jsonPath("$.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.difficultyCode").doesNotExist())
                 .andExpect(jsonPath("$.cardResults").doesNotExist());
 
         var savedSession = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
-        assertThat(savedSession.getScore()).isEqualTo(2550);
+        assertThat(savedSession.getScore()).isEqualTo(4321);
         assertThat(savedSession.getDifficultyCode()).isNull();
         var savedRounds = cardRoundRepository.findAllByGameSessionIdOrderByRoundNo(
                 savedSession.getGameSessionId());
@@ -99,7 +99,7 @@ class DobbleGameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest(clientPlayId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.score").value(2550));
+                .andExpect(jsonPath("$.score").value(4321));
 
         assertThat(gameSessionRepository.count()).isEqualTo(1);
         assertThat(cardRoundRepository.count()).isEqualTo(4);
@@ -223,6 +223,7 @@ class DobbleGameSessionControllerTest {
                   "playStartedAt": "2026-07-23T10:00:03",
                   "completedAt": "2026-07-23T10:02:03",
                   "playDurationSeconds": 120,
+                  "score": 4321,
                   "gameType": "DOBBLE",
                   "cardResults": [
                     {

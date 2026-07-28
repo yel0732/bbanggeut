@@ -117,6 +117,65 @@ CREATE TABLE game_session (
 -- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
+-- MOTIONTASK05/MOTIONTASK19: Fruit Ninja rule and result tables -------------
+
+CREATE TABLE game_rule_version (
+    rule_version_id          BIGINT         NOT NULL AUTO_INCREMENT,
+    version_code             VARCHAR(40)    NOT NULL,
+    planned_duration_sec     INT            NOT NULL,
+    slice_speed_threshold    DECIMAL(10, 4) NOT NULL,
+    fruit_spawn_interval_ms  INT            NOT NULL,
+    max_visible_fruit        INT            NOT NULL,
+    active                   BOOLEAN        NOT NULL,
+    created_at               DATETIME(6)    NOT NULL,
+    updated_at               DATETIME(6)    NOT NULL,
+    PRIMARY KEY (rule_version_id),
+    CONSTRAINT uk_game_rule_version_code UNIQUE (version_code)
+);
+
+CREATE TABLE fruit_type (
+    fruit_type_id    BIGINT       NOT NULL AUTO_INCREMENT,
+    fruit_code       VARCHAR(40)  NOT NULL,
+    name             VARCHAR(100) NOT NULL,
+    default_size_px  INT          NOT NULL,
+    created_at       DATETIME(6)  NOT NULL,
+    updated_at       DATETIME(6)  NOT NULL,
+    PRIMARY KEY (fruit_type_id),
+    CONSTRAINT uk_fruit_type_code UNIQUE (fruit_code)
+);
+
+CREATE TABLE fruit_score_config (
+    rule_version_id  BIGINT NOT NULL,
+    fruit_type_id    BIGINT NOT NULL,
+    score            INT    NOT NULL,
+    PRIMARY KEY (rule_version_id, fruit_type_id),
+    CONSTRAINT fk_fruit_score_rule
+        FOREIGN KEY (rule_version_id) REFERENCES game_rule_version (rule_version_id),
+    CONSTRAINT fk_fruit_score_type
+        FOREIGN KEY (fruit_type_id) REFERENCES fruit_type (fruit_type_id)
+);
+
+CREATE TABLE fruit_ninja_result (
+    game_session_id     BINARY(16)  NOT NULL,
+    rules_version       VARCHAR(40) NOT NULL,
+    total_fruit_count   INT         NOT NULL,
+    sliced_fruit_count  INT         NOT NULL,
+    created_at          DATETIME(6) NOT NULL,
+    PRIMARY KEY (game_session_id)
+);
+
+CREATE TABLE fruit_ninja_fruit_result (
+    fruit_result_id  BINARY(16)  NOT NULL,
+    game_session_id  BINARY(16)  NOT NULL,
+    fruit_code       VARCHAR(40) NOT NULL,
+    generated_count  INT         NOT NULL,
+    sliced_count     INT         NOT NULL,
+    created_at       DATETIME(6) NOT NULL,
+    PRIMARY KEY (fruit_result_id),
+    CONSTRAINT uk_fruit_ninja_fruit_session_code
+        UNIQUE (game_session_id, fruit_code)
+);
+
 -- CARDTASK-13: card_round ---------------------------------------------------
 
 CREATE TABLE card_round (

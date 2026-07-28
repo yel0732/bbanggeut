@@ -11,6 +11,11 @@ spring:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
 
+game:
+  fruit-ninja:
+    seed:
+      enabled: ${FRUIT_NINJA_SEED_ENABLED:true}
+
 report:
   schedule:
     enabled: ${REPORT_SCHEDULE_ENABLED:false}

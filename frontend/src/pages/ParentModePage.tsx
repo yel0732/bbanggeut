@@ -24,7 +24,7 @@ import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import menuBoardUrl from '@/assets/images/parent-mode/menu-board.webp'
-import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide.webp'
+import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide-trimmed.png'
 import reportNotificationButtonUrl from '@/assets/images/parent-mode/report-notification-button.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
@@ -89,6 +89,8 @@ const PARENT_PHOTO_KEY = 'bbanggut-parent-photo'
 const NOTIFICATION_KEY = 'bbanggut-report-notification'
 const REPORT_ARRIVALS_KEY = 'bbanggut-report-arrivals'
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
+const MAX_PIN_FAILS = 5
+const PIN_LOCK_SECONDS = 5 * 60
 const ALLOWED_PASSWORD_SPECIALS = `!"#$%&'()*+,-./:;<=>?@[\\]₩^_\`{|}~`
 const PASSWORD_GUIDE =
   '8~16자의 영문, 숫자, 특수문자를 각각 1자 이상 포함해 주세요.'
@@ -98,6 +100,12 @@ const DEMO_PROFILES: ChildProfile[] = [
   { id: 'demo-2', name: '아이2', photoUrl: null },
   { id: 'demo-3', name: '아이3', photoUrl: null },
 ]
+
+function formatPinLockTime(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}분 ${seconds}초`
+}
 
 function loadNotificationSettings(): NotificationSettings {
   try {
@@ -177,6 +185,10 @@ export function ParentModePage() {
   const [pinMessage, setPinMessage] = useState(
     '현재 핀 번호 4자리를 입력해 주세요.',
   )
+  const [pinFailCount, setPinFailCount] = useState(0)
+  const [isPinLocked, setIsPinLocked] = useState(false)
+  const pinLockTimerRef = useRef<number | null>(null)
+  const pinLockUntilRef = useRef(0)
   const [withdrawPin, setWithdrawPin] = useState('')
   const [firstWithdrawPin, setFirstWithdrawPin] = useState('')
   const [withdrawMessage, setWithdrawMessage] = useState('핀 번호를 입력해 주세요.')
@@ -213,6 +225,9 @@ export function ParentModePage() {
   useEffect(
     () => () => {
       parentStreamRef.current?.getTracks().forEach((track) => track.stop())
+      if (pinLockTimerRef.current) {
+        window.clearInterval(pinLockTimerRef.current)
+      }
     },
     [],
   )
@@ -410,7 +425,47 @@ export function ParentModePage() {
     setPin('')
     setNewPin('')
     setPinStep('current')
-    setPinMessage('현재 핀 번호 4자리를 입력해 주세요.')
+    const secondsLeft = Math.ceil(
+      (pinLockUntilRef.current - Date.now()) / 1000,
+    )
+    setPinMessage(
+      secondsLeft > 0
+        ? `PIN 입력이 잠겼습니다.\n${formatPinLockTime(secondsLeft)} 후 다시 시도해 주세요.`
+        : '현재 핀 번호 4자리를 입력해 주세요.',
+    )
+  }
+
+  const clearPinLockTimer = () => {
+    if (pinLockTimerRef.current) {
+      window.clearInterval(pinLockTimerRef.current)
+      pinLockTimerRef.current = null
+    }
+  }
+
+  const startPinLock = () => {
+    clearPinLockTimer()
+    setIsPinLocked(true)
+    setPin('')
+    const lockUntil = Date.now() + PIN_LOCK_SECONDS * 1000
+    pinLockUntilRef.current = lockUntil
+
+    const updateLockMessage = () => {
+      const secondsLeft = Math.ceil((lockUntil - Date.now()) / 1000)
+      if (secondsLeft <= 0) {
+        clearPinLockTimer()
+        pinLockUntilRef.current = 0
+        setIsPinLocked(false)
+        setPinFailCount(0)
+        setPinMessage('현재 핀 번호 4자리를 입력해 주세요.')
+        return
+      }
+      setPinMessage(
+        `PIN 입력이 잠겼습니다.\n${formatPinLockTime(secondsLeft)} 후 다시 시도해 주세요.`,
+      )
+    }
+
+    updateLockMessage()
+    pinLockTimerRef.current = window.setInterval(updateLockMessage, 1000)
   }
 
   const resetWithdrawal = () => {
@@ -462,6 +517,7 @@ export function ParentModePage() {
   }
 
   const pressPinKey = (key: string) => {
+    if (isPinLocked) return
     if (key === '←') {
       setPin((value) => value.slice(0, -1))
       return
@@ -475,13 +531,20 @@ export function ParentModePage() {
     if (pinStep === 'current') {
       void verifyParentPin(nextPin)
         .then(() => {
+          setPinFailCount(0)
           setPin('')
           setPinStep('new')
           setPinMessage('변경할 새 PIN 번호를 입력해 주세요.')
         })
-        .catch((error: unknown) => {
+        .catch(() => {
           setPin('')
-          setPinMessage(error instanceof Error ? error.message : '현재 PIN 번호가 올바르지 않아요.')
+          const nextFailCount = pinFailCount + 1
+          setPinFailCount(nextFailCount)
+          if (nextFailCount >= MAX_PIN_FAILS) {
+            startPinLock()
+            return
+          }
+          setPinMessage(`PIN 번호가 틀렸습니다. (${nextFailCount}/${MAX_PIN_FAILS})`)
         })
       return
       window.setTimeout(() => {
@@ -1158,10 +1221,10 @@ export function ParentModePage() {
               ) : null}
 
               {profileView === 'menu' ? (
-                <div className="absolute top-[21%] right-[17%] left-[17%] flex flex-col items-center">
+                <div className="absolute top-[20%] right-[17%] left-[17%] flex flex-col items-center">
                   <img
                     alt="부모 프로필"
-                    className="-mb-6 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
+                    className="mb-6 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
                     src={parentPhoto ?? parentAvatarUrl}
                   />
                   {[
@@ -1187,7 +1250,7 @@ export function ParentModePage() {
                     },
                   ].map((item) => (
                     <button
-                      className="relative -mb-22 h-[170px] w-[410px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition hover:scale-103"
+                      className="relative mb-[9px] h-[73px] w-[406px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition first:mt-[46px] hover:scale-103"
                       key={item.view}
                       onClick={() => {
                         if (item.view === 'pin') resetPin()
@@ -1200,7 +1263,7 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span className="-mt-1.5 block text-[25px] text-[#5f492a]">
+                      <span className="-mt-1.3 block text-[25px] text-[#5f492a]">
                         {item.label}
                       </span>
                       <span className="-mt-2 block text-[14px] text-[#82945a]">
@@ -1258,7 +1321,7 @@ export function ParentModePage() {
 
               {profileView === 'pin' ? (
                 <div className="absolute top-[21%] right-[18%] left-[18%] text-center">
-                  <p className="h-9 text-[21px] text-[#8a7a55]" style={jua}>
+                  <p className="h-14 whitespace-pre-line text-[20px] leading-7 text-[#8a7a55]" style={jua}>
                     {pinMessage}
                   </p>
                   <div className="mt-0 flex justify-center gap-1">
@@ -1281,6 +1344,7 @@ export function ParentModePage() {
                       key ? (
                         <button
                           className="-m-3 mx-auto h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95"
+                          disabled={isPinLocked}
                           key={key}
                           onClick={() => pressPinKey(key)}
                           style={{
@@ -1297,7 +1361,8 @@ export function ParentModePage() {
                     )}
                   </div>
                   <button
-                    className="mt-2 text-[17px] text-[#8a7a55] underline"
+                    className="mt-2 text-[17px] text-[#8a7a55] underline disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={isPinLocked}
                     onClick={resetPin}
                     style={jua}
                     type="button"

@@ -15,7 +15,13 @@ import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
+import childTigerAvatarUrl from '@/assets/images/profile/child-avatar-tiger.webp'
+import childRabbitAvatarUrl from '@/assets/images/profile/child-avatar-rabbit.webp'
 import backgroundUrl from '@/assets/images/profile/background.webp'
+import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
+import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
+import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
+import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
@@ -39,6 +45,8 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PAGE_SIZE = 3
+const DELETE_PIN_LENGTH = 4
+const DELETE_PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫']
 
 export function ChildProfileListPage() {
   const navigate = useNavigate()
@@ -46,6 +54,7 @@ export function ChildProfileListPage() {
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const editVideoRef = useRef<HTMLVideoElement>(null)
   const editStreamRef = useRef<MediaStream | null>(null)
+  const deletionPinKeyHandlerRef = useRef<(key: string) => void>(() => undefined)
   const [profiles, setProfiles] = useState(loadChildProfiles)
   const [page, setPage] = useState(0)
   const [editingProfile, setEditingProfile] = useState<ChildProfile | null>(
@@ -57,6 +66,10 @@ export function ChildProfileListPage() {
   const [isEditCameraOn, setIsEditCameraOn] = useState(false)
   const [profilePendingDeletion, setProfilePendingDeletion] =
     useState<ChildProfile | null>(null)
+  const [isDeletionPinOpen, setIsDeletionPinOpen] = useState(false)
+  const [deletionPin, setDeletionPin] = useState('')
+  const [deletionPinMessage, setDeletionPinMessage] = useState('')
+  const [isDeletingProfile, setIsDeletingProfile] = useState(false)
   const isProfileLimitReached = profiles.length >= MAX_CHILD_PROFILES
   const pageCount = Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
@@ -117,22 +130,75 @@ export function ChildProfileListPage() {
 
   const removeProfile = (profile: ChildProfile) => {
     setProfilePendingDeletion(profile)
+    setIsDeletionPinOpen(false)
+    setDeletionPin('')
+    setDeletionPinMessage('')
   }
 
-  const confirmProfileRemoval = () => {
-    if (!profilePendingDeletion) return
+  const closeProfileRemoval = () => {
+    if (isDeletingProfile) return
+    setProfilePendingDeletion(null)
+    setIsDeletionPinOpen(false)
+    setDeletionPin('')
+    setDeletionPinMessage('')
+  }
+
+  const openDeletionPin = () => {
+    setDeletionPin('')
+    setDeletionPinMessage('')
+    setIsDeletionPinOpen(true)
+  }
+
+  const confirmProfileRemoval = (pin: string) => {
+    if (!profilePendingDeletion || isDeletingProfile) return
     const childId = Number(profilePendingDeletion.id)
-    const pin = window.prompt('삭제하려면 부모 PIN 4자리를 입력해 주세요.')
-    if (!pin || !/^\d{4}$/.test(pin)) {
-      return
-    }
+    setIsDeletingProfile(true)
+    setDeletionPinMessage('')
     void deleteBackendChildProfile(childId, pin)
       .then(() => {
         updateProfiles(profiles.filter(({ id }) => id !== profilePendingDeletion.id))
         setProfilePendingDeletion(null)
+        setIsDeletionPinOpen(false)
+        setDeletionPin('')
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        setDeletionPin('')
+        setDeletionPinMessage(
+          error instanceof Error ? error.message : '프로필을 삭제하지 못했어요.',
+        )
+      })
+      .finally(() => setIsDeletingProfile(false))
   }
+
+  const pressDeletionPinKey = (key: string) => {
+    if (isDeletingProfile) return
+    if (key === '⌫') {
+      setDeletionPin((value) => value.slice(0, -1))
+      setDeletionPinMessage('')
+      return
+    }
+    if (!/^\d$/.test(key) || deletionPin.length >= DELETE_PIN_LENGTH) return
+    const nextPin = deletionPin + key
+    setDeletionPin(nextPin)
+    setDeletionPinMessage('')
+    if (nextPin.length === DELETE_PIN_LENGTH) {
+      confirmProfileRemoval(nextPin)
+    }
+  }
+
+  useEffect(() => {
+    deletionPinKeyHandlerRef.current = pressDeletionPinKey
+  })
+
+  useEffect(() => {
+    if (!isDeletionPinOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) deletionPinKeyHandlerRef.current(event.key)
+      if (event.key === 'Backspace') deletionPinKeyHandlerRef.current('⌫')
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isDeletionPinOpen])
 
   const openEdit = (profile: ChildProfile) => {
     stopEditCamera()
@@ -180,6 +246,18 @@ export function ChildProfileListPage() {
       }
     }
     stopEditCamera()
+  }
+
+  const cycleDefaultEditPhoto = () => {
+    stopEditCamera()
+    setEditingPhotoUrl((current) => {
+      if (current === childTigerAvatarUrl) return childRabbitAvatarUrl
+      if (current === childRabbitAvatarUrl) return null
+      if (current === null || current === childAvatarUrl) {
+        return childTigerAvatarUrl
+      }
+      return null
+    })
   }
 
   const saveEdit = () => {
@@ -442,7 +520,7 @@ export function ChildProfileListPage() {
                 src={revisePopupUrl}
               />
               <h2
-                className="relative text-center text-[28px] text-[#3a7d2c]"
+                className="relative -mt-2 text-center text-[28px] text-[#3a7d2c]"
                 style={jua}
               >
                 아이 프로필 수정
@@ -479,10 +557,7 @@ export function ChildProfileListPage() {
                   </button>
                   <button
                     className="-mt-7 h-18 w-58 bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#5a4a2a]"
-                    onClick={() => {
-                      stopEditCamera()
-                      setEditingPhotoUrl(null)
-                    }}
+                    onClick={cycleDefaultEditPhoto}
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
@@ -493,9 +568,15 @@ export function ChildProfileListPage() {
                   </button>
                 </div>
               </div>
+              <p
+                className="relative mt-3 text-center text-[14px] text-[#8a7a55]"
+                style={jua}
+              >
+                세 마리의 동물이 있어요! 눌러서 확인해보세요!
+              </p>
               <input
                 autoFocus
-                className="relative mx-auto mt-3 block h-14 w-[90%] rounded-full border-2 border-[#d9c79a] bg-white px-6 text-center text-[20px] text-[#5a4a2a] outline-none"
+                className="relative mx-auto mt-7 block h-14 w-[90%] rounded-full border-2 border-[#d9c79a] bg-white px-6 text-center text-[20px] text-[#5a4a2a] outline-none"
                 onChange={(event) => {
                   const nextName = event.target.value
                   setEditingName(nextName.slice(0, 15))
@@ -512,9 +593,9 @@ export function ChildProfileListPage() {
               >
                 {editingNameMessage}
               </p>
-              <div className="relative mt-5 flex w-full justify-center">
+              <div className="relative mt-0 flex w-full justify-center">
                 <button
-                  className="w-64 bg-[length:100%_100%] bg-no-repeat px-4 py-6 text-[18px] text-white"
+                  className="w-64 bg-[length:100%_100%] bg-no-repeat px-4 py-6 text-[23px] text-white"
                   onClick={saveEdit}
                   style={{
                     ...jua,
@@ -542,15 +623,89 @@ export function ChildProfileListPage() {
             </div>
           </div>
         ) : null}
-        {profilePendingDeletion ? (
+        {profilePendingDeletion && !isDeletionPinOpen ? (
           <ParentNoticeDialog
             compact
-            confirmLabel="삭제"
+            confirmLabel="PIN 입력"
             message={`${profilePendingDeletion.name} 프로필을 삭제할까요?`}
-            onCancel={() => setProfilePendingDeletion(null)}
-            onConfirm={confirmProfileRemoval}
+            onCancel={closeProfileRemoval}
+            onConfirm={openDeletionPin}
             title="프로필 삭제"
           />
+        ) : null}
+        {profilePendingDeletion && isDeletionPinOpen ? (
+          <div
+            aria-modal="true"
+            className="absolute inset-0 z-100 flex items-center justify-center bg-[rgba(18,30,18,0.6)]"
+            onClick={closeProfileRemoval}
+            role="dialog"
+          >
+            <div
+              className="relative -top-[30px] h-[560px] w-[440px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <img
+                alt=""
+                className="pointer-events-none absolute inset-0 size-full object-contain"
+                src={pinPanelUrl}
+              />
+              <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
+                <h2 className="text-center text-[30px] text-[#3a7d2c]" style={jua}>
+                  부모 확인
+                </h2>
+                <p className="mt-1.5 text-center text-[17px] text-[#8a7a5a]" style={jua}>
+                  삭제하려면 PIN 번호 4자리를 입력하세요
+                </p>
+                <div className="mt-5 mb-1.5 flex justify-center gap-4">
+                  {Array.from({ length: DELETE_PIN_LENGTH }).map((_, index) => {
+                    const isFilled = index < deletionPin.length
+                    return (
+                      <span className="flex size-[30px] items-center justify-center" key={index}>
+                        <img
+                          alt=""
+                          className={isFilled ? 'size-[56px] max-w-none object-contain' : 'size-[30px] object-contain'}
+                          src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
+                        />
+                      </span>
+                    )
+                  })}
+                </div>
+                <div
+                  className="h-[22px] text-center text-[16px] text-[#d1483a]"
+                  style={jua}
+                >
+                  {isDeletingProfile ? '확인하고 있어요...' : deletionPinMessage || '.'}
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-2.5">
+                  {DELETE_PIN_KEYS.map((key, index) =>
+                    key ? (
+                      <button
+                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={isDeletingProfile}
+                        key={key}
+                        onClick={() => pressDeletionPinKey(key)}
+                        style={{ ...jua, backgroundImage: `url(${pinKeyUrl})` }}
+                        type="button"
+                      >
+                        {key}
+                      </button>
+                    ) : (
+                      <div key={`blank-${index}`} />
+                    ),
+                  )}
+                </div>
+              </div>
+              <button
+                aria-label="닫기"
+                className="absolute -top-4 -right-4 grid size-[46px] place-items-center rounded-full border-[3px] border-white bg-[#cf6f4e] text-xl text-white shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 disabled:opacity-40"
+                disabled={isDeletingProfile}
+                onClick={closeProfileRemoval}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

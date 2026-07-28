@@ -609,7 +609,7 @@ export function ParentProfilePage() {
                 )}
               </div>
 
-              <div className="absolute top-[18.2%] right-[18%] flex flex-col">
+              <div className="absolute top-[21.2%] right-[18%] flex flex-col">
                 <button
                   className="h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
                   onClick={() => void toggleCamera()}

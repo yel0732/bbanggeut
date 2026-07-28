@@ -6,14 +6,14 @@ import backgroundUrl from '@/assets/images/child-home/background.webp'
 import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
 import bubbleMediumUrl from '@/assets/images/child-home/bubble-medium.webp'
 import bubbleSmallUrl from '@/assets/images/child-home/bubble-small.webp'
-import caveUrl from '@/assets/images/child-home/cave.webp'
+import caveUrl from '@/assets/images/child-home/cave-new.png'
 import dino2Url from '@/assets/images/child-home/dino-2.webp'
 import dino3Url from '@/assets/images/child-home/dino-3.webp'
 import dino4Url from '@/assets/images/child-home/dino-4.webp'
 import dino5Url from '@/assets/images/child-home/dino-5.webp'
-import gateUrl from '@/assets/images/child-home/gate.webp'
-import hoverCaveUrl from '@/assets/images/child-home/hover-cave.webp'
-import hoverGateUrl from '@/assets/images/child-home/hover-gate.webp'
+import hoverCaveUrl from '@/assets/images/child-home/cave-hover-new.png'
+import playHoverUrl from '@/assets/images/child-home/play-hover.png'
+import playNoHoverUrl from '@/assets/images/child-home/play-no-hover.png'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
@@ -42,7 +42,7 @@ export function ChildHomePage() {
 
   useEffect(() => {
     let cancelled = false
-    const frames = [...Object.values(DINO_FRAMES), hoverCaveUrl, hoverGateUrl]
+    const frames = [...Object.values(DINO_FRAMES), hoverCaveUrl, playHoverUrl, playNoHoverUrl]
     Promise.all(
       frames.map(
         (frame) =>
@@ -117,23 +117,30 @@ export function ChildHomePage() {
 
         {/* 문(門): 놀자! */}
         <button
-          className="absolute top-[25px] left-[90px] z-[5] h-[277.5px] w-[370px] cursor-pointer border-none bg-none p-0"
+          className="absolute top-[25px] left-[30px] z-[5] h-[300.5px] w-[410px] cursor-pointer border-none bg-none p-0"
           onClick={() => navigate('/games')}
           onMouseEnter={() => setIsGateHovered(true)}
           onMouseLeave={() => setIsGateHovered(false)}
           type="button"
         >
           <div
-            className={`absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite] transition duration-[220ms] ${isGateHovered ? '-translate-y-1 scale-[1.04] brightness-110 drop-shadow-[0_18px_18px_rgba(255,222,105,0.48)]' : ''}`}
+            className="absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite]"
           >
             <img
               alt="문"
-              className="h-full w-full [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] object-contain"
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] ${isGateHovered ? 'opacity-0' : 'opacity-100'}`}
               decoding="async"
-              src={isGateHovered ? hoverGateUrl : gateUrl}
+              src={playNoHoverUrl}
+            />
+            <img
+              alt=""
+              aria-hidden="true"
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] ${isGateHovered ? 'opacity-100' : 'opacity-0'}`}
+              decoding="async"
+              src={playHoverUrl}
             />
           </div>
-          <div className="absolute top-0 left-[300px]">
+          <div className="absolute top-0 left-[320px]">
             <div
               className={`relative flex h-[94px] w-[132px] items-center justify-center transition duration-[220ms] ${isGateHovered ? '-translate-y-1 scale-[1.08] brightness-110 drop-shadow-[0_8px_10px_rgba(255,229,134,0.38)]' : ''}`}
             >
@@ -163,13 +170,20 @@ export function ChildHomePage() {
         >
           <div className="absolute top-[5px] right-[-10px] bottom-[-13px] left-[-10px]">
             <div
-              className={`absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite] transition-transform duration-[220ms] ${isCaveHovered ? '-translate-y-1 scale-[1.04]' : ''}`}
+              className="absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite]"
             >
               <img
                 alt="동굴 집"
-                className="h-full w-full [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] object-contain"
+                className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] ${isCaveHovered ? 'opacity-0' : 'opacity-100'}`}
                 decoding="async"
-                src={isCaveHovered ? hoverCaveUrl : caveUrl}
+                src={caveUrl}
+              />
+              <img
+                alt=""
+                aria-hidden="true"
+                className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] ${isCaveHovered ? 'opacity-100' : 'opacity-0'}`}
+                decoding="async"
+                src={hoverCaveUrl}
               />
             </div>
           </div>

@@ -5,7 +5,7 @@ import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
 import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
 import diaryListButtonUrl from '@/assets/images/conversation/diary-list-btn.webp'
-import dinoUrl from '@/assets/images/conversation/dino.webp'
+import talkListenDinosaurUrl from '@/assets/images/conversation/talk-listen-dinosaur.webp'
 import micOffButtonUrl from '@/assets/images/conversation/mic-off-btn.webp'
 import micOnButtonUrl from '@/assets/images/conversation/mic-on-btn.webp'
 import readyMicUrl from '@/assets/images/conversation/talk_ready_pic_1.webp'
@@ -22,8 +22,19 @@ import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
+import {
+  completeConversationSession,
+  createConversation,
+  sendConversationText,
+} from '@/api/conversations'
+import {
+  type ChildDiaryPreview,
+  previewChildDiary,
+  saveChildDiary,
+} from '@/api/diaries'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { loadActiveChildProfileId } from '@/lib/childProfiles'
 
 type ConversationStage = 'guide' | 'conversation' | 'complete'
 type VoiceStatus = 'ready' | 'listening' | 'thinking' | 'speaking' | 'error'
@@ -78,6 +89,15 @@ const DIARY_LINES = [
   '가장 기억에 남는 순간을 이야기해서 기분이 좋았다.',
   '내일도 신나게 놀고 빵긋이와 이야기하고 싶다.',
 ]
+const DINO_FRAME_SEQUENCE = [0, 1, 2, 1, 0] as const
+const DINO_FRAME_POSITIONS = [
+  '0% 0%',
+  '50% 0%',
+  '100% 0%',
+  '0% 100%',
+  '50% 100%',
+  '100% 100%',
+] as const
 
 const STATUS_COPY: Record<VoiceStatus, string> = {
   ready: '마이크 버튼을 누르고 이야기해 줘',
@@ -107,9 +127,16 @@ export function ConversationPage() {
   const [questionIndex, setQuestionIndex] = useState(0)
   const [transcript, setTranscript] = useState('')
   const [micLevel, setMicLevel] = useState(0)
+  const [dinoFrameStep, setDinoFrameStep] = useState(0)
   const [guideMessage, setGuideMessage] = useState('')
   const [isDiaryOpen, setIsDiaryOpen] = useState(false)
   const [isDiaryAttached, setIsDiaryAttached] = useState(false)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [diaryPreview, setDiaryPreview] = useState<ChildDiaryPreview | null>(
+    null,
+  )
+  const [diaryMessage, setDiaryMessage] = useState('')
+  const [isDiarySaving, setIsDiarySaving] = useState(false)
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false)
   const [isSpeechSupported] = useState(
     () =>
@@ -134,6 +161,20 @@ export function ConversationPage() {
   }, [stopListening])
 
   useEffect(() => stopVoiceResources, [stopVoiceResources])
+
+  useEffect(() => {
+    if (status !== 'speaking' && status !== 'listening') {
+      setDinoFrameStep(0)
+      return
+    }
+
+    setDinoFrameStep(0)
+    const frameTimer = window.setInterval(() => {
+      setDinoFrameStep((current) => (current + 1) % DINO_FRAME_SEQUENCE.length)
+    }, 320)
+
+    return () => window.clearInterval(frameTimer)
+  }, [status])
 
   useEffect(() => {
     if (status !== 'listening' || !streamRef.current) {
@@ -190,12 +231,21 @@ export function ConversationPage() {
     window.speechSynthesis.speak(utterance)
   }, [])
 
-  const completeConversation = useCallback(() => {
+  const completeConversation = useCallback(async () => {
     stopListening()
+    if (conversationId) {
+      try {
+        await completeConversationSession(conversationId)
+      } catch (error) {
+        setGuideMessage(
+          error instanceof Error ? error.message : '대화를 완료하지 못했어요.',
+        )
+      }
+    }
     setStage('complete')
     setStatus('speaking')
     speak('오늘 이야기도 정말 즐거웠어! 다음에 또 이야기하자.')
-  }, [speak, stopListening])
+  }, [conversationId, speak, stopListening])
 
   const acceptAnswer = useCallback(
     (answer: string) => {
@@ -207,18 +257,43 @@ export function ConversationPage() {
       setTranscript(answer.trim())
       setStatus('thinking')
       advanceTimerRef.current = window.setTimeout(() => {
-        if (questionIndex >= QUESTIONS.length - 1) {
-          completeConversation()
-          return
-        }
+        void (async () => {
+          let assistantText = ''
+          if (conversationId) {
+            try {
+              const response = await sendConversationText(
+                conversationId,
+                answer.trim(),
+              )
+              assistantText = response.assistantTurn?.content ?? ''
+              if (response.conversationState === 'COMPLETED') {
+                stopListening()
+                setStage('complete')
+                setStatus('ready')
+                return
+              }
+            } catch (error) {
+              setGuideMessage(
+                error instanceof Error
+                  ? error.message
+                  : '대화 내용을 저장하지 못했어요.',
+              )
+            }
+          }
 
-        const nextQuestionIndex = questionIndex + 1
-        setQuestionIndex(nextQuestionIndex)
-        setTranscript('')
-        speak(QUESTIONS[nextQuestionIndex])
+          if (questionIndex >= QUESTIONS.length - 1) {
+            await completeConversation()
+            return
+          }
+
+          const nextQuestionIndex = questionIndex + 1
+          setQuestionIndex(nextQuestionIndex)
+          setTranscript('')
+          speak(assistantText || QUESTIONS[nextQuestionIndex])
+        })()
       }, 900)
     },
-    [completeConversation, questionIndex, speak],
+    [completeConversation, conversationId, questionIndex, speak, stopListening],
   )
 
   const startListening = useCallback(() => {
@@ -301,15 +376,89 @@ export function ConversationPage() {
           autoGainControl: true,
         },
       })
+      const childId = Number(loadActiveChildProfileId())
+      if (!Number.isInteger(childId) || childId <= 0) {
+        throw new Error('선택한 아이 프로필을 확인할 수 없어요.')
+      }
+      const conversation = await createConversation(childId)
+      setConversationId(conversation.conversationId)
       setStage('conversation')
       setStatus('speaking')
       speak(QUESTIONS[0])
-    } catch {
+    } catch (error) {
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
       setGuideMessage(
-        '대화를 시작하려면 브라우저에서 마이크 사용을 허용해 주세요.',
+        error instanceof Error
+          ? error.message
+          : '대화를 시작하려면 브라우저에서 마이크 사용을 허용해 주세요.',
       )
     }
   }
+
+  const openDiary = useCallback(async () => {
+    setIsDiaryOpen(true)
+    setDiaryMessage('')
+    if (diaryPreview) return
+    if (!conversationId) {
+      setDiaryMessage('대화를 완료하면 오늘의 일기를 만들 수 있어요.')
+      return
+    }
+
+    const childId = Number(loadActiveChildProfileId())
+    if (!Number.isInteger(childId) || childId <= 0) {
+      setDiaryMessage('선택한 아이 프로필을 확인할 수 없어요.')
+      return
+    }
+
+    try {
+      setDiaryMessage('오늘의 일기를 만들고 있어요...')
+      const preview = await previewChildDiary(childId, conversationId)
+      setDiaryPreview(preview)
+      setDiaryMessage('')
+    } catch (error) {
+      setDiaryMessage(
+        error instanceof Error
+          ? error.message
+          : '오늘의 일기를 만들지 못했어요.',
+      )
+    }
+  }, [conversationId, diaryPreview])
+
+  const attachDiary = useCallback(async () => {
+    if (isDiaryAttached) {
+      stopVoiceResources()
+      navigate('/diaries')
+      return
+    }
+    if (!diaryPreview || isDiarySaving) return
+
+    const childId = Number(loadActiveChildProfileId())
+    if (!Number.isInteger(childId) || childId <= 0) {
+      setDiaryMessage('선택한 아이 프로필을 확인할 수 없어요.')
+      return
+    }
+
+    try {
+      setIsDiarySaving(true)
+      setDiaryMessage('일기장에 붙이고 있어요...')
+      await saveChildDiary(childId, diaryPreview.previewToken)
+      setIsDiaryAttached(true)
+      setDiaryMessage('아래 버튼을 누르면 일기장으로 이동해요')
+    } catch (error) {
+      setDiaryMessage(
+        error instanceof Error ? error.message : '일기를 저장하지 못했어요.',
+      )
+    } finally {
+      setIsDiarySaving(false)
+    }
+  }, [
+    diaryPreview,
+    isDiaryAttached,
+    isDiarySaving,
+    navigate,
+    stopVoiceResources,
+  ])
 
   const leaveConversation = () => {
     if (stage === 'conversation') {
@@ -363,7 +512,7 @@ export function ConversationPage() {
           <button
             aria-label="오늘의 일기"
             className="size-[58px] bg-transparent p-0 transition hover:scale-105"
-            onClick={() => setIsDiaryOpen(true)}
+            onClick={() => void openDiary()}
             type="button"
           >
             <img
@@ -409,11 +558,32 @@ export function ConversationPage() {
           </div>
         ) : null}
 
-        <img
-          alt="공룡 친구 빵긋"
-          className="absolute bottom-[72px] left-5/7 h-[530px] w-auto max-w-none -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
-          src={dinoUrl}
-        />
+        <div
+          aria-label="공룡 친구 빵긋"
+          className="absolute bottom-[130px] left-5/7 size-[530px] -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
+          role="img"
+        >
+          {DINO_FRAME_POSITIONS.map((backgroundPosition, frameIndex) => {
+            const sequenceFrame = DINO_FRAME_SEQUENCE[dinoFrameStep]
+            const activeFrame =
+              status === 'listening' ? sequenceFrame + 3 : sequenceFrame
+
+            return (
+              <span
+                aria-hidden="true"
+                className={`absolute inset-0 bg-no-repeat transition-opacity duration-200 ease-in-out ${
+                  frameIndex === activeFrame ? 'opacity-100' : 'opacity-0'
+                }`}
+                key={backgroundPosition}
+                style={{
+                  backgroundImage: `url(${talkListenDinosaurUrl})`,
+                  backgroundPosition,
+                  backgroundSize: '300% 200%',
+                }}
+              />
+            )
+          })}
+        </div>
 
         {stage !== 'guide' ? (
           <>
@@ -583,7 +753,7 @@ export function ConversationPage() {
                     className="h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-white"
                     onClick={() => {
                       stopVoiceResources()
-                      setIsDiaryOpen(true)
+                      void openDiary()
                     }}
                     style={{
                       ...jua,
@@ -646,7 +816,7 @@ export function ConversationPage() {
                   오늘의 일기
                 </h2>
                 <div className="mt-3.5 flex max-w-[650px] flex-col gap-2">
-                  {DIARY_LINES.map((line) => (
+                  {(diaryPreview?.lines ?? DIARY_LINES).map((line) => (
                     <p
                       className="text-[23px] leading-[1.38] text-[#5f4626]"
                       key={line}
@@ -661,21 +831,13 @@ export function ConversationPage() {
                   className="mt-auto min-h-6 text-[16px] text-[#6f8e3f]"
                   style={jua}
                 >
-                  {isDiaryAttached
-                    ? '아래 버튼을 누르면 일기장으로 이동해요'
-                    : ''}
+                  {diaryMessage}
                 </p>
                 <div className="-mt-1 flex flex-col items-center">
                   <button
-                    className="relative block w-[320px] translate-x-2.4 transition hover:scale-105 active:scale-[.98]"
-                    onClick={() => {
-                      if (isDiaryAttached) {
-                        stopVoiceResources()
-                        navigate('/diaries')
-                        return
-                      }
-                      setIsDiaryAttached(true)
-                    }}
+                    className="translate-x-2.4 relative block w-[320px] transition hover:scale-105 active:scale-[.98]"
+                    disabled={!diaryPreview || isDiarySaving}
+                    onClick={() => void attachDiary()}
                     type="button"
                   >
                     <img
@@ -693,7 +855,7 @@ export function ConversationPage() {
                     </span>
                   </button>
                   <button
-                    className="relative mt-0 block w-[345px] translate-x-2.4 -translate-y-[5px] transition hover:scale-105 active:scale-[.98]"
+                    className="translate-x-2.4 relative mt-0 block w-[345px] -translate-y-[5px] transition hover:scale-105 active:scale-[.98]"
                     onClick={() => {
                       stopVoiceResources()
                       navigate('/child')

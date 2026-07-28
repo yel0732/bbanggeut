@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { getStoredAccessToken, logout } from '@/api/auth'
+import {
+  getStoredAccessToken,
+  hasPendingNewSignupOnboarding,
+  logout,
+  verifyParentPin,
+} from '@/api/auth'
 import { getChildProfiles as getBackendChildProfiles } from '@/api/profiles'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/profile/background.webp'
@@ -26,7 +31,6 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
-const DEMO_PIN = '1234'
 const MAX_PIN_FAILS = 5
 const PIN_LOCK_SECONDS = 5 * 60
 
@@ -80,6 +84,12 @@ export function ProfileSelectPage() {
   const [logoutError, setLogoutError] = useState('')
   const lockTimerRef = useRef<number | null>(null)
   const pinLockUntilRef = useRef(0)
+
+  useEffect(() => {
+    if (hasPendingNewSignupOnboarding()) {
+      navigate('/profiles/new', { replace: true })
+    }
+  }, [navigate])
 
   useEffect(() => {
     if (!getStoredAccessToken()) return
@@ -207,15 +217,15 @@ export function ProfileSelectPage() {
 
     if (next.length === PIN_LENGTH) {
       const confirmTimerId = window.setTimeout(() => {
-        if (next === DEMO_PIN) {
+        void verifyParentPin(next).then(() => {
           setIsPinError(false)
           setPinMessage('확인되었습니다 ✓')
           const navigateTimerId = window.setTimeout(() => {
             navigate('/parent')
           }, 500)
           pinTimersRef.current.push(navigateTimerId)
-          return
-        }
+          setPinFailCount(0)
+        }).catch(() => {
 
         const nextFailCount = pinFailCount + 1
         setPinFailCount(nextFailCount)
@@ -230,6 +240,7 @@ export function ProfileSelectPage() {
           `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
         )
         setPin('')
+        })
       }, 150)
       pinTimersRef.current.push(confirmTimerId)
     }

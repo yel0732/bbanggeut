@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { restoreSession } from '@/api/auth'
+import { hasPendingNewSignupOnboarding, restoreSession } from '@/api/auth'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
@@ -35,7 +35,9 @@ export function StartPage() {
 
     try {
       if (await restoreSession()) {
-        navigate('/profiles')
+        navigate(
+          hasPendingNewSignupOnboarding() ? '/profiles/new' : '/profiles',
+        )
         return
       }
       setIsLoginModalOpen(true)

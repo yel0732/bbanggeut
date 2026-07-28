@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { withdrawAccount } from '@/api/auth'
+import { changeAccountPassword, verifyParentPin, withdrawAccount } from '@/api/auth'
 
 import {
   getChildReports,
@@ -39,7 +39,9 @@ import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreateDialog'
 import {
   createChildProfile as createBackendChildProfile,
+  changeParentPin,
   getChildProfiles as getBackendChildProfiles,
+  updateParentProfileImage,
   updateChildProfile as updateBackendChildProfile,
 } from '@/api/profiles'
 import {
@@ -345,6 +347,7 @@ export function ParentModePage() {
   const useDefaultPhoto = () => {
     setParentPhoto(null)
     window.localStorage.removeItem(PARENT_PHOTO_KEY)
+    void updateParentProfileImage(1).catch(() => undefined)
   }
 
   const resetPin = () => {
@@ -414,6 +417,17 @@ export function ParentModePage() {
     if (nextPin.length < 4) return
 
     if (pinStep === 'current') {
+      void verifyParentPin(nextPin)
+        .then(() => {
+          setPin('')
+          setPinStep('new')
+          setPinMessage('변경할 새 PIN 번호를 입력해 주세요.')
+        })
+        .catch((error: unknown) => {
+          setPin('')
+          setPinMessage(error instanceof Error ? error.message : '현재 PIN 번호가 올바르지 않아요.')
+        })
+      return
       window.setTimeout(() => {
         setPin('')
         setPinStep('new')
@@ -433,6 +447,15 @@ export function ParentModePage() {
     }
 
     if (nextPin === newPin) {
+      void changeParentPin(newPin, nextPin)
+        .then(() => setPinMessage('PIN 번호가 변경되었어요.'))
+        .catch((error: unknown) => {
+          setPin('')
+          setNewPin('')
+          setPinStep('current')
+          setPinMessage(error instanceof Error ? error.message : 'PIN 번호를 변경하지 못했어요.')
+        })
+      return
       setPinMessage('핀 번호가 변경되었어요 ✓')
       return
     }
@@ -485,6 +508,21 @@ export function ParentModePage() {
     }
 
     // 변경 API 연결 후 현재 비밀번호 불일치 응답은 errors.current에 매핑한다.
+    void changeAccountPassword(currentPassword, newPassword)
+      .then(() => {
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setPasswordSuccess('비밀번호가 변경되었어요.')
+      })
+      .catch((error: unknown) => {
+        setPasswordErrors({
+          current: error instanceof Error ? error.message : '현재 비밀번호를 확인해 주세요.',
+          next: '',
+          confirm: '',
+        })
+      })
+    return
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')

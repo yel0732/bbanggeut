@@ -181,17 +181,10 @@ export function EmailLoginPage() {
           </span>
           로그인 유지
         </button>
-        <a
-          className="absolute top-[62.7%] right-[19%] z-20 text-[clamp(12px,3.2vw,15px)] text-[#6f8a5e]"
-          href="#"
-          style={jua}
-        >
-          비밀번호 찾기
-        </a>
 
         {error ? (
           <p
-            className="absolute top-[66.1%] right-[18%] left-[18%] z-20 truncate text-center text-[clamp(11px,2.8vw,14px)] text-[#b64b35]"
+            className="absolute top-[65.1%] right-[18%] left-[18%] z-20 truncate text-center text-[clamp(11px,2.8vw,14px)] text-[#b64b35]"
             style={jua}
           >
             {error}

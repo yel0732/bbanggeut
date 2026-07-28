@@ -136,6 +136,9 @@ export function GameGuidePage() {
 
   const modelReady =
     tutorialGameId === 'fruit' ? hand.modelReady : gestures.modelReady
+  // 권한 거부·장치 없음·연결 끊김이면 인식으로 넘어갈 방법이 없다.
+  const cameraUsable =
+    status !== 'denied' && status !== 'unavailable' && status !== 'error'
 
   const backToSelect = () => navigate('/games')
   const startGame = () => navigate(`/games/${game.id}/play`)
@@ -230,6 +233,7 @@ export function GameGuidePage() {
             }
             footer={
               <StepFooter
+                cameraUsable={cameraUsable}
                 kind={step.kind}
                 onNext={goNext}
                 onPrev={goPrev}
@@ -340,11 +344,7 @@ function StepBody({
         >
           {camera.status !== 'granted' ? (
             <TutorialPanel>
-              <p className="text-center text-[24px] text-[#9a6a34]" style={jua}>
-                카메라가 없어도 괜찮아요.
-                <br />
-                바로 넘어가 볼까요?
-              </p>
+              <CameraFallbackNotice status={camera.status} />
             </TutorialPanel>
           ) : gameId === 'fruit' ? (
             <FruitPracticeStage camera={camera} practice={practice} />
@@ -400,6 +400,33 @@ function StepBody({
         </TutorialPanel>
       </div>
     </div>
+  )
+}
+
+/**
+ * 카메라가 아직 없을 때 연습 판 대신 띄우는 안내.
+ *
+ * 준비 중과 못 쓰는 상태를 구분해야 한다. 준비 중인데 "없어도 괜찮아요"가 뜨면
+ * 기다리면 되는 상황인지 포기해야 하는 상황인지 알 수 없다.
+ */
+function CameraFallbackNotice({ status }: { status: CameraStatus }) {
+  const preparing = status === 'idle' || status === 'requesting'
+
+  return (
+    <p
+      className="text-center text-[24px] break-keep text-[#9a6a34]"
+      style={jua}
+    >
+      {preparing ? (
+        '카메라를 준비하고 있어요...'
+      ) : (
+        <>
+          카메라가 없어도 괜찮아요.
+          <br />
+          건너뛰기를 눌러 주세요!
+        </>
+      )}
+    </p>
   )
 }
 
@@ -492,11 +519,7 @@ function FruitPracticeStage({
   if (camera.status !== 'granted') {
     return (
       <TutorialPanel>
-        <p className="text-center text-[22px] text-[#9a6a34]" style={jua}>
-          카메라가 없어도 괜찮아요.
-          <br />
-          바로 넘어가 볼까요?
-        </p>
+        <CameraFallbackNotice status={camera.status} />
       </TutorialPanel>
     )
   }
@@ -559,6 +582,7 @@ function PracticeCameraPreview({
 }
 
 function StepFooter({
+  cameraUsable,
   kind,
   onNext,
   onPrev,
@@ -567,6 +591,8 @@ function StepFooter({
   onStart,
   showPrev,
 }: {
+  /** 카메라를 쓸 수 있는지. 못 쓰면 인식 단계를 건너뛸 길을 열어 준다. */
+  cameraUsable: boolean
   kind: TutorialStepKind
   onNext: () => void
   onPrev: () => void
@@ -577,7 +603,7 @@ function StepFooter({
 }) {
   if (kind === 'ready') {
     return (
-      <>
+      <div className="flex w-full items-center justify-center gap-5">
         <GuideButton
           imageUrl={guideStartButtonUrl}
           label="시작하기"
@@ -599,25 +625,50 @@ function StepFooter({
           onClick={onQuit}
           width={196}
         />
-      </>
+      </div>
     )
   }
 
+  /*
+    인식과 실습은 직접 해내야 넘어간다. "다음"으로 건너뛸 수 있으면 인식도 안 되고
+    조작도 모르는 채로 플레이에 들어가서, 아이는 게임이 고장난 줄 안다. 해내면
+    알아서 다음으로 넘어가므로 버튼이 필요 없다.
+
+    카메라를 못 쓰는 경우에만 길을 열어 둔다. 그때는 여기서 막아도 방법이 없다.
+  */
+  const mustFinish = (kind === 'detect' || kind === 'practice') && cameraUsable
+
+  /*
+    실습은 버튼을 아예 두지 않는다. 몸으로 하는 단계라 손에 칼이 붙어 있고 손을
+    휘두르는 중인데, 밑에 누를 것이 있으면 시선이 거기로 간다. 그만두고 싶으면
+    화면 왼쪽 위 뒤로가기·닫기 버튼이 그대로 있으니 갇히지도 않는다.
+  */
+  const hidePrev = kind === 'practice' && cameraUsable
+
+  /*
+    버튼이 하나만 남을 때 가운데 오면 "이걸 눌러 진행하라"는 것처럼 보인다.
+    좌우로 벌려 두면 지워져도 "이전"이 왼쪽에 그대로 있어 자리가 흔들리지 않고,
+    화면 왼쪽 위 뒤로가기 버튼과도 방향이 맞는다.
+  */
   return (
-    <>
-      <GuideButton
-        imageUrl={guideBackButtonUrl}
-        label={showPrev ? '이전' : '나가기'}
-        labelClassName="text-[#6f4a1f] [text-shadow:0_2px_0_rgba(255,255,255,0.4)]"
-        onClick={showPrev ? onPrev : onQuit}
-      />
-      <GuideButton
-        imageUrl={guideStartButtonUrl}
-        label="다음"
-        labelClassName="text-white [text-shadow:0_2px_0_#3f7d1e,0_5px_8px_rgba(20,50,15,0.3)]"
-        onClick={onNext}
-      />
-    </>
+    <div className="flex w-full items-center justify-between">
+      {hidePrev ? null : (
+        <GuideButton
+          imageUrl={guideBackButtonUrl}
+          label={showPrev ? '이전' : '나가기'}
+          labelClassName="text-[#6f4a1f] [text-shadow:0_2px_0_rgba(255,255,255,0.4)]"
+          onClick={showPrev ? onPrev : onQuit}
+        />
+      )}
+      {mustFinish ? null : (
+        <GuideButton
+          imageUrl={guideStartButtonUrl}
+          label={kind === 'detect' || kind === 'practice' ? '건너뛰기' : '다음'}
+          labelClassName="text-white [text-shadow:0_2px_0_#3f7d1e,0_5px_8px_rgba(20,50,15,0.3)]"
+          onClick={onNext}
+        />
+      )}
+    </div>
   )
 }
 

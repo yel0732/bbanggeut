@@ -31,7 +31,8 @@ export function StartPage() {
   const enterForest = async () => {
     if (isCheckingSession) return
     setIsCheckingSession(true)
-    await playBgm()
+    // BGM은 기다리지 않는다. 로그인 창이 뜨는 속도와 아무 상관이 없다.
+    void playBgm()
 
     try {
       if (await restoreSession()) {
@@ -77,6 +78,7 @@ export function StartPage() {
 
       <div className="absolute right-30 bottom-12 z-20">
         <MainStartButton
+          busy={isCheckingSession}
           imageUrl={greenButtonUrl}
           label="숲 속 들어가기"
           onClick={() => {
@@ -202,18 +204,27 @@ type ModalMenuButtonProps = {
 }
 
 function MainStartButton({
+  busy,
   imageUrl,
   label,
   onClick,
 }: {
+  /** 세션을 확인하는 동안 눌러도 반응이 없어 보이지 않게 표시한다. */
+  busy: boolean
   imageUrl: string
   label: string
   onClick: () => void
 }) {
   return (
     <button
-      className="relative block w-[min(500px,calc(100vw-40px))] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99]"
+      className="relative block w-[min(500px,calc(100vw-40px))] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
+      disabled={busy}
       onClick={onClick}
+      style={
+        busy
+          ? { animation: 'start-button-wait 900ms ease-in-out infinite' }
+          : undefined
+      }
       type="button"
     >
       <img
@@ -234,7 +245,7 @@ function MainStartButton({
           WebkitTextStroke: '3.5px #3f7d1e',
         }}
       >
-        {label}
+        {busy ? '들어가는 중...' : label}
       </span>
     </button>
   )

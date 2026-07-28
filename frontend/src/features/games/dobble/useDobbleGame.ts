@@ -10,12 +10,12 @@ import {
 import type { HandGesturesFrame, HandSlot } from '@/hooks/useHandGestures'
 
 import {
-  cardArea,
   createDobbleRound,
   type CardSide,
   type DobbleRound,
 } from './dobbleCards'
 import { DOBBLE_GAME_CONFIG as CFG } from './dobbleGameConfig'
+import { idleAim, stepAim, type HandAim, type HandHover } from './dobbleGrab'
 
 export type DobblePhase =
   | 'waiting-hands'
@@ -26,10 +26,7 @@ export type DobblePhase =
   | 'error'
   | 'ended'
 
-export type HandHover = {
-  side: CardSide
-  symbolId: string
-}
+export type { HandHover }
 
 /** 한쪽에서 잡혀 있는 그림. 판정되거나 다시 잡을 때까지 유지된다. */
 export type CardSelection = {
@@ -99,16 +96,6 @@ type Snapshot = Omit<
   'pointerRefs' | 'pause' | 'resume' | 'restart'
 >
 
-type HandAim = {
-  hover: HandHover | null
-  /** hover가 시작된 시각 */
-  since: number
-  /** 링이 다 차서 잡을 수 있는 상태인지 */
-  ready: boolean
-  /** 이번에 주먹을 쥔 동안 이미 잡았는지 — 손을 펴야 다시 잡을 수 있다 */
-  grabbedInFist: boolean
-}
-
 type Engine = {
   phase: DobblePhase
   round: DobbleRound
@@ -140,10 +127,6 @@ type Engine = {
 
 const { canvasWidth: W, canvasHeight: H } = CFG
 const HAND_SLOTS: HandSlot[] = ['a', 'b']
-
-function idleAim(grabbedInFist = false): HandAim {
-  return { hover: null, since: 0, ready: false, grabbedInFist }
-}
 
 function emptyAim(): Record<HandSlot, HandAim> {
   return { a: idleAim(), b: idleAim() }
@@ -184,30 +167,6 @@ function scoreForComparisonCount(comparisonCount: number): number {
   if (comparisonCount === 1) return 1000
   if (comparisonCount <= 4) return 850
   return 700
-}
-
-/** 손바닥이 올라간 그림. 히트 영역이 겹치면 더 가까운 쪽을 고른다. */
-function hitTest(x: number, y: number, round: DobbleRound): HandHover | null {
-  let best: HandHover | null = null
-  let bestDistSq = Infinity
-
-  for (const side of ['left', 'right'] as const) {
-    const area = cardArea(side)
-    for (const symbol of round[side]) {
-      const dx = x - (area.x + symbol.x)
-      const dy = y - (area.y + symbol.y)
-      const distSq = dx * dx + dy * dy
-      if (
-        distSq <= symbol.hitRadius * symbol.hitRadius &&
-        distSq < bestDistSq
-      ) {
-        bestDistSq = distSq
-        best = { side, symbolId: symbol.symbolId }
-      }
-    }
-  }
-
-  return best
 }
 
 /**
@@ -410,41 +369,17 @@ export function useDobbleGame(
           continue
         }
 
-        // 주먹을 쥐는 동안에는 조준 대상을 갱신하지 않는다. 손가락을 접는 사이
-        // 손바닥 중심이 밀려 옆 동물로 넘어가는 사고를 막는다.
-        const hover = hand.fist ? aim.hover : hitTest(x, y, engine.round)
-        const sameHover =
-          hover !== null &&
-          aim.hover !== null &&
-          hover.side === aim.hover.side &&
-          hover.symbolId === aim.hover.symbolId
-
-        if (!sameHover) {
-          engine.aim[slot] = {
-            hover,
-            since: hover ? now : 0,
-            ready: false,
-            grabbedInFist: false,
+        // 조준·잡기 판정은 튜토리얼 실습과 같은 모듈을 쓴다.
+        const stepped = stepAim(aim, hand, engine.round, now)
+        paintAim(slot, stepped.progress)
+        if (stepped.grabbed) {
+          engine.selection[stepped.grabbed.side] = {
+            symbolId: stepped.grabbed.symbolId,
+            by: slot,
           }
-          paintAim(slot, 0)
-          continue
-        }
-
-        const progress = Math.min(1, (now - aim.since) / CFG.aimMs)
-        const ready = progress >= 1
-        paintAim(slot, progress)
-
-        // 손을 편 상태에서 조준하고, 주먹을 쥐면 잡는다. 링이 덜 찼는데 먼저
-        // 쥐었어도 다 차는 순간 한 번 잡아 준다. 한 번 쥔 동안 잡기는 한 번뿐이라
-        // 계속 쥐고 있어도 다시 잡히지 않는다.
-        let grabbedInFist = hand.fist ? aim.grabbedInFist : false
-        if (ready && hover !== null && hand.fist && !grabbedInFist) {
-          engine.selection[hover.side] = { symbolId: hover.symbolId, by: slot }
-          grabbedInFist = true
           onGrabRef.current?.()
         }
-
-        engine.aim[slot] = { hover, since: aim.since, ready, grabbedInFist }
+        engine.aim[slot] = stepped.aim
       }
 
       if (anyVisible) {
@@ -607,7 +542,8 @@ export function useDobbleGame(
             engine.matchedCount <= engine.roundCount &&
             engine.score === engine.scoreSum
           const perfectCount = engine.cardResults.filter(
-            (round) => round.status === 'COMPLETED' && round.comparisonCount === 1,
+            (round) =>
+              round.status === 'COMPLETED' && round.comparisonCount === 1,
           ).length
           const excellentCount = engine.cardResults.filter(
             (round) =>
@@ -616,7 +552,8 @@ export function useDobbleGame(
               round.comparisonCount <= 4,
           ).length
           const goodCount = engine.cardResults.filter(
-            (round) => round.status === 'COMPLETED' && round.comparisonCount >= 5,
+            (round) =>
+              round.status === 'COMPLETED' && round.comparisonCount >= 5,
           ).length
           const completedReactionTimes = engine.cardResults.flatMap((round) =>
             round.status === 'COMPLETED' && round.solveTimeMs !== null
@@ -644,8 +581,10 @@ export function useDobbleGame(
             averageReactionTimeMs:
               completedReactionTimes.length > 0
                 ? Math.round(
-                    completedReactionTimes.reduce((sum, time) => sum + time, 0) /
-                      completedReactionTimes.length,
+                    completedReactionTimes.reduce(
+                      (sum, time) => sum + time,
+                      0,
+                    ) / completedReactionTimes.length,
                   )
                 : 0,
             cardResults: [...engine.cardResults],

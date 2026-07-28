@@ -8,6 +8,16 @@ import {
   fruitDimensions,
 } from './fruitGameConfig'
 import { drawScene, type RenderBlade, type RenderFruit } from './fruitRenderer'
+import {
+  bladeTrail,
+  createBladeTracker,
+  cutAngleDeg,
+  hitRadiusFor,
+  isSlicing,
+  sweptHit,
+  updateBladeTracker,
+  type BladeTracker,
+} from './fruitSlicing'
 
 export type GamePhase =
   | 'waiting-hand'
@@ -82,8 +92,6 @@ type Fruit = {
   gained: number
 }
 
-type Blade = { ax: number; ay: number; bx: number; by: number }
-
 export type FruitGameRuntimeRule = {
   rulesVersion: string
   plannedDurationSeconds: number
@@ -112,15 +120,8 @@ type Engine = {
   countdownEndsAt: number
   lastSpawnAt: number
   lastFrameTs: number
-  lastHandSeenAt: number
-  /** 화면 좌표로 옮겨 평활한 현재/직전 칼날 */
-  blade: Blade | null
-  prevBlade: Blade | null
-  /** 칼끝 이동 기록 — 속도 계산과 트레일에 함께 쓴다 */
-  tipHistory: { t: number; x: number; y: number }[]
-  /** 이 시각까지는 베기 가능 상태로 본다 */
-  fastUntil: number
-  distance: DistanceHint | null
+  /** 칼날 추적·베기 판정 상태. 튜토리얼 실습과 같은 모듈을 쓴다. */
+  tracker: BladeTracker
   ended: boolean
 }
 
@@ -145,45 +146,8 @@ function createEngine(now: number): Engine {
     countdownEndsAt: 0,
     lastSpawnAt: now,
     lastFrameTs: now,
-    lastHandSeenAt: now,
-    blade: null,
-    prevBlade: null,
-    tipHistory: [],
-    fastUntil: 0,
-    distance: null,
+    tracker: createBladeTracker(now),
     ended: false,
-  }
-}
-
-/** 점(cx,cy)과 선분(ax,ay)-(bx,by) 사이 최단 거리의 제곱. */
-function segmentPointDistSq(
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-  cx: number,
-  cy: number,
-): number {
-  const dx = bx - ax
-  const dy = by - ay
-  const lenSq = dx * dx + dy * dy
-  let t = lenSq > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / lenSq : 0
-  t = Math.max(0, Math.min(1, t))
-  const px = ax + t * dx
-  const py = ay + t * dy
-  const ex = cx - px
-  const ey = cy - py
-  return ex * ex + ey * ey
-}
-
-/** 칼날 중 실제로 베는 바깥쪽 구간만 잘라 낸다. */
-function cuttingEdge(blade: Blade): Blade {
-  const s = CFG.bladeEdgeStart
-  return {
-    ax: blade.ax + (blade.bx - blade.ax) * s,
-    ay: blade.ay + (blade.by - blade.ay) * s,
-    bx: blade.bx,
-    by: blade.by,
   }
 }
 
@@ -338,119 +302,22 @@ export function useFruitGame(
     let rafId = 0
     let publishedKey = ''
 
-    /**
-     * 최신 인식 결과를 화면 좌표로 옮겨 평활하고, 칼끝 속도를 갱신한다.
-     *
-     * 인식이 잠깐 끊겨도 handHoldMs 동안은 직전 칼을 유지해 깜빡이지 않게 한다.
-     */
-    const readHand = (engine: Engine, now: number, dtMs: number): void => {
-      const play = handRef.current
-
-      if (play) {
-        engine.lastHandSeenAt = now
-        engine.distance = play.distance
-      } else if (now - engine.lastHandSeenAt > CFG.handHoldMs) {
-        engine.blade = null
-        engine.prevBlade = null
-        engine.tipHistory = []
-        engine.distance = null
-        return
-      }
-
-      // 카메라 미러링: 아이가 든 손이 화면에서도 같은 쪽에 보이도록 x를 뒤집는다.
-      // 칼 길이는 화면 px로 고정한다. 정규화 좌표에서 길이를 주면 세로로 뻗은
-      // 칼이 가로보다 짧아지고(화면이 16:9라서), 카메라에 가까울수록 길어진다.
-      let target: Blade | null = null
-      if (play) {
-        const wristX = (1 - play.wrist.x) * W
-        const wristY = play.wrist.y * H
-        const dirX = wristX - (1 - play.elbow.x) * W
-        const dirY = wristY - play.elbow.y * H
-        const dirLen = Math.hypot(dirX, dirY) || 1
-        target = {
-          ax: wristX,
-          ay: wristY,
-          bx: wristX + (dirX / dirLen) * CFG.bladeLengthPx,
-          by: wristY + (dirY / dirLen) * CFG.bladeLengthPx,
-        }
-      }
-
-      if (!engine.blade) {
-        if (!target) {
-          return
-        }
-        engine.blade = { ...target }
-        engine.prevBlade = { ...target }
-      } else {
-        engine.prevBlade = { ...engine.blade }
-        if (target) {
-          // 프레임 간격이 들쭉날쭉해도 같은 속도로 따라가도록 시상수를 쓴다.
-          const k = 1 - Math.exp(-dtMs / CFG.handSmoothTauMs)
-          engine.blade.ax += (target.ax - engine.blade.ax) * k
-          engine.blade.ay += (target.ay - engine.blade.ay) * k
-          engine.blade.bx += (target.bx - engine.blade.bx) * k
-          engine.blade.by += (target.by - engine.blade.by) * k
-        }
-      }
-
-      const tip = engine.blade
-      engine.tipHistory.push({ t: now, x: tip.bx, y: tip.by })
-      while (
-        engine.tipHistory.length > 2 &&
-        engine.tipHistory[0].t < now - Math.max(CFG.speedWindowMs, CFG.trailMs)
-      ) {
-        engine.tipHistory.shift()
-      }
-
-      // 한 프레임 차이는 값이 심하게 튄다. 일정 시간 구간의 평균 속도로 본다.
-      const cutoff = now - CFG.speedWindowMs
-      let base = engine.tipHistory[0]
-      for (const point of engine.tipHistory) {
-        if (point.t <= cutoff) {
-          base = point
-        } else {
-          break
-        }
-      }
-      const elapsed = now - base.t
-      if (elapsed > 0) {
-        const speed =
-          (Math.hypot(tip.bx - base.x, tip.by - base.y) / elapsed) * 1000
-        if (speed >= ruleRef.current.sliceSpeedThreshold) {
-          // 인식 프레임이 비어 속도가 순간 0이 되어도 베기가 끊기지 않게 유지한다.
-          engine.fastUntil = now + CFG.sliceSpeedHoldMs
-        }
-      }
-    }
-
     const judgeSlices = (engine: Engine, now: number): void => {
-      if (!engine.blade || now >= engine.fastUntil) {
+      if (!isSlicing(engine.tracker, now)) {
         return
       }
-
-      const to = cuttingEdge(engine.blade)
-      const from = cuttingEdge(engine.prevBlade ?? engine.blade)
-      // 프레임 사이에 칼이 지나간 자리를 훑는다. 빠른 스윙에서 과일을 건너뛰지 않는다.
-      const travel = Math.hypot(to.bx - from.bx, to.by - from.by)
-      const steps = Math.min(8, Math.max(1, Math.ceil(travel / 28)))
 
       for (const fruit of engine.fruits) {
         if (fruit.sliced) continue
-
-        const hitRadius =
-          fruit.radius * CFG.hitRadiusScale + CFG.bladeThicknessPx
-        let hit = false
-        for (let i = 0; i <= steps && !hit; i++) {
-          const t = i / steps
-          const ax = from.ax + (to.ax - from.ax) * t
-          const ay = from.ay + (to.ay - from.ay) * t
-          const bx = from.bx + (to.bx - from.bx) * t
-          const by = from.by + (to.by - from.by) * t
-          hit =
-            segmentPointDistSq(ax, ay, bx, by, fruit.x, fruit.y) <=
-            hitRadius * hitRadius
-        }
-        if (!hit) continue
+        if (
+          !sweptHit(
+            engine.tracker,
+            fruit.x,
+            fruit.y,
+            hitRadiusFor(fruit.radius),
+          )
+        )
+          continue
 
         // 최초 성공 시 한 번만 반영, 이후 판정 대상에서 제외 (MGAME-15/16).
         // 앞선 베기와 짧은 간격이면 콤보가 이어져 배수가 올라간다.
@@ -471,8 +338,7 @@ export function useFruitGame(
         fruit.sliced = true
         fruit.slicedAt = now
         fruit.gained = gained
-        fruit.cutAngle =
-          (Math.atan2(to.by - to.ay, to.bx - to.ax) * 180) / Math.PI
+        fruit.cutAngle = cutAngleDeg(engine.tracker)
         engine.score += gained
         engine.slicedScoreSum += gained
         engine.slicedCount++
@@ -554,14 +420,11 @@ export function useFruitGame(
       }))
 
       let blade: RenderBlade | null = null
-      if (engine.blade) {
-        const trailFrom = now - CFG.trailMs
+      if (engine.tracker.blade) {
         blade = {
-          ...engine.blade,
-          fast: now < engine.fastUntil,
-          trail: engine.tipHistory
-            .filter((point) => point.t >= trailFrom)
-            .map((point) => ({ x: point.x, y: point.y })),
+          ...engine.tracker.blade,
+          fast: isSlicing(engine.tracker, now),
+          trail: bladeTrail(engine.tracker, now),
         }
       }
 
@@ -577,8 +440,14 @@ export function useFruitGame(
       const dtMs = Math.min(rawDtMs, 50)
       const dt = dtMs / 1000
 
-      readHand(engine, now, Math.max(dtMs, 1))
-      const handVisible = engine.blade !== null
+      updateBladeTracker(
+        engine.tracker,
+        handRef.current,
+        now,
+        Math.max(dtMs, 1),
+        ruleRef.current.sliceSpeedThreshold,
+      )
+      const handVisible = engine.tracker.blade !== null
 
       // 카메라 오류: 게임 상태는 유지한 채 정지 (MGAME-30). 복구되면 손 재인식
       // 후 카운트다운으로 재개 (MGAME-31). 수동 일시정지/종료 상태는 건드리지 않음.
@@ -615,7 +484,7 @@ export function useFruitGame(
         case 'playing':
           if (
             !handVisible &&
-            now - engine.lastHandSeenAt > CFG.handLostGraceMs
+            now - engine.tracker.lastHandSeenAt > CFG.handLostGraceMs
           ) {
             // 플레이 손이 사라지면 자동 일시정지 (MGAME-24). 복귀 시 재지정.
             engine.phase = 'interrupted'
@@ -629,8 +498,7 @@ export function useFruitGame(
             engine.playElapsedMs >=
             ruleRef.current.plannedDurationSeconds * 1000
           ) {
-            engine.playElapsedMs =
-              ruleRef.current.plannedDurationSeconds * 1000
+            engine.playElapsedMs = ruleRef.current.plannedDurationSeconds * 1000
             engine.phase = 'ended'
           } else {
             step(engine, dt, now)
@@ -674,7 +542,7 @@ export function useFruitGame(
         engine.score,
         engine.combo,
         fever,
-        engine.distance,
+        engine.tracker.distance,
       ].join('|')
 
       if (key !== publishedKey) {
@@ -686,7 +554,7 @@ export function useFruitGame(
           remainingSec,
           combo: engine.combo,
           fever,
-          distance: engine.distance,
+          distance: engine.tracker.distance,
         })
       }
 

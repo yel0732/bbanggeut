@@ -25,6 +25,7 @@ _SNAPSHOT_JSON = {
         "language": "ko-KR",
         "currentTopic": "GAME",
         "totalMaxQuestionCount": 12,
+        "questionCount": 3,
     },
     "recentConversationSummary": "놀이터에서 놀았어 낮잠도 잤어",
     "topics": [
@@ -32,6 +33,7 @@ _SNAPSHOT_JSON = {
             "type": "DAILY",
             "order": 2,
             "maxQuestionCount": 6,
+            "questionCount": 0,
             "games": [],
             "initialSlots": {
                 "event": None,
@@ -46,6 +48,7 @@ _SNAPSHOT_JSON = {
             "type": "GAME",
             "order": 1,
             "maxQuestionCount": 6,
+            "questionCount": 3,
             "games": [
                 {
                     "gameSessionId": "b3b10000-0000-0000-0000-000000000001",
@@ -85,8 +88,10 @@ class TestModel:
 
         assert snapshot.conversation.current_topic is DialogueTopic.GAME
         assert snapshot.conversation.total_max_question_count == 12
+        assert snapshot.conversation.question_count == 3
         assert snapshot.topics[1].games[0].score == 820
         assert snapshot.topics[1].initial_slots.event == "과일 게임"
+        assert snapshot.topics[1].question_count == 3
 
     def test_ordered_topics_sorts_by_order_not_input_position(self) -> None:
         snapshot = ContextSnapshot.model_validate(_SNAPSHOT_JSON)

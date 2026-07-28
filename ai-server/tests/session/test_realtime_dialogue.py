@@ -181,6 +181,18 @@ def _stt_result(text: str = "과일 게임이 재미있었어.") -> SttResult:
     return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-0.3)
 
 
+def test_dialogue_state_restores_persisted_question_counts() -> None:
+    raw = _TWO_TOPIC_SNAPSHOT.model_dump(mode="json", by_alias=True)
+    raw["conversation"]["questionCount"] = 4
+    raw["topics"][0]["questionCount"] = 4
+    snapshot = ContextSnapshot.model_validate(raw)
+
+    state = DialogueSessionState(snapshot)
+
+    assert state.current_topic.question_count == 4
+    assert state.total_question_count == 4
+
+
 class TestChildTurn:
     @pytest.mark.asyncio
     async def test_publishes_created_then_text_final_with_one_response_id(self) -> None:
@@ -520,14 +532,18 @@ class _RecordingStreamProducer:
         self.calls.append(("SESSION_STARTED",))
 
     def publish_child_turn_finalized(self, *, turn_id, turn_seq, text, stt_confidence,
-                                     started_at, completed_at) -> None:
+                                     started_at, completed_at, topic_type) -> None:
         self.calls.append(("CHILD_TURN_FINALIZED", turn_id, turn_seq, text,
-                           (completed_at - started_at).total_seconds()))
+                           (completed_at - started_at).total_seconds(), topic_type))
 
     def publish_ai_turn_generated(self, *, turn_id, turn_seq, response_id, text,
-                                  target_slot, topic_type, topic_slots) -> None:
+                                  question_text, target_slot, topic_type, topic_slots,
+                                  slots_topic_type, topic_question_count,
+                                  session_question_count, topic_completion_reason) -> None:
         self.calls.append(("AI_TURN_GENERATED", turn_id, turn_seq, response_id,
-                           target_slot, topic_type, topic_slots.event))
+                           target_slot, topic_type, topic_slots.event, question_text,
+                           slots_topic_type, topic_question_count,
+                           session_question_count, topic_completion_reason))
 
     def publish_ai_turn_completed(self, *, turn_id, turn_seq, response_id, text,
                                   audio_started_at, audio_completed_at) -> None:
@@ -599,6 +615,11 @@ class TestStreamPublishing:
 
         ai = next(c for c in stream.calls if c[0] == "AI_TURN_GENERATED")
         assert ai[4] is None  # 전환 질문은 목표 없음
+        assert ai[5] == "DAILY"
+        assert ai[8] == "GAME"
+        assert ai[9] == 1
+        assert ai[10] == 1
+        assert ai[11] == "REQUIRED_SLOTS_FILLED"
 
     @pytest.mark.asyncio
     async def test_terminate_publishes_session_completed(self) -> None:

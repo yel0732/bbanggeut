@@ -99,7 +99,11 @@ class DialogueSessionState:
             raise ValueError("context snapshot carries no topics")
         self.snapshot = snapshot
         self._topics = [
-            _TopicState(snapshot=topic, slots=topic.initial_slots.model_copy(deep=True))
+            _TopicState(
+                snapshot=topic,
+                slots=topic.initial_slots.model_copy(deep=True),
+                question_count=topic.question_count,
+            )
             for topic in topics
         ]
         # 재연결 시 스냅숏의 currentTopic이 뒤 주제일 수 있다 — 그 주제부터 시작.
@@ -126,6 +130,10 @@ class DialogueSessionState:
         if self._topic_index + 1 < len(self._topics):
             return self._topics[self._topic_index + 1].snapshot.type
         return None
+
+    @property
+    def total_question_count(self) -> int:
+        return sum(topic.question_count for topic in self._topics)
 
     def advance_topic(self) -> None:
         if self._topic_index + 1 >= len(self._topics):
@@ -265,17 +273,29 @@ class RealtimeDialogueManager:
         if response.decision is DialogueTurnDecision.SWITCH_TOPIC:
             topic.slots = response.updated_slots  # 끝난 주제의 최종 슬롯
             # 전환 질문은 목표가 없다 — 새 주제 오프닝이다(§11-C: null target).
-            self._emit_ai_turn_generated(ai_ref, response.assistant_message, None, topic)
             state.advance_topic()
             # 전환 질문은 새 주제의 첫 질문으로 센다.
             state.current_topic.question_count = 1
+            self._emit_ai_turn_generated(
+                ai_ref,
+                response.assistant_message,
+                response.assistant_question,
+                None,
+                state.current_topic,
+                slots_topic=topic,
+                topic_completion_reason=_reason_value(response),
+            )
         else:
             topic.slots = response.updated_slots
             topic.question_count += 1
             # 이 질문이 겨냥한 목표를 갱신 슬롯으로 재계산한다(§11-C, 결정론적).
             target = select_next_question_target(topic.slots)
             self._emit_ai_turn_generated(
-                ai_ref, response.assistant_message, target, topic
+                ai_ref,
+                response.assistant_message,
+                response.assistant_question,
+                target,
+                topic,
             )
         state.remember_question(response.assistant_question)
 
@@ -329,7 +349,9 @@ class RealtimeDialogueManager:
             target = decision.next_target
         ai_ref = self._publish_assistant_text(prompt_text)
         if ai_ref is not None:
-            self._emit_ai_turn_generated(ai_ref, prompt_text, target, topic)
+            self._emit_ai_turn_generated(
+                ai_ref, prompt_text, prompt_text, target, topic
+            )
             # 재질문은 질문 수에 세지 않는다(W03 plan §7-E) — 상태만 갱신.
             self._state.remember_question(prompt_text)
 
@@ -391,25 +413,36 @@ class RealtimeDialogueManager:
             stt_confidence=result.confidence,
             started_at=started_at,
             completed_at=completed_at,
+            topic_type=self._state.current_topic.snapshot.type.value,
         )
 
     def _emit_ai_turn_generated(
         self,
         ref: _AiTurnRef,
         text: str,
+        question_text: str,
         target: QuestionTarget | None,
-        topic: _TopicState,
+        turn_topic: _TopicState,
+        *,
+        slots_topic: _TopicState | None = None,
+        topic_completion_reason: str | None = None,
     ) -> None:
         if self._stream is None:
             return
+        slots_owner = slots_topic or turn_topic
         self._stream.publish_ai_turn_generated(
             turn_id=ref.turn_id,
             turn_seq=ref.turn_seq,
             response_id=ref.response_id,
             text=text,
+            question_text=question_text,
             target_slot=target.value if target is not None else None,
-            topic_type=topic.snapshot.type.value,
-            topic_slots=topic.slots,
+            topic_type=turn_topic.snapshot.type.value,
+            slots_topic_type=slots_owner.snapshot.type.value,
+            topic_slots=slots_owner.slots,
+            topic_question_count=turn_topic.question_count,
+            session_question_count=self._state.total_question_count,
+            topic_completion_reason=topic_completion_reason,
         )
 
     def _emit_session_completed(self, reason: str | None) -> None:

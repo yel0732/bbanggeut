@@ -125,6 +125,7 @@ class ConversationStreamProducer:
         stt_confidence: float | None,
         started_at: datetime,
         completed_at: datetime,
+        topic_type: str | None = None,
     ) -> None:
         self._enqueue(
             StreamEventType.CHILD_TURN_FINALIZED,
@@ -133,6 +134,7 @@ class ConversationStreamProducer:
                 "sttConfidence": stt_confidence,
                 "startedAt": _iso(started_at),
                 "completedAt": _iso(completed_at),
+                "topicType": topic_type,
             },
             turn_id=turn_id,
             turn_seq=turn_seq,
@@ -145,18 +147,28 @@ class ConversationStreamProducer:
         turn_seq: int,
         response_id: str,
         text: str,
+        question_text: str | None = None,
         target_slot: str | None,
         topic_type: str,
         topic_slots: DiarySlots,
+        slots_topic_type: str | None = None,
+        topic_question_count: int | None = None,
+        session_question_count: int | None = None,
+        topic_completion_reason: str | None = None,
     ) -> None:
         self._enqueue(
             StreamEventType.AI_TURN_GENERATED,
             {
                 "text": text,
+                "questionText": question_text or text,
                 "targetSlot": target_slot,
                 # 재연결 스냅숏이 최신 슬롯을 담게 하는 동기화 필드(§11-B).
                 "topicType": topic_type,
+                "slotsTopicType": slots_topic_type or topic_type,
                 "topicSlots": _slots_payload(topic_slots),
+                "topicQuestionCount": topic_question_count,
+                "sessionQuestionCount": session_question_count,
+                "topicCompletionReason": topic_completion_reason,
             },
             turn_id=turn_id,
             turn_seq=turn_seq,

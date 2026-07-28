@@ -225,7 +225,9 @@ eventId / eventSeq
 interruptionId
 ```
 
-- 재연결 후 낮은 `sessionEpoch`의 이벤트를 폐기합니다.
+- 연결 경계의 DataChannel 이벤트는 재연결 후 낮은 `sessionEpoch`이면 폐기합니다.
+- Redis Stream 영속화 이벤트는 재연결 전에 이미 확정된 Turn을 예외로 보존합니다
+  (`docs/diary/REALTIME_EVENT_CONTRACT.md` §7.3).
 - 취소된 `responseId`의 Text, Audio, 완료 이벤트를 모두 폐기합니다.
 - 이벤트 재전송을 고려해 `eventId` 기반 처리는 멱등해야 합니다.
 - `turnSeq`와 `eventSeq`는 같은 개념으로 사용하지 않습니다.

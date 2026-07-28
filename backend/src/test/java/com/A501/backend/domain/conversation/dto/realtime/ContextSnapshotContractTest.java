@@ -25,7 +25,7 @@ class ContextSnapshotContractTest {
                 "conv_01JZ123ABC",
                 new RealtimeChildContext("하준"),
                 new RealtimeConversationContext(
-                        ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12),
+                        ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12, 4),
                 null,
                 List.of(
                         new RealtimeTopicSnapshot(
@@ -52,6 +52,7 @@ class ContextSnapshotContractTest {
                 .contains("\"language\":\"ko-KR\"")
                 .contains("\"currentTopic\":\"GAME\"")
                 .contains("\"totalMaxQuestionCount\":12")
+                .contains("\"lastTurnSeq\":4")
                 .contains("\"maxQuestionCount\":6")
                 .contains("\"oneQuestionAtATime\":true")
                 .contains("\"avoidPressureQuestions\":true")
@@ -72,7 +73,8 @@ class ContextSnapshotContractTest {
                     "goal": "DIARY",
                     "language": "ko-KR",
                     "currentTopic": "DAILY",
-                    "totalMaxQuestionCount": 6
+                    "totalMaxQuestionCount": 6,
+                    "lastTurnSeq": 0
                   },
                   "recentConversationSummary": null,
                   "topics": [

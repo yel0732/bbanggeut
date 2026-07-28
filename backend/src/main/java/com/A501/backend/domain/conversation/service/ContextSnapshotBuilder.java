@@ -63,6 +63,8 @@ public class ContextSnapshotBuilder {
         int totalMaxQuestionCount = topicStates.stream()
                 .mapToInt(ConversationTopicState::getMaxQuestionCount)
                 .sum();
+        int lastTurnSeq = conversationTurnRepository
+                .findMaxTurnSeqByConversationId(session.getConversationId());
 
         return ContextSnapshot.create(
                 session.getConversationId(),
@@ -71,7 +73,8 @@ public class ContextSnapshotBuilder {
                         ConversationGoal.DIARY,
                         DEFAULT_LANGUAGE,
                         session.getCurrentTopic(),
-                        totalMaxQuestionCount),
+                        totalMaxQuestionCount,
+                        lastTurnSeq),
                 buildRecentConversationSummary(session),
                 topics,
                 RealtimePolicySnapshot.defaultPolicy());

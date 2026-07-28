@@ -92,6 +92,35 @@ class ContextSnapshotBuilderTest {
     }
 
     @Test
+    void 저장된_마지막_turnSeq를_lastTurnSeq로_담는다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_reconnect", 15L, ConversationTopic.DAILY, 6);
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc("conv_reconnect"))
+                .thenReturn(List.of(dailyTopic()));
+        when(conversationTurnRepository.findMaxTurnSeqByConversationId("conv_reconnect"))
+                .thenReturn(7);
+
+        ContextSnapshot snapshot = builder.build(session);
+
+        // 재연결 시 FastAPI는 8번부터 turnSeq를 발급해 저장된 턴과 충돌하지 않는다.
+        assertThat(snapshot.conversation().lastTurnSeq()).isEqualTo(7);
+    }
+
+    @Test
+    void 턴이_없으면_lastTurnSeq는_0이다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_fresh", 15L, ConversationTopic.DAILY, 6);
+        when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc("conv_fresh"))
+                .thenReturn(List.of(dailyTopic()));
+
+        ContextSnapshot snapshot = builder.build(session);
+
+        assertThat(snapshot.conversation().lastTurnSeq()).isZero();
+    }
+
+    @Test
     void 게임이_없으면_DAILY_단일_주제로_조립한다() {
         ConversationSession session = ConversationSession.create(
                 "conv_daily_only", 15L, ConversationTopic.DAILY, 6);

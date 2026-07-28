@@ -5,22 +5,36 @@ import json
 import logging
 
 import pytest
-from redis.exceptions import RedisError
+from redis.exceptions import DataError, RedisError
 
 from app.realtime.session_lease_heartbeat import SessionLeaseHeartbeat
 
 
 class FakeRedisClient:
+    """redis-py의 인자 계약을 그대로 강제하는 fake.
+
+    이전 fake는 ``ex: float``을 그냥 받아서, 실제 redis-py가 float TTL에
+    ``DataError``를 던지는 것을 테스트가 놓쳤다 — 모든 하트비트가 조용히
+    실패하는 결함이 실 스택에서야 발견됐다. fake는 실물만큼 엄격해야 한다.
+    """
+
     def __init__(self, fail_first_n: int = 0) -> None:
-        self.calls: list[tuple[str, str, float]] = []
+        self.calls: list[tuple[str, str, int]] = []
         self._fail_first_n = fail_first_n
         self._call_count = 0
 
-    async def set(self, key: str, value: str, ex: float) -> None:
+    async def set(
+        self, key: str, value: str, ex: int | None = None, px: int | None = None
+    ) -> None:
+        # redis-py와 동일한 검증: ex/px는 int(또는 timedelta)만 허용된다.
+        if ex is not None and not isinstance(ex, int):
+            raise DataError("ex must be datetime.timedelta or int")
+        if px is not None and not isinstance(px, int):
+            raise DataError("px must be datetime.timedelta or int")
         self._call_count += 1
         if self._call_count <= self._fail_first_n:
             raise RedisError("boom")
-        self.calls.append((key, value, ex))
+        self.calls.append((key, value, px if px is not None else ex))
 
 
 async def _wait_until(condition, timeout: float = 1.0) -> None:
@@ -46,9 +60,11 @@ async def test_writes_heartbeat_immediately_and_periodically() -> None:
     await _wait_until(lambda: len(redis_client.calls) >= 3)
     await heartbeat.stop()
 
-    key, value, ex = redis_client.calls[0]
+    key, value, ttl = redis_client.calls[0]
     assert key == "realtime:session:conv_1"
-    assert ex == 0.5
+    # px 밀리초 int — 설정(0.5초)의 소수점 정밀도를 보존하면서 redis-py 계약을 지킨다.
+    assert ttl == 500
+    assert isinstance(ttl, int)
     record = json.loads(value)
     assert record["realtimeSessionId"] == "rt_1"
     assert record["sessionEpoch"] == 1

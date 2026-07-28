@@ -63,8 +63,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/children").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/children/{childId}").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/children/{childId}").authenticated()
-                        // TODO: game/report/conversation 도메인이 실제 인증으로 전환되면 .authenticated()로 좁힐 것
-                        // — 지금은 mock 기반(LocalChildAccessVerifier 등)이라 전체를 좁히면 테스트가 깨짐
+                        // report·conversation은 서비스 계층에서 SecurityContext 기반으로 인증/인가를
+                        // 강제한다(미인증 시 401). game 도메인은 아직 mock 기반이라 여기서 좁히지 않는다.
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

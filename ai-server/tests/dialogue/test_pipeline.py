@@ -203,6 +203,60 @@ async def test_first_turn_projects_misclassified_future_slot_to_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_first_turn_preserves_previously_filled_slots() -> None:
+    """직전 질문이 없는 턴이라도 요청에 이미 있던 슬롯 값은 지우지 않는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":"블록 놀이","people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            "그때 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(
+                emotion_reason="친구가 같이 놀아줘서",
+                memorable_moment="블록으로 성 만든 순간",
+            ),
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.updated_slots.event == "블록 놀이"
+    assert result.updated_slots.emotion_reason == "친구가 같이 놀아줘서"
+    assert result.updated_slots.memorable_moment == "블록으로 성 만든 순간"
+
+
+@pytest.mark.asyncio
+async def test_first_turn_still_discards_misclassified_extraction() -> None:
+    """첫 턴 추출이 미래 슬롯으로 오분류한 값은 기존대로 버린다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":"오늘 영화를 봤어"}'
+            ),
+            "그때 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = _request().model_copy(update={"child_answer": "오늘 영화를 봤어"})
+
+    result = await _pipeline(client).process(request)
+
+    assert result.updated_slots.event == "오늘 영화를 봤어"
+    assert result.updated_slots.memorable_moment is None
+
+
+@pytest.mark.asyncio
 async def test_standard_question_does_not_call_response_model() -> None:
     analysis_client = FakeClient(
         [

@@ -360,6 +360,7 @@ class DialogueTurnPipeline:
             updated_slots = _normalize_first_turn_slots(
                 updated_slots,
                 request.child_answer,
+                previous_slots=request.current_slots,
             )
         if (
             relevance_decision is not None
@@ -612,15 +613,22 @@ def _backfill_answered_target(
 def _normalize_first_turn_slots(
     slots: DiarySlots,
     child_answer: str,
+    *,
+    previous_slots: DiarySlots,
 ) -> DiarySlots:
+    # 첫 턴 추출이 미래 목표 슬롯(emotionReason·memorableMoment)으로 오분류한 값은
+    # 버리되, 요청에 이미 있던 기존 값은 지우지 않는다. 필드를 빠뜨리고 재구성하면
+    # 채워져 있던 슬롯이 None으로 리셋되어 하류(DB 동기화)까지 지워진다.
     event = slots.event
     if event is None or not event.strip():
         event = child_answer.strip()
-    return DiarySlots(
-        event=event,
-        people=list(slots.people),
-        place=slots.place,
-        emotion=slots.emotion,
+    return slots.model_copy(
+        update={
+            "event": event,
+            "emotion_reason": previous_slots.emotion_reason,
+            "memorable_moment": previous_slots.memorable_moment,
+        },
+        deep=True,
     )
 
 

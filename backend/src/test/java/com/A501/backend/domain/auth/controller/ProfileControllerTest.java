@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -32,6 +33,7 @@ import com.A501.backend.domain.auth.security.JwtAuthenticationEntryPoint;
 import com.A501.backend.domain.auth.security.JwtAuthenticationFilter;
 import com.A501.backend.domain.auth.security.JwtProperties;
 import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
+import com.A501.backend.domain.auth.dto.response.ProfileResponse;
 import com.A501.backend.domain.auth.security.JwtProvider;
 import com.A501.backend.domain.auth.service.ProfileService;
 
@@ -52,6 +54,23 @@ class ProfileControllerTest {
     private static final String PRESET_KEY = "profile-presets/child-avatar-rabbit";
     private static final String UPLOAD_KEY = "profile-uploads/1/parent/abc";
     private static final String UPLOAD_URL = "https://upload.example.com/signed";
+
+    @Test
+    void getProfile_returnsUnauthorizedWithoutBearerToken() throws Exception {
+        mockMvc.perform(get("/api/profile")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getProfile_returnsProfileWithImageKeyAndPinState() throws Exception {
+        String accessToken = generateAccessToken();
+        when(profileService.getProfile(1L))
+                .thenReturn(new ProfileResponse(1L, "parent@example.com", PRESET_KEY, null, true));
+
+        mockMvc.perform(get("/api/profile").header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"parentId\":1,\"email\":\"parent@example.com\","
+                        + "\"profileImageKey\":\"" + PRESET_KEY + "\",\"profileImageUrl\":null,\"pinSet\":true}"));
+    }
 
     @Test
     void updateProfileImage_returnsUnauthorizedWithoutBearerToken() throws Exception {

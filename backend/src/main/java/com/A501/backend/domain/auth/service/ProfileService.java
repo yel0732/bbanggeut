@@ -6,6 +6,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
+import com.A501.backend.domain.auth.dto.response.ProfileResponse;
 import com.A501.backend.domain.auth.entity.Parent;
 
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,11 @@ public class ProfileService {
 
     private final ParentFinder parentFinder;
     private final ProfileImageService profileImageService;
+
+    public ProfileResponse getProfile(Long parentId) {
+        Parent parent = parentFinder.getActive(parentId);
+        return ProfileResponse.from(parent, profileImageService.resolveUrl(parent.getProfileImageKey()));
+    }
 
     @Transactional
     public ProfileImageResponse updateProfileImage(Long parentId, String imageKey) {

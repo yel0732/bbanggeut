@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.controller;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.A501.backend.domain.auth.dto.request.UpdateProfileImageRequest;
 import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
+import com.A501.backend.domain.auth.dto.response.ProfileResponse;
 import com.A501.backend.domain.auth.service.ProfileService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +29,13 @@ import lombok.RequiredArgsConstructor;
 public class ProfileController {
 
     private final ProfileService profileService;
+
+    @Operation(summary = "부모 프로필 조회 (프로필 사진 · PIN 설정 여부)")
+    @GetMapping
+    public ResponseEntity<ProfileResponse> getProfile(Authentication authentication) {
+        Long parentId = (Long) authentication.getPrincipal();
+        return ResponseEntity.ok(profileService.getProfile(parentId));
+    }
 
     @Operation(summary = "부모 프로필 사진 변경 (프리셋 선택)")
     @PatchMapping("/image")

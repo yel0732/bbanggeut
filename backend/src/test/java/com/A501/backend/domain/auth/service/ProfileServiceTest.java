@@ -24,6 +24,7 @@ import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.common.storage.ImageErrorCode;
 import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
+import com.A501.backend.domain.auth.dto.response.ProfileResponse;
 import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
@@ -48,6 +49,46 @@ class ProfileServiceTest {
         // ParentFinder는 목이 아니라 실제 구현을 끼운다 — 소프트 삭제 필터가 실제로 도는지까지
         // 이 테스트가 계속 검증하도록 하기 위함이다.
         profileService = new ProfileService(new ParentFinder(parentRepository), profileImageService);
+    }
+
+    // 로그인 직후 프론트가 부모 프로필 화면을 그리려면 사진과 PIN 설정 여부가 필요하다.
+    @Test
+    void getProfile_returnsImageKeyAndPinState() {
+        Parent parent = newParent();
+        parent.changeProfileImage(PRESET_KEY);
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(null);
+
+        ProfileResponse response = profileService.getProfile(1L);
+
+        assertThat(response.email()).isEqualTo("parent@example.com");
+        assertThat(response.profileImageKey()).isEqualTo(PRESET_KEY);
+        assertThat(response.profileImageUrl()).isNull();
+        assertThat(response.pinSet()).isTrue();
+    }
+
+    // PIN 미설정 계정은 프론트가 "PIN 설정" 화면으로 보내야 한다.
+    @Test
+    void getProfile_reportsPinNotSet() {
+        Parent parent = newParent();
+        parent.changeProfileImage(PRESET_KEY);
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(profileImageService.resolveUrl(PRESET_KEY)).thenReturn(null);
+
+        assertThat(profileService.getProfile(1L).pinSet()).isFalse();
+    }
+
+    @Test
+    void getProfile_throwsWhenParentIsSoftDeleted() {
+        Parent parent = newParent();
+        ReflectionTestUtils.setField(parent, "deletedAt", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> profileService.getProfile(1L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
     }
 
     @Test

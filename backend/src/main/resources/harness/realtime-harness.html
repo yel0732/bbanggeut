@@ -913,7 +913,17 @@
     async function setupPeerConnectionAndOffer() {
       resetTranscript();
       try {
-        state.localStream = await navigator.mediaDevices.getUserMedia({audio: true});
+        // 오디오 제약을 명시한다 — 브라우저 기본값에 암묵적으로 기대지 않는다.
+        // echoCancellation: AI 자기 음성 차단(게이트의 이중화), noiseSuppression:
+        // 정상성 배경음 억제(서버 VAD의 턴 종료 판정 보호), autoGainControl:
+        // 저음량 아동 발화 보정. ADR-020 클라이언트 오디오 요구사항의 참조 구현.
+        state.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
         startLocalLevelMeter(state.localStream);
       } catch (error) {
         logEvent("error", "MIC_PERMISSION_DENIED", error.message);

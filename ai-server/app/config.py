@@ -53,6 +53,11 @@ class AppSettings:
     stt_low_confidence_reask_limit: int = 1  # 연속 되묻기 상한(도달 시 낮아도 진행)
     # Turn Detection(W02). 기본값 근거는 jira/plan/DIARY-3-W02.md §5.
     stt_vad_aggressiveness: int = 2  # 3은 저음량 아동 발화를 놓칠 위험(§11-D)
+    # webrtcvad 앞단 에너지 하한(s16 RMS). webrtcvad는 절대 문턱이 없어 진폭 400
+    # 화이트노이즈도 speech로 판정(실측)하고, 브라우저 AGC가 무발화 구간의 소음을
+    # 증폭해 턴 종료를 영구히 막을 수 있다. 0이면 비활성 — 실환경 보정 후 기본값을
+    # 정한다(하네스 테스트에서 250 부근 권장, 참고: 진폭 400 균일잡음 RMS≈231).
+    stt_vad_min_frame_rms: int = 0
     stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
     stt_trailing_silence_seconds: float = 3.0  # 종료 판정 침묵(권고 2.5~3의 상단)
     stt_preroll_ms: int = 300  # 발화 확정 전 보존할 선행 오디오
@@ -195,6 +200,12 @@ class AppSettings:
             or self.stt_vad_aggressiveness not in range(4)
         ):
             raise ValueError("STT_VAD_AGGRESSIVENESS must be an integer from 0 to 3")
+        if (
+            isinstance(self.stt_vad_min_frame_rms, bool)
+            or not isinstance(self.stt_vad_min_frame_rms, int)
+            or self.stt_vad_min_frame_rms < 0
+        ):
+            raise ValueError("STT_VAD_MIN_FRAME_RMS must be a non-negative integer")
         for name, value in (
             ("STT_MIN_SPEECH_MS", self.stt_min_speech_ms),
             ("STT_PREROLL_MS", self.stt_preroll_ms),
@@ -345,6 +356,10 @@ class AppSettings:
             stt_vad_aggressiveness=_parse_int(
                 values.get("STT_VAD_AGGRESSIVENESS", "2"),
                 "STT_VAD_AGGRESSIVENESS",
+            ),
+            stt_vad_min_frame_rms=_parse_int(
+                values.get("STT_VAD_MIN_FRAME_RMS", "0"),
+                "STT_VAD_MIN_FRAME_RMS",
             ),
             stt_min_speech_ms=_parse_int(
                 values.get("STT_MIN_SPEECH_MS", "250"),

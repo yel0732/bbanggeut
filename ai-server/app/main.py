@@ -184,7 +184,10 @@ def create_app(
                 guard=hallucination_guard,
                 max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
                 # VAD 자체는 세션별 인스턴스(webrtcvad가 내부 상태를 가짐, §8).
-                vad=WebrtcVoiceActivityDetector(resolved_settings.stt_vad_aggressiveness),
+                vad=WebrtcVoiceActivityDetector(
+                    resolved_settings.stt_vad_aggressiveness,
+                    min_frame_rms=resolved_settings.stt_vad_min_frame_rms,
+                ),
                 turn_detection=turn_detection_config,
                 turn_sequencer=turn_sequencer,
                 on_final=on_final,

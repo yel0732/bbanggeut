@@ -675,7 +675,11 @@ async def create_realtime_dialogue_session(
         on_no_speech=manager.handle_no_speech,
         # AI가 말하는 동안 입력을 받지 않는다(ADR-020). 오디오 없는 연결은 합성이
         # 없으므로 게이트도 없다 — 그때는 애초에 재생될 오디오가 없다.
-        is_output_active=None if synthesis is None else synthesis.is_speaking,
+        # is_speaking은 프로퍼티다 — 여기서 평가하면 조립 시점의 bool이 박제된다.
+        # 프레임마다 현재 값을 읽도록 반드시 콜러블로 감싼다(실 스택에서 발견된 결함).
+        is_output_active=(
+            None if synthesis is None else (lambda: synthesis.is_speaking)
+        ),
     )
     return RealtimeDialogueSession(
         audio_sink=audio_sink,

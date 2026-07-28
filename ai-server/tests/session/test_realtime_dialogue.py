@@ -557,6 +557,73 @@ class TestSessionAssembly:
         await session.aclose()
 
     @pytest.mark.asyncio
+    async def test_assembled_gate_is_a_callable_reading_live_speaking_state(self) -> None:
+        """회귀(실 스택 하네스에서 발견): ``is_speaking``은 프로퍼티라 조립 시점에
+        ``synthesis.is_speaking``으로 넘기면 그 순간의 bool이 박제되고, 프레임마다
+        ``bool()`` 호출을 시도해 'bool is not callable'로 모든 프레임이 거부됐다.
+        게이트는 콜러블이어야 하고 합성의 현재 상태를 반영해야 한다."""
+
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel,
+            conversation_id="conv_x",
+            realtime_session_id="rt_1",
+            session_epoch=1,
+            logger=_LOGGER,
+        )
+        captured: dict = {}
+
+        def stt_pipeline_factory(
+            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+        ):
+            captured["is_output_active"] = is_output_active
+
+            class _SinkStub:
+                async def aclose(self) -> None: ...
+
+            return _SinkStub()
+
+        class _SynthStub:
+            def __init__(self) -> None:
+                self.speaking = False
+
+            @property
+            def is_speaking(self) -> bool:
+                return self.speaking
+
+            def speak(self, *args) -> None: ...
+
+            async def aclose(self) -> None: ...
+
+        synth = _SynthStub()
+
+        async def read_snapshot(conversation_id: str):
+            return None
+
+        session = await create_realtime_dialogue_session(
+            publisher=publisher,
+            conversation_id="conv_x",
+            read_snapshot=read_snapshot,
+            default_snapshot=default_context_snapshot,
+            dialogue_pipeline=_FakeDialoguePipeline(),
+            termination_policy=DialogueTerminationPolicy(
+                required_targets=frozenset(QuestionTarget)
+            ),
+            is_epoch_current=lambda: True,
+            stt_pipeline_factory=stt_pipeline_factory,
+            logger=_LOGGER,
+            speaker=object(),  # 합성 조립을 트리거하는 존재 표식
+            synthesis_service_factory=lambda *args: synth,
+        )
+
+        gate = captured["is_output_active"]
+        assert callable(gate)
+        assert gate() is False
+        synth.speaking = True
+        assert gate() is True  # 박제된 bool이 아니라 현재 값을 읽는다
+        await session.aclose()
+
+    @pytest.mark.asyncio
     async def test_child_speech_never_reaches_the_logs(self, caplog) -> None:
         manager, _, _, _, _, sequencer = _build_manager(
             _FakeDialoguePipeline([_terminate_response()])

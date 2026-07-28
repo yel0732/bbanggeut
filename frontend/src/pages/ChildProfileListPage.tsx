@@ -44,7 +44,6 @@ export function ChildProfileListPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const editPhotoInputRef = useRef<HTMLInputElement>(null)
   const editVideoRef = useRef<HTMLVideoElement>(null)
   const editStreamRef = useRef<MediaStream | null>(null)
   const [profiles, setProfiles] = useState(loadChildProfiles)
@@ -141,17 +140,6 @@ export function ChildProfileListPage() {
     setEditingName(profile.name)
     setEditingNameMessage('')
     setEditingPhotoUrl(profile.photoUrl)
-  }
-
-  const selectEditingPhoto = (file: File | undefined) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setEditingPhotoUrl(reader.result)
-      }
-    }
-    reader.readAsDataURL(file)
   }
 
   const toggleEditCamera = async () => {
@@ -480,20 +468,6 @@ export function ChildProfileListPage() {
                 <div className="relative left-2 flex flex-col">
                   <button
                     className="h-18 w-58 bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#5a4a2a]"
-                    onClick={() => {
-                      stopEditCamera()
-                      editPhotoInputRef.current?.click()
-                    }}
-                    style={{
-                      ...jua,
-                      backgroundImage: `url(${photoButtonUrl})`,
-                    }}
-                    type="button"
-                  >
-                    사진 추가
-                  </button>
-                  <button
-                    className="-mt-7 h-18 w-58 bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#5a4a2a]"
                     onClick={() => void toggleEditCamera()}
                     style={{
                       ...jua,
@@ -518,15 +492,6 @@ export function ChildProfileListPage() {
                     기본 이미지
                   </button>
                 </div>
-                <input
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) =>
-                    selectEditingPhoto(event.target.files?.[0])
-                  }
-                  ref={editPhotoInputRef}
-                  type="file"
-                />
               </div>
               <input
                 autoFocus

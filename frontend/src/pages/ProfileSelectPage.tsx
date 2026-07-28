@@ -296,7 +296,7 @@ export function ProfileSelectPage() {
 
         <button
           aria-label="로그아웃"
-          className="absolute top-[21px] right-[25px] z-40 flex h-[46px] w-[210px] items-center justify-center border-0 bg-transparent p-0 text-[22px] text-white drop-shadow-[0_4px_8px_rgba(0,0,0,.25)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-[.98] disabled:cursor-wait disabled:opacity-70"
+          className="absolute top-[21px] right-[25px] z-40 flex h-[46px] w-[210px] items-center justify-center border-0 bg-transparent p-0 text-[26px] text-white drop-shadow-[0_4px_8px_rgba(0,0,0,.25)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-[.98] disabled:cursor-wait disabled:opacity-70"
           disabled={isLoggingOut}
           onClick={() => void handleLogout()}
           style={jua}
@@ -324,7 +324,7 @@ export function ProfileSelectPage() {
         ) : null}
 
         <div
-          className="absolute top-[118px] right-0 left-0 z-10 text-center text-[44px] text-white [text-shadow:0_6px_14px_rgba(0,0,0,0.28)]"
+          className="absolute top-[60px] right-0 left-0 z-10 text-center text-[53px] text-white [text-shadow:0_6px_14px_rgba(0,0,0,0.28)]"
           style={{
             ...jua,
             paintOrder: 'stroke fill',
@@ -334,7 +334,7 @@ export function ProfileSelectPage() {
           누가 놀러 왔어요?
         </div>
 
-        <div className="absolute top-[190px] right-[120px] bottom-[78px] left-[120px] z-10 flex items-center justify-center gap-7">
+        <div className="absolute top-[140px] right-[120px] bottom-[78px] left-[120px] z-10 flex items-center justify-center gap-7">
           <div
             className={
               hasTwoChildRows

@@ -159,7 +159,8 @@ export function ParentModePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const photoInputRef = useRef<HTMLInputElement>(null)
+  const parentVideoRef = useRef<HTMLVideoElement>(null)
+  const parentStreamRef = useRef<MediaStream | null>(null)
   const [popup, setPopup] = useState<PopupType>(null)
   const [profileView, setProfileView] = useState<ProfileView>('menu')
   const [profiles, setProfiles] = useState(() => {
@@ -169,6 +170,7 @@ export function ParentModePage() {
   const [parentPhoto, setParentPhoto] = useState<string | null>(() =>
     window.localStorage.getItem(PARENT_PHOTO_KEY),
   )
+  const [isParentCameraOn, setIsParentCameraOn] = useState(false)
   const [pin, setPin] = useState('')
   const [pinStep, setPinStep] = useState<PinStep>('current')
   const [newPin, setNewPin] = useState('')
@@ -198,6 +200,22 @@ export function ParentModePage() {
   const [editingChildProfile, setEditingChildProfile] =
     useState<ChildProfile | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialog>(null)
+
+  useEffect(() => {
+    const video = parentVideoRef.current
+    const stream = parentStreamRef.current
+    if (!isParentCameraOn || !video || !stream) return
+
+    video.srcObject = stream
+    void video.play()
+  }, [isParentCameraOn])
+
+  useEffect(
+    () => () => {
+      parentStreamRef.current?.getTracks().forEach((track) => track.stop())
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!getStoredAccessToken()) return
@@ -333,18 +351,56 @@ export function ParentModePage() {
     setPopup(nextPopup)
   }
 
-  const selectParentPhoto = (file: File | undefined) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return
-      setParentPhoto(reader.result)
-      window.localStorage.setItem(PARENT_PHOTO_KEY, reader.result)
+  const stopParentCamera = () => {
+    parentStreamRef.current?.getTracks().forEach((track) => track.stop())
+    parentStreamRef.current = null
+    setIsParentCameraOn(false)
+  }
+
+  const toggleParentCamera = async () => {
+    if (!isParentCameraOn) {
+      try {
+        parentStreamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: { width: 480, height: 480 },
+        })
+        setIsParentCameraOn(true)
+      } catch {
+        setNotificationToast('웹캠을 사용할 수 없어요.')
+      }
+      return
     }
-    reader.readAsDataURL(file)
+
+    const video = parentVideoRef.current
+    if (video?.videoWidth) {
+      const sourceSize = Math.min(video.videoWidth, video.videoHeight)
+      const canvas = document.createElement('canvas')
+      canvas.width = 300
+      canvas.height = 300
+      const context = canvas.getContext('2d')
+      if (context) {
+        context.translate(300, 0)
+        context.scale(-1, 1)
+        context.drawImage(
+          video,
+          (video.videoWidth - sourceSize) / 2,
+          (video.videoHeight - sourceSize) / 2,
+          sourceSize,
+          sourceSize,
+          0,
+          0,
+          300,
+          300,
+        )
+        const nextPhoto = canvas.toDataURL('image/webp', 0.9)
+        setParentPhoto(nextPhoto)
+        window.localStorage.setItem(PARENT_PHOTO_KEY, nextPhoto)
+      }
+    }
+    stopParentCamera()
   }
 
   const useDefaultPhoto = () => {
+    stopParentCamera()
     setParentPhoto(null)
     window.localStorage.removeItem(PARENT_PHOTO_KEY)
     void updateParentProfileImage(1).catch(() => undefined)
@@ -645,7 +701,7 @@ export function ParentModePage() {
               className="absolute bottom-0 left-[76px] w-[360px] rounded-[22px] border-4 border-[#d8bd79] bg-[#fff9e9] p-4 shadow-[0_12px_30px_rgba(0,0,0,.32)]"
             >
               <div className="mb-2 flex items-center justify-between px-1">
-                <h2 className="text-[20px] text-[#4f6f35]" style={jua}>
+                <h2 className="text-[23px] text-[#4f6f35]" style={jua}>
                   도착한 일일 리포트
                 </h2>
                 <button
@@ -681,7 +737,7 @@ export function ParentModePage() {
                   ))
                 ) : (
                   <p
-                    className="py-8 text-center text-[15px] text-[#8a7a55]"
+                    className="py-8 text-center text-[18px] text-[#8a7a55]"
                     style={jua}
                   >
                     새로 도착한 리포트가 없어요.
@@ -694,7 +750,7 @@ export function ParentModePage() {
 
         <nav className="absolute top-[25px] right-[10px] z-40 flex gap-3">
           <button
-            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('children')}
             style={{ ...jua, backgroundImage: `url(${menuBoardUrl})` }}
             type="button"
@@ -702,7 +758,7 @@ export function ParentModePage() {
             아이 프로필 관리
           </button>
           <button
-            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('profile')}
             style={{ ...jua, backgroundImage: `url(${menuBoardUrl})` }}
             type="button"
@@ -710,7 +766,7 @@ export function ParentModePage() {
             내 프로필 관리
           </button>
           <button
-            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('notification')}
             style={{ ...jua, backgroundImage: `url(${menuBoardUrl})` }}
             type="button"
@@ -720,7 +776,7 @@ export function ParentModePage() {
         </nav>
 
         <h1
-          className="absolute top-[110px] right-0 left-0 z-10 text-center text-[40px] text-white [-webkit-text-stroke:6px_#3c7d38] [paint-order:stroke_fill]"
+          className="absolute top-[110px] right-0 left-0 z-10 text-center text-[50px] text-white [-webkit-text-stroke:6px_#3c7d38] [paint-order:stroke_fill]"
           style={jua}
         >
           리포트를 볼 아이를 선택하세요
@@ -840,7 +896,7 @@ export function ParentModePage() {
                       </div>
                       <div className="relative z-10 mr-[22px] flex -translate-y-0.5 flex-col">
                         <button
-                          className="h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#7a5a1e] transition hover:scale-105"
+                          className="h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#7a5a1e] transition hover:scale-105"
                           onClick={() => editChildProfile(profile)}
                           style={{
                             ...jua,
@@ -851,7 +907,7 @@ export function ParentModePage() {
                           수정
                         </button>
                         <button
-                          className="-mt-[23px] h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#9a4a3e] transition hover:scale-105"
+                          className="-mt-[23px] h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#9a4a3e] transition hover:scale-105"
                           onClick={() => removeChildProfile(profile)}
                           style={{
                             ...jua,
@@ -1070,8 +1126,8 @@ export function ParentModePage() {
                 />
               </button>
               <h2
-                className={`absolute right-0 left-0 text-center text-[31px] text-[#3a7d2c] ${
-                  profileView === 'menu' ? 'top-[10.5%]' : 'top-[12.5%]'
+                className={`absolute right-0 left-0 text-center text-[32px] text-[#3a7d2c] ${
+                  profileView === 'menu' ? 'top-[11.5%]' : 'top-[12.5%]'
                 }`}
                 style={jua}
               >
@@ -1102,10 +1158,10 @@ export function ParentModePage() {
               ) : null}
 
               {profileView === 'menu' ? (
-                <div className="absolute top-[18%] right-[17%] left-[17%] flex flex-col items-center">
+                <div className="absolute top-[21%] right-[17%] left-[17%] flex flex-col items-center">
                   <img
                     alt="부모 프로필"
-                    className="-mb-4 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
+                    className="-mb-6 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
                     src={parentPhoto ?? parentAvatarUrl}
                   />
                   {[
@@ -1144,10 +1200,10 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span className="block text-[21px] text-[#5f492a]">
+                      <span className="-mt-1.5 block text-[25px] text-[#5f492a]">
                         {item.label}
                       </span>
-                      <span className="mt-0.5 block text-[12px] text-[#82945a]">
+                      <span className="-mt-2 block text-[14px] text-[#82945a]">
                         {item.description}
                       </span>
                     </button>
@@ -1157,27 +1213,37 @@ export function ParentModePage() {
 
               {profileView === 'photo' ? (
                 <div className="absolute top-[24%] right-[18%] left-[18%] flex flex-col items-center">
-                  <img
-                    alt="부모 프로필"
-                    className="size-[190px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_6px_#d9c79a,0_8px_18px_rgba(0,0,0,.2)]"
-                    src={parentPhoto ?? parentAvatarUrl}
-                  />
+                  {isParentCameraOn ? (
+                    <video
+                      autoPlay
+                      className="size-[190px] -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_6px_#d9c79a,0_8px_18px_rgba(0,0,0,.2)]"
+                      muted
+                      playsInline
+                      ref={parentVideoRef}
+                    />
+                  ) : (
+                    <img
+                      alt="부모 프로필"
+                      className="size-[190px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_6px_#d9c79a,0_8px_18px_rgba(0,0,0,.2)]"
+                      src={parentPhoto ?? parentAvatarUrl}
+                    />
+                  )}
                   <p className="mt-5 text-[16px] text-[#8a7a55]" style={jua}>
                     부모 모드에서 사용할 프로필 사진을 골라 주세요.
                   </p>
                   <button
-                    className="mt-4 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] transition hover:scale-103"
-                    onClick={() => photoInputRef.current?.click()}
+                    className="mt-4 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#5a4a2a] transition hover:scale-103"
+                    onClick={() => void toggleParentCamera()}
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
                     }}
                     type="button"
                   >
-                    사진 추가
+                    {isParentCameraOn ? '사진 찍기' : '웹캠 촬영'}
                   </button>
                   <button
-                    className="-mt-6 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] transition hover:scale-103"
+                    className="-mt-6 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[23px] text-[#5a4a2a] transition hover:scale-103"
                     onClick={useDefaultPhoto}
                     style={{
                       ...jua,
@@ -1187,28 +1253,19 @@ export function ParentModePage() {
                   >
                     기본 이미지로 변경
                   </button>
-                  <input
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(event) =>
-                      selectParentPhoto(event.target.files?.[0])
-                    }
-                    ref={photoInputRef}
-                    type="file"
-                  />
                 </div>
               ) : null}
 
               {profileView === 'pin' ? (
                 <div className="absolute top-[21%] right-[18%] left-[18%] text-center">
-                  <p className="h-9 text-[19px] text-[#8a7a55]" style={jua}>
+                  <p className="h-9 text-[21px] text-[#8a7a55]" style={jua}>
                     {pinMessage}
                   </p>
                   <div className="mt-0 flex justify-center gap-1">
                     {Array.from({ length: 4 }, (_, index) => (
                       <img
                         alt=""
-                        className="size-[55px] object-contain"
+                        className="size-[57px] object-contain"
                         key={index}
                         src={
                           index < pin.length ? pinDotFillUrl : pinDotEmptyUrl
@@ -1216,14 +1273,14 @@ export function ParentModePage() {
                       />
                     ))}
                   </div>
-                  <p className="mt-6 text-[15px] text-[#9b8862]" style={jua}>
+                  <p className="mt-5 text-[16px] text-[#9b8862]" style={jua}>
                     화면 키패드 또는 키보드 숫자 키를 사용할 수 있어요.
                   </p>
-                  <div className="mx-auto mt-2 grid w-[300px] -translate-x-2 grid-cols-3">
+                  <div className="mx-auto mt-1 grid w-[320px] -translate-x-2 grid-cols-3">
                     {KEYS.map((key, index) =>
                       key ? (
                         <button
-                          className="-m-3 mx-auto h-[85px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#3a7d2c] active:scale-95"
+                          className="-m-3 mx-auto h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95"
                           key={key}
                           onClick={() => pressPinKey(key)}
                           style={{
@@ -1240,7 +1297,7 @@ export function ParentModePage() {
                     )}
                   </div>
                   <button
-                    className="mt-4 text-[15px] text-[#8a7a55] underline"
+                    className="mt-2 text-[17px] text-[#8a7a55] underline"
                     onClick={resetPin}
                     style={jua}
                     type="button"
@@ -1251,15 +1308,15 @@ export function ParentModePage() {
               ) : null}
 
               {profileView === 'withdraw' ? (
-                <div className="absolute top-[22%] right-[18%] left-[18%] text-center">
-                  <p className="h-12 text-[17px] leading-6 text-[#a34f3d]" style={jua}>
+                <div className="absolute top-[23%] right-[18%] left-[18%] text-center">
+                  <p className="h-12 text-[19px] leading-6 text-[#a34f3d]" style={jua}>
                     {withdrawMessage}
                   </p>
-                  <div className="mt-1 flex justify-center gap-1">
+                  <div className="-mt-3 flex justify-center -gap-0">
                     {Array.from({ length: 4 }, (_, index) => (
                       <img
                         alt=""
-                        className="size-[55px] object-contain"
+                        className="size-[59px] object-contain"
                         key={index}
                         src={
                           index < withdrawPin.length
@@ -1269,14 +1326,14 @@ export function ParentModePage() {
                       />
                     ))}
                   </div>
-                  <p className="mt-4 text-[14px] text-[#8a7a55]" style={jua}>
+                  <p className="mt-2 text-[15px] text-[#8a7a55]" style={jua}>
                     탈퇴 확인을 위해 동일한 핀 번호를 두 번 입력해 주세요.
                   </p>
-                  <div className="mx-auto mt-2 grid w-[300px] -translate-x-2 grid-cols-3">
+                  <div className="mx-auto mt-1 grid w-[300px] -translate-x-2 grid-cols-3">
                     {KEYS.map((key, index) =>
                       key ? (
                         <button
-                          className="-m-3 mx-auto h-[85px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#3a7d2c] active:scale-95 disabled:opacity-50"
+                          className="-m-3 mx-auto h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95 disabled:opacity-50"
                           disabled={isVerifyingWithdrawal}
                           key={key}
                           onClick={() => pressWithdrawalPinKey(key)}
@@ -1294,7 +1351,7 @@ export function ParentModePage() {
                     )}
                   </div>
                   <button
-                    className="mt-4 text-[15px] text-[#8a7a55] underline"
+                    className="mt-2 text-[17px] text-[#8a7a55] underline"
                     onClick={resetWithdrawal}
                     style={jua}
                     type="button"
@@ -1307,7 +1364,7 @@ export function ParentModePage() {
               {profileView === 'password' ? (
                 <div className="absolute top-[24%] right-[21%] left-[21%]">
                   <p
-                    className="mb-4 text-center text-[15.5px] text-[#8a7a55]"
+                    className="mb-4 text-center text-[15.7px] text-[#8a7a55]"
                     style={jua}
                   >
                     현재 비밀번호를 확인한 뒤 새 비밀번호로 변경해요.
@@ -1350,7 +1407,7 @@ export function ParentModePage() {
                         <input
                           aria-invalid={Boolean(error)}
                           autoComplete={autoComplete}
-                          className={`h-[54px] w-full rounded-xl border-2 bg-[#fdf6e3] px-4 text-[20px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f] ${
+                          className={`h-[54px] w-full rounded-xl border-2 bg-[#fdf6e3] px-4 text-[22px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f] ${
                             error ? 'border-[#c7563a]' : 'border-[#cdbb92]'
                           }`}
                           onChange={(event) => {
@@ -1376,7 +1433,7 @@ export function ParentModePage() {
                     ),
                   )}
                   <p
-                    className={`h-9 text-center text-[18px] leading-[1.7] ${
+                    className={`h-9 text-center text-[20px] leading-[1.7] ${
                       passwordSuccess ? 'text-[#3a7d2c]' : 'text-[#8a7a55]'
                     }`}
                     style={jua}
@@ -1384,7 +1441,7 @@ export function ParentModePage() {
                     {passwordSuccess || PASSWORD_GUIDE}
                   </p>
                   <button
-                    className="mt-10 h-[88px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-102"
+                    className="mt-10 h-[88px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-102"
                     onClick={changePassword}
                     style={{
                       ...jua,
@@ -1513,10 +1570,10 @@ export function ParentModePage() {
               </label>
 
               <div className="absolute top-[68.5%] right-[16.5%] left-[16.5%] rounded-[14px] bg-[rgba(126,200,80,.14)] px-4 py-3">
-                <h3 className="text-[15px] text-[#5a7d3a]" style={jua}>
+                <h3 className="text-[16px] text-[#5a7d3a]" style={jua}>
                   알림 개인정보 보호
                 </h3>
-                <p className="mt-1 text-[13px] text-[#8a7a55]" style={jua}>
+                <p className="mt-1 text-[13.5px] text-[#8a7a55]" style={jua}>
                   알림에는 일기 내용·감정·점수 등 상세 정보를 표시하지 않습니다.
                 </p>
               </div>
@@ -1529,7 +1586,7 @@ export function ParentModePage() {
                 {savedMessage}
               </p>
               <button
-                className="absolute right-[16.5%] bottom-[7.5%] left-[16.5%] h-[90px] bg-[length:100%_100%] bg-center bg-no-repeat text-[23px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] active:translate-y-0.5"
+                className="absolute right-[16.5%] bottom-[7.5%] left-[16.5%] h-[90px] bg-[length:100%_100%] bg-center bg-no-repeat text-[26px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] active:translate-y-0.5"
                 onClick={saveNotification}
                 style={{
                   ...jua,

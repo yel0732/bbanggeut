@@ -1,11 +1,15 @@
 package com.A501.backend.domain.auth.controller;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.A501.backend.domain.auth.dto.request.UpdateProfileImageRequest;
 import com.A501.backend.domain.auth.dto.response.ProfileImageResponse;
@@ -30,6 +34,15 @@ public class ProfileController {
             Authentication authentication, @Valid @RequestBody UpdateProfileImageRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
         String profileImageUrl = profileService.updateProfileImage(parentId, request.imageKey());
+        return ResponseEntity.ok(ProfileImageResponse.of(profileImageUrl));
+    }
+
+    @Operation(summary = "부모 프로필 사진 업로드 (웹캠 촬영)")
+    @PostMapping(value = "/image/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProfileImageResponse> uploadProfileImage(
+            Authentication authentication, @RequestPart("file") MultipartFile file) {
+        Long parentId = (Long) authentication.getPrincipal();
+        String profileImageUrl = profileService.uploadProfileImage(parentId, file);
         return ResponseEntity.ok(ProfileImageResponse.of(profileImageUrl));
     }
 }

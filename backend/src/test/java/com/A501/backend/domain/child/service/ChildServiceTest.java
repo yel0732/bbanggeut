@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.common.storage.ImageErrorCode;
@@ -38,6 +39,7 @@ class ChildServiceTest {
     private static final String UPLOAD_KEY = "profile-uploads/1/10/abc";
     private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
     private static final String OTHER_PRESET_URL = "https://cdn.example.com/" + OTHER_PRESET_KEY;
+    private static final String UPLOAD_URL = "https://upload.example.com/signed";
 
     @Mock
     private ChildRepository childRepository;
@@ -262,6 +264,65 @@ class ChildServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(ChildErrorCode.CHILD_NAME_ALREADY_EXISTS));
         assertThat(child.getName()).isEqualTo("chorong");
+    }
+
+    @Test
+    void uploadChildImage_appliesUploadedKeyAndReturnsResolvedUrl() {
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(profileImageService.childImagePrefix(1L, 10L)).thenReturn("profile-uploads/1/10/");
+        when(profileImageService.uploadImage("profile-uploads/1/10/", file)).thenReturn(UPLOAD_KEY);
+        when(profileImageService.resolveUrl(UPLOAD_KEY)).thenReturn(UPLOAD_URL);
+
+        ChildResponse response = childService.uploadChildImage(1L, 10L, file);
+
+        assertThat(child.getProfileImageKey()).isEqualTo(UPLOAD_KEY);
+        assertThat(response.profileImageUrl()).isEqualTo(UPLOAD_URL);
+    }
+
+    // 남의 자녀 경로에 사진을 올리려는 시도는 업로드가 일어나기 전에 막혀야 한다.
+    @Test
+    void uploadChildImage_rejectsChildOfAnotherParentBeforeUploading() {
+        Child child = Child.create(2L, "chorong", PRESET_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+
+        assertThatThrownBy(() -> childService.uploadChildImage(1L, 10L, file))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ChildErrorCode.CHILD_NOT_FOUND));
+        verify(profileImageService, never()).uploadImage(any(), any());
+    }
+
+    @Test
+    void uploadChildImage_deletesPreviousUploadedImage() {
+        Child child = Child.create(1L, "chorong", UPLOAD_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(profileImageService.childImagePrefix(1L, 10L)).thenReturn("profile-uploads/1/10/");
+        when(profileImageService.uploadImage("profile-uploads/1/10/", file)).thenReturn("profile-uploads/1/10/new");
+        when(profileImageService.resolveUrl("profile-uploads/1/10/new")).thenReturn(UPLOAD_URL);
+
+        childService.uploadChildImage(1L, 10L, file);
+
+        verify(profileImageService).deleteIfUpload(UPLOAD_KEY);
+    }
+
+    // 업로드가 거절되면 기존 사진이 지워지거나 교체되면 안 된다.
+    @Test
+    void uploadChildImage_keepsPreviousImageWhenUploadRejected() {
+        Child child = Child.create(1L, "chorong", PRESET_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.txt", "text/plain", new byte[] {1, 2, 3});
+        when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
+        when(profileImageService.childImagePrefix(1L, 10L)).thenReturn("profile-uploads/1/10/");
+        when(profileImageService.uploadImage("profile-uploads/1/10/", file))
+                .thenThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_TYPE));
+
+        assertThatThrownBy(() -> childService.uploadChildImage(1L, 10L, file))
+                .isInstanceOf(BusinessException.class);
+        assertThat(child.getProfileImageKey()).isEqualTo(PRESET_KEY);
+        verify(profileImageService, never()).deleteIfUpload(any());
     }
 
     @Test

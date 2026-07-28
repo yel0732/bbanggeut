@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
@@ -32,6 +33,7 @@ class ProfileServiceTest {
     private static final String PRESET_KEY = "profile-presets/preset-2";
     private static final String UPLOAD_KEY = "profile-uploads/1/parent/abc";
     private static final String PRESET_URL = "https://cdn.example.com/" + PRESET_KEY;
+    private static final String UPLOAD_URL = "https://upload.example.com/signed";
 
     @Mock
     private ParentRepository parentRepository;
@@ -108,6 +110,57 @@ class ProfileServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(AuthErrorCode.PARENT_NOT_FOUND));
+    }
+
+    @Test
+    void uploadProfileImage_appliesUploadedKeyAndReturnsResolvedUrl() {
+        Parent parent = newParent();
+        parent.changeProfileImage(PRESET_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(profileImageService.parentImagePrefix(1L)).thenReturn("profile-uploads/1/parent/");
+        when(profileImageService.uploadImage("profile-uploads/1/parent/", file)).thenReturn(UPLOAD_KEY);
+        when(profileImageService.resolveUrl(UPLOAD_KEY)).thenReturn(UPLOAD_URL);
+
+        String url = profileService.uploadProfileImage(1L, file);
+
+        assertThat(parent.getProfileImageKey()).isEqualTo(UPLOAD_KEY);
+        assertThat(url).isEqualTo(UPLOAD_URL);
+    }
+
+    // 이전 사진도 웹캠 사진이면 교체와 동시에 파기한다.
+    @Test
+    void uploadProfileImage_deletesPreviousUploadedImage() {
+        Parent parent = newParent();
+        parent.changeProfileImage(UPLOAD_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(profileImageService.parentImagePrefix(1L)).thenReturn("profile-uploads/1/parent/");
+        when(profileImageService.uploadImage("profile-uploads/1/parent/", file)).thenReturn("profile-uploads/1/parent/new");
+        when(profileImageService.resolveUrl("profile-uploads/1/parent/new")).thenReturn(UPLOAD_URL);
+
+        profileService.uploadProfileImage(1L, file);
+
+        verify(profileImageService).deleteIfUpload(UPLOAD_KEY);
+    }
+
+    // 업로드가 실패하면(형식·용량 위반 등) 기존 사진이 지워지거나 교체되면 안 된다.
+    @Test
+    void uploadProfileImage_keepsPreviousImageWhenUploadRejected() {
+        Parent parent = newParent();
+        parent.changeProfileImage(PRESET_KEY);
+        MockMultipartFile file = new MockMultipartFile("file", "webcam.txt", "text/plain", new byte[] {1, 2, 3});
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(profileImageService.parentImagePrefix(1L)).thenReturn("profile-uploads/1/parent/");
+        when(profileImageService.uploadImage("profile-uploads/1/parent/", file))
+                .thenThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_TYPE));
+
+        assertThatThrownBy(() -> profileService.uploadProfileImage(1L, file))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_TYPE));
+        assertThat(parent.getProfileImageKey()).isEqualTo(PRESET_KEY);
+        verify(profileImageService, never()).deleteIfUpload(any());
     }
 
     private Parent newParent() {

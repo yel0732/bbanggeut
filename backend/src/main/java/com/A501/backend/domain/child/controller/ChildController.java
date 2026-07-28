@@ -3,6 +3,7 @@ package com.A501.backend.domain.child.controller;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
@@ -14,7 +15,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.A501.backend.domain.child.dto.request.CreateChildRequest;
 import com.A501.backend.domain.child.dto.request.DeleteChildRequest;
@@ -71,6 +74,16 @@ public class ChildController {
             @Valid @RequestBody UpdateChildRequest request) {
         Long parentId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(childService.updateChild(parentId, childId, request.name(), request.imageKey()));
+    }
+
+    @Operation(summary = "자녀 프로필 사진 업로드 (웹캠 촬영)")
+    @PostMapping(value = "/{childId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ChildResponse> uploadImage(
+            Authentication authentication,
+            @PathVariable Long childId,
+            @RequestPart("file") MultipartFile file) {
+        Long parentId = (Long) authentication.getPrincipal();
+        return ResponseEntity.ok(childService.uploadChildImage(parentId, childId, file));
     }
 
     @Operation(summary = "자녀 프로필 삭제")

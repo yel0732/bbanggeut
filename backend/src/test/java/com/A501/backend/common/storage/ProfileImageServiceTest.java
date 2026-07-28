@@ -217,6 +217,27 @@ class ProfileImageServiceTest {
         verify(imageStorage, never()).delete(any());
     }
 
+    // 업로드 키는 서버만 만든다. 소유자(parentId)가 경로에 들어가야 정리 범위가 명확해지고,
+    // 업로드 접두사 아래에 있어야 비공개 버킷으로 간다.
+    @Test
+    void parentImagePrefix_isOwnedUploadPath() {
+        String prefix = profileImageService.parentImagePrefix(7L);
+
+        assertThat(prefix).isEqualTo("profile-uploads/7/parent/");
+        assertThat(profileImageService.isUpload(prefix)).isTrue();
+    }
+
+    @Test
+    void childImagePrefix_separatesEachChild() {
+        assertThat(profileImageService.childImagePrefix(7L, 42L)).isEqualTo("profile-uploads/7/42/");
+        assertThat(profileImageService.childImagePrefix(7L, 43L)).isEqualTo("profile-uploads/7/43/");
+    }
+
+    @Test
+    void defaultPresetKey_comesFromConfiguration() {
+        assertThat(profileImageService.defaultPresetKey()).isEqualTo(PRESET_KEY);
+    }
+
     @Test
     void resolveUrl_delegatesToStorage() {
         when(imageStorage.resolveUrl(PRESET_KEY)).thenReturn("https://cdn.example.com/" + PRESET_KEY);

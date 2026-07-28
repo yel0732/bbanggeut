@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.common.storage.ProfileImageService;
@@ -79,6 +80,23 @@ public class ChildService {
         // 교체 전 이미지가 업로드(웹캠) 사진이면 즉시 파기한다 — 아이 실물 사진을 남겨두지 않는다.
         profileImageService.deleteIfUpload(child.getProfileImageKey());
         child.changeProfileImage(imageKey);
+
+        return toResponse(child);
+    }
+
+    // 웹캠으로 찍은 사진을 올려 그 자리에서 자녀 프로필로 적용한다. 자녀 생성 시점에는 childId가
+    // 없어 키를 만들 수 없으므로, 웹캠 사진은 생성 이후 이 경로로만 붙는다.
+    @Transactional
+    public ChildResponse uploadChildImage(Long parentId, Long childId, MultipartFile file) {
+        // 소유권 검증을 먼저 한다 — 남의 자녀 경로에 사진을 올리려는 시도를 업로드 전에 막는다.
+        Child child = findOwnedChild(parentId, childId);
+        String previousKey = child.getProfileImageKey();
+
+        // 새 사진을 먼저 저장한다 — 검증이나 업로드가 실패하면 기존 사진이 그대로 남아야 한다.
+        String uploadedKey = profileImageService.uploadImage(
+                profileImageService.childImagePrefix(parentId, childId), file);
+        profileImageService.deleteIfUpload(previousKey);
+        child.changeProfileImage(uploadedKey);
 
         return toResponse(child);
     }

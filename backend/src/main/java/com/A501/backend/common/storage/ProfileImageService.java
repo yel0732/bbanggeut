@@ -76,6 +76,17 @@ public class ProfileImageService {
         return storageProperties.defaultPresetKey();
     }
 
+    // 업로드 키는 서버만 만든다 — 클라이언트가 경로를 지정할 수 있으면 타인 소유 경로에 쓰거나
+    // 타인 사진을 자기 프로필로 붙일 수 있다. 소유자(parentId)를 경로에 넣어 정리 범위도 명확히 한다.
+    public String parentImagePrefix(Long parentId) {
+        return storageProperties.uploadPrefix() + parentId + "/parent/";
+    }
+
+    // 자녀는 childId로 한 단계 더 나눈다 — 자녀 삭제 시 그 자녀 것만 골라 지우기 쉽다.
+    public String childImagePrefix(Long parentId, Long childId) {
+        return storageProperties.uploadPrefix() + parentId + "/" + childId + "/";
+    }
+
     // 프리셋은 모든 사용자가 공유하는 이미지라 지우면 안 된다. 사진 교체·자녀 삭제·회원 탈퇴처럼
     // "이전 이미지를 정리하는" 자리에서 업로드 객체만 골라 지우기 위한 메서드다.
     public void deleteIfUpload(String key) {

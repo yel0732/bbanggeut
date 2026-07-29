@@ -1,5 +1,6 @@
 package com.A501.backend.domain.auth.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
@@ -45,17 +46,29 @@ public class PinService {
 
         LocalDateTime now = LocalDateTime.now(KST);
         if (parent.isPinLocked(now)) {
-            throw new BusinessException(PinErrorCode.PIN_LOCKED);
+            throw lockedException(parent, now);
         }
         parent.resetPinFailuresIfLockExpired(now);
 
         if (!passwordEncoder.matches(rawPin, parent.getPinHash())) {
             parent.registerPinFailure(now, pinProperties.maxFailedAttempts(), pinProperties.lockDuration());
-            throw new BusinessException(
-                    parent.isPinLocked(now) ? PinErrorCode.PIN_LOCKED : PinErrorCode.PIN_MISMATCH);
+            throw parent.isPinLocked(now)
+                    ? lockedException(parent, now)
+                    : BusinessException.withRemainingAttempts(
+                            PinErrorCode.PIN_MISMATCH,
+                            pinProperties.maxFailedAttempts() - parent.getPinFailedAttempts());
         }
 
         parent.resetPinFailures();
+    }
+
+    // 잠금 해제까지 남은 초를 올림해서 싣는다. 내림하면(284.7 → 284) 클라이언트 카운트다운이
+    // 잠금이 풀리기 직전에 0이 되어 재시도했다가 다시 423을 받는다.
+    // now와 pinLockedUntil은 둘 다 KST 기준으로 만들어진 값이라 JVM 기본 타임존과 무관하게 맞는다.
+    private BusinessException lockedException(Parent parent, LocalDateTime now) {
+        long remainingMillis = Duration.between(now, parent.getPinLockedUntil()).toMillis();
+        int retryAfterSeconds = (int) Math.max(1, (remainingMillis + 999) / 1000);
+        return BusinessException.retryAfter(PinErrorCode.PIN_LOCKED, retryAfterSeconds);
     }
 
     // verifyPin과 마찬가지 이유로 noRollbackFor가 필요하다 — changePin 안에서 verifyPin을

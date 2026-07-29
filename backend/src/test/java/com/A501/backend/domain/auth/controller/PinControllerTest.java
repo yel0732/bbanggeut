@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.controller;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
@@ -153,6 +154,57 @@ class PinControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pin\":\"0000\"}"))
                 .andExpect(status().isLocked());
+    }
+
+    // 프론트가 잠금 카운트다운을 그리려면 잔여시간이 응답 본문에 실제로 나가야 한다.
+    // 서비스가 값을 채워도 직렬화에서 빠지면 소용이 없으므로 JSON 레벨에서 고정한다.
+    @Test
+    void verifyPin_exposesRetryAfterSecondsWhenLocked() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(BusinessException.retryAfter(PinErrorCode.PIN_LOCKED, 284))
+                .when(pinService).verifyPin(1L, "0000");
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.error").value("PIN_LOCKED"))
+                .andExpect(jsonPath("$.retryAfterSeconds").value(284))
+                .andExpect(jsonPath("$.remainingAttempts").doesNotExist());
+    }
+
+    @Test
+    void verifyPin_exposesRemainingAttemptsOnMismatch() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(BusinessException.withRemainingAttempts(PinErrorCode.PIN_MISMATCH, 3))
+                .when(pinService).verifyPin(1L, "0000");
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"0000\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("PIN_MISMATCH"))
+                .andExpect(jsonPath("$.remainingAttempts").value(3))
+                .andExpect(jsonPath("$.retryAfterSeconds").doesNotExist());
+    }
+
+    // 두 필드는 해당 없는 에러에서 아예 빠져야 한다. 항상 내보내면 전 도메인의 모든 에러 응답에
+    // null 필드 두 개가 새로 붙어 기존 계약이 바뀐다.
+    @Test
+    void errorResponseOmitsExtraFieldsForUnrelatedErrors() throws Exception {
+        String accessToken = generateAccessToken();
+        doThrow(new BusinessException(PinErrorCode.PIN_NOT_SET))
+                .when(pinService).verifyPin(1L, "1234");
+
+        mockMvc.perform(post("/api/profile/pin/verify")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"pin\":\"1234\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.retryAfterSeconds").doesNotExist())
+                .andExpect(jsonPath("$.remainingAttempts").doesNotExist());
     }
 
     @Test

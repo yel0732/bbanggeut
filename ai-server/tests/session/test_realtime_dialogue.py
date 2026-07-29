@@ -930,6 +930,29 @@ class TestStreamPublishing:
 
         assert any(c[0] == "SESSION_COMPLETED" for c in stream.calls)
 
+    @pytest.mark.asyncio
+    async def test_low_confidence_turn_is_not_streamed(self) -> None:
+        """되묻기로 폐기된 저신뢰 전사는 확정 이벤트로 발행되지 않는다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert not any(c[0] == "CHILD_TURN_FINALIZED" for c in stream.calls)
+        # 되묻기 안내 AI 턴은 정상 발행된다.
+        assert any(c[0] == "AI_TURN_GENERATED" for c in stream.calls)
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_turn_past_the_limit_is_streamed(self) -> None:
+        """되묻기 상한 도달로 대화에 실제 사용된 턴은 발행된다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert sum(1 for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED") == 1
+
     def test_no_speech_with_all_slots_filled_completes_the_session(self) -> None:
         """물을 목표가 없는 무응답도 종료 이벤트를 발행해 세션을 방치하지 않는다."""
 

@@ -218,12 +218,15 @@ class RealtimeDialogueManager:
             return
         state.consecutive_no_responses = 0
         state.known_turn_ids.add(turn.turn_id)
-        self._emit_child_turn_finalized(turn, result)
 
         if self._should_reask_low_confidence(result):
             self._reask_low_confidence(turn)
             return
         state.consecutive_low_confidence_reasks = 0
+        # 확정 발행은 신뢰도 게이트 뒤에서만 한다 — 슬롯 분석에도 쓰지 않기로 한
+        # 저신뢰 전사가 CHILD_TURN_FINALIZED로 남으면 대화 원문(MySQL)이 오인식
+        # 텍스트로 오염된다. 발행되는 턴 = 실제로 대화에 쓰인 턴(§12 확정만 발행).
+        self._emit_child_turn_finalized(turn, result)
 
         topic = state.current_topic
         request = DialogueTurnRequest(

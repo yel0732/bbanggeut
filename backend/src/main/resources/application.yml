@@ -187,6 +187,9 @@ spring:
   config:
     activate:
       on-profile: prod
+  h2:
+    console:
+      enabled: false
   datasource:
     url: ${DB_URL}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -208,6 +211,12 @@ spring:
         jdbc:
           time_zone: UTC
     open-in-view: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 
 app:
   jwt:

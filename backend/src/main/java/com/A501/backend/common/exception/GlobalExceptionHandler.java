@@ -60,7 +60,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = e.getErrorCode();
         log.warn("Business exception: {} - {}", errorCode.getCode(), errorCode.getMessage());
         return ResponseEntity.status(errorCode.getStatus())
-                .body(ErrorResponse.of(errorCode.getStatus().value(), errorCode.getCode(), errorCode.getMessage()));
+                .body(ErrorResponse.from(e));
     }
 
     // 애플리케이션 레이어 중복 체크를 통과한 뒤에도 동시 요청으로 DB 유니크 제약을 건드릴 수

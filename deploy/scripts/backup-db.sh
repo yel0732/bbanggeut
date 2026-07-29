@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-compose_file=${COMPOSE_FILE:-compose.yml}
+deploy_root=${DEPLOY_ROOT:-/srv/a501}
+compose_file=${COMPOSE_FILE:-$deploy_root/compose.yml}
 env_file=${ENV_FILE:-/srv/a501-secrets/.env}
 backup_dir=${DB_BACKUP_DIR:-/srv/a501-backups/mysql}
 retention_days=${DB_BACKUP_RETENTION_DAYS:-14}

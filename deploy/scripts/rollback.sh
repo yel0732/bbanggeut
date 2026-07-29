@@ -2,7 +2,8 @@
 set -eu
 
 previous_file=$1
-compose_file=${COMPOSE_FILE:-compose.yml}
+deploy_root=${DEPLOY_ROOT:-/srv/a501}
+compose_file=${COMPOSE_FILE:-$deploy_root/compose.yml}
 env_file=${ENV_FILE:-/srv/a501-secrets/.env}
 
 . "$previous_file"

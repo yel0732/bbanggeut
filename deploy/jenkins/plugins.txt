@@ -4,3 +4,4 @@ gitlab-plugin
 credentials-binding
 timestamper
 pipeline-stage-view
+junit

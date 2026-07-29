@@ -620,14 +620,15 @@ export function ConversationPage() {
                 </div>
               ))}
 
-              <p
-                className="absolute top-[70%] right-[12%] left-[12%] min-h-6 text-[17px] text-[#bc5b4c]"
-                role="alert"
-                style={jua}
-              >
-                {guideMessage ||
-                  '빵긋이가 말하는 중에도 언제든 이야기할 수 있어요.'}
-              </p>
+              {guideMessage ? (
+                <p
+                  className="absolute top-[70%] right-[12%] left-[12%] min-h-6 text-[15px] text-[#bc5b4c]"
+                  role="alert"
+                  style={jua}
+                >
+                  {guideMessage}
+                </p>
+              ) : null}
               <button
                 className="absolute top-[76%] left-1/2 flex h-[11%] w-[45%] -translate-x-1/2 items-center justify-center bg-transparent pb-1 text-[26px] text-white transition hover:scale-[1.02]"
                 onClick={() => void startConversation()}

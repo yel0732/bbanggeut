@@ -3,6 +3,7 @@ package com.A501.backend.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
@@ -67,12 +69,18 @@ class AuthServiceTest {
     @Mock
     private ChildService childService;
 
+    @Mock
+    private ProfileImageService profileImageService;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(parentRepository, refreshTokenRepository, passwordEncoder, jwtProvider,
-                REFRESH_TOKEN_PROPERTIES, googleTokenVerifier, pinService, childService);
+        // ParentFinder는 목이 아니라 실제 구현을 끼운다 — 소프트 삭제 필터가 실제로 도는지까지
+        // 이 테스트가 계속 검증하도록 하기 위함이다.
+        authService = new AuthService(parentRepository, new ParentFinder(parentRepository), refreshTokenRepository,
+                passwordEncoder, jwtProvider, REFRESH_TOKEN_PROPERTIES, googleTokenVerifier, pinService, childService,
+                profileImageService);
     }
 
     @Test
@@ -661,6 +669,40 @@ class AuthServiceTest {
         verify(childService).softDeleteChildrenOf(1L);
         assertThat(parent.isDeleted()).isTrue();
         assertThat(token.isRevoked()).isTrue();
+    }
+
+    // 소프트 삭제라 계정 행은 남지만 부모가 올린 실물 사진은 즉시 파기되어야 한다.
+    @Test
+    void withdraw_purgesUploadedProfileImageAndResetsKey() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        parent.changeProfileImage("profile-uploads/1/parent/abc");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(refreshTokenRepository.findAllByParentAndRevokedFalse(parent)).thenReturn(List.of());
+        when(profileImageService.purgeUploadedImage(eq("profile-uploads/1/parent/abc"), any()))
+                .thenReturn("profile-presets/parent-avatar");
+
+        authService.withdraw(1L, null);
+
+        assertThat(parent.getProfileImageKey()).isEqualTo("profile-presets/parent-avatar");
+        // 자녀 사진 파기는 child 도메인이 같은 정책으로 처리한다.
+        verify(childService).softDeleteChildrenOf(1L);
+    }
+
+    // PIN이 틀려 탈퇴가 거절되면 사진도 남아 있어야 한다.
+    @Test
+    void withdraw_doesNotPurgeProfileImageWhenPinRejected() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        ReflectionTestUtils.setField(parent, "parentId", 1L);
+        parent.changeProfileImage("profile-uploads/1/parent/abc");
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        doThrow(new BusinessException(PinErrorCode.PIN_MISMATCH)).when(pinService).verifyPin(1L, "0000");
+
+        assertThatThrownBy(() -> authService.withdraw(1L, "0000")).isInstanceOf(BusinessException.class);
+
+        verify(profileImageService, never()).purgeUploadedImage(any(), any());
+        assertThat(parent.getProfileImageKey()).isEqualTo("profile-uploads/1/parent/abc");
     }
 
     @Test

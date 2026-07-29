@@ -16,7 +16,94 @@ src/main/resources/db/migration/V1__initial_schema.sql이며, 이후 변경은 V
 -- The daily report batch selects every active child from this table. Children
 -- without activity receive a completed empty report and no completion alert.
 
--- DIARY-1-T01: conversation_session -----------------------------------------  
+
+-- AUTH-01: parent -----------------------------------------------------------
+
+CREATE TABLE parent (
+    parent_id           BIGINT        NOT NULL AUTO_INCREMENT,
+    email               VARCHAR(255)  NOT NULL,
+    password_hash       VARCHAR(255)  NULL,
+    birth_date          DATE          NOT NULL,
+    provider            VARCHAR(20)   NOT NULL,
+    provider_id         VARCHAR(255)  NULL,
+    pin_hash            VARCHAR(255)  NULL,
+    pin_failed_attempts INT           NOT NULL DEFAULT 0,
+    pin_locked_until    DATETIME(6)   NULL,
+    pin_set_at          DATETIME(6)   NULL,
+    profile_image_key   VARCHAR(512)  NOT NULL DEFAULT 'profile-presets/parent-avatar',
+    deleted_at          DATETIME(6)   NULL,
+    created_at          DATETIME(6)   NOT NULL,
+    updated_at          DATETIME(6)   NOT NULL,
+    PRIMARY KEY (parent_id),
+    CONSTRAINT uk_parent_email UNIQUE (email),
+    CONSTRAINT uk_parent_provider_id UNIQUE (provider_id)
+);
+
+-- provider: LOCAL | GOOGLE. LOCAL은 password_hash 사용, GOOGLE은 provider_id 사용.
+-- password_hash는 BCrypt. pin_hash도 BCrypt(평문 PIN 미저장). pin_hash NULL = PIN 미설정.
+-- PIN 잠금: pin_failed_attempts 5회 도달 시 pin_locked_until = now + 5분(정책은 app.pin.*).
+-- 프로필 사진(단일 키): profile_image_key 하나로 프리셋/업로드를 모두 표현하고, 저장 위치는 키 접두사로 구분한다.
+--   profile-presets/*  = 기본 제공 프리셋. 이미지 실물은 클라이언트 번들에 있고 S3에 두지 않는다(키는 공유 식별자).
+--   profile-uploads/*  = 사용자 업로드·웹캠 사진(아이 실물 = 민감정보, 비공개 버킷 + presigned GET 단기 TTL)
+--   신규 계정 기본값은 프리셋 키이며 부모와 자녀가 서로 다르다(parent-avatar / child-avatar).
+--   응답에는 key와 url을 함께 내려준다 — 프리셋은 url이 null이라 클라이언트가 key로 번들 이미지를 찾는다.
+-- 소프트 삭제: 회원 탈퇴 시 deleted_at 기록(hard-delete는 별도). 로그인·인증 경로는 deleted_at IS NULL만 유효 취급.
+-- base ERD의 UNIQUE(provider, provider_id) 대신 구현은 provider_id 단독 UNIQUE로 반영됨.
+-- Entity: backend/src/main/java/com/A501/backend/domain/auth/entity/Parent.java
+
+
+-- AUTH-09: refresh_token ----------------------------------------------------
+
+CREATE TABLE refresh_token (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    parent_id   BIGINT       NOT NULL,
+    token_hash  VARCHAR(64)  NOT NULL,
+    expires_at  DATETIME(6)  NOT NULL,
+    revoked     BOOLEAN      NOT NULL DEFAULT FALSE,
+    remember_me BOOLEAN      NOT NULL,
+    created_at  DATETIME(6)  NOT NULL,
+    updated_at  DATETIME(6)  NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_refresh_token_hash UNIQUE (token_hash)
+);
+
+CREATE INDEX idx_refresh_token_parent ON refresh_token (parent_id);
+
+-- token_hash는 SecureRandom opaque 토큰의 SHA-256 해시(원문 미저장).
+-- remember_me: 재발급(rotation) 시 기존 토큰의 만료 정책(자동로그인 60일 / 미체크 1일)을 유지하기 위해 필요(base ERD 확장분).
+-- 재사용 감지: 이미 revoked된 토큰으로 재발급 시도 시 해당 parent의 모든 유효 토큰을 폐기.
+-- parent 테이블 확정 후 FK(parent_id → parent.parent_id) 추가 가능(다른 도메인 테이블도 FK는 부모 확정 후 부여).
+-- Entity: backend/src/main/java/com/A501/backend/domain/auth/entity/RefreshToken.java
+
+
+-- PROF-05: child ------------------------------------------------------------
+
+CREATE TABLE child (
+    child_id          BIGINT        NOT NULL AUTO_INCREMENT,
+    parent_id         BIGINT        NOT NULL,
+    name              VARCHAR(15)   NOT NULL,
+    profile_image_key VARCHAR(512)  NOT NULL DEFAULT 'profile-presets/child-avatar',
+    deleted_at        DATETIME(6)   NULL,
+    created_at        DATETIME(6)   NOT NULL,
+    updated_at        DATETIME(6)   NOT NULL,
+    PRIMARY KEY (child_id)
+);
+
+CREATE INDEX idx_child_parent_alive ON child (parent_id, deleted_at);
+
+-- 닉네임 중복: 같은 부모 아래 "삭제되지 않은" 자녀끼리만 name이 유일해야 한다.
+--   단순 UNIQUE(parent_id, name)은 소프트 삭제된 이름까지 재사용을 막으므로, MySQL 8.0 함수 기반
+--   유니크 인덱스로 처리한다(H2 local에서는 표현 불가 → 애플리케이션 레이어 중복 체크가 방어선):
+--   ALTER TABLE child ADD UNIQUE KEY uk_child_parent_name_alive
+--     ((CASE WHEN deleted_at IS NULL THEN CONCAT(parent_id, ':', name) END));
+-- 프로필 사진: parent와 동일한 단일 키 규칙(profile-presets/* = 클라이언트 번들 식별자 / profile-uploads/* = 비공개 S3 객체).
+-- 소프트 삭제: 자녀 삭제(PIN 검증) 및 부모 탈퇴 시 deleted_at 기록. 리포트 배치 등은 deleted_at IS NULL을
+--   활성 자녀 판정 기준으로 사용한다(backend/SCHEMA의 external child-domain ownership contract와 일치).
+-- 부모당 최대 자녀 수(10명)는 애플리케이션(app.child.max-profile-count)에서 강제한다.
+-- Entity: backend/src/main/java/com/A501/backend/domain/child/entity/Child.java
+
+
+-- DIARY-1-T01: conversation_session -----------------------------------------
 
 CREATE TABLE conversation_session (
     conversation_id        VARCHAR(40)  NOT NULL,

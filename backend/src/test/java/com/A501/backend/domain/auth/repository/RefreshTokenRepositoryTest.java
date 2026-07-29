@@ -28,8 +28,7 @@ class RefreshTokenRepositoryTest {
 
     @Test
     void savesAndFindsByTokenHash() {
-        Parent parent = parentRepository.save(
-                Parent.createLocal("token-owner@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
+        Parent parent = parentRepository.save(localParent("token-owner@example.com"));
 
         RefreshToken token = RefreshToken.issue(parent, "hash-1", LocalDateTime.now().plusDays(1), false);
         refreshTokenRepository.save(token);
@@ -39,8 +38,7 @@ class RefreshTokenRepositoryTest {
 
     @Test
     void rejectsDuplicateTokenHash() {
-        Parent parent = parentRepository.save(
-                Parent.createLocal("token-owner-2@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
+        Parent parent = parentRepository.save(localParent("token-owner-2@example.com"));
         refreshTokenRepository.save(RefreshToken.issue(parent, "dup-hash", LocalDateTime.now().plusDays(1), false));
         refreshTokenRepository.flush();
 
@@ -52,8 +50,7 @@ class RefreshTokenRepositoryTest {
 
     @Test
     void findsAllNonRevokedTokensForParent() {
-        Parent parent = parentRepository.save(
-                Parent.createLocal("multi-token@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
+        Parent parent = parentRepository.save(localParent("multi-token@example.com"));
         RefreshToken active = RefreshToken.issue(parent, "active-hash", LocalDateTime.now().plusDays(1), false);
         RefreshToken revoked = RefreshToken.issue(parent, "revoked-hash", LocalDateTime.now().plusDays(1), false);
         revoked.revoke();
@@ -67,8 +64,7 @@ class RefreshTokenRepositoryTest {
 
     @Test
     void deletesOnlyTokensExpiredBeforeCutoff() {
-        Parent parent = parentRepository.save(
-                Parent.createLocal("cleanup@example.com", "hashed-password", LocalDate.of(1990, 1, 1)));
+        Parent parent = parentRepository.save(localParent("cleanup@example.com"));
         RefreshToken longExpired = RefreshToken.issue(
                 parent, "long-expired-hash", LocalDateTime.now().minusDays(40), false);
         RefreshToken recentlyExpired = RefreshToken.issue(
@@ -85,5 +81,13 @@ class RefreshTokenRepositoryTest {
         assertThat(refreshTokenRepository.findAll())
                 .extracting(RefreshToken::getTokenHash)
                 .containsExactlyInAnyOrder("recently-expired-hash", "still-valid-hash");
+    }
+
+    // 운영 코드에서는 AuthService가 설정값(app.storage.default-preset-key)을 넣어준다. 이 테스트는
+    // AuthService를 거치지 않고 엔티티를 직접 저장하므로, NOT NULL인 프로필 이미지 키를 직접 채운다.
+    private Parent localParent(String email) {
+        Parent parent = Parent.createLocal(email, "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.changeProfileImage("profile-presets/parent-avatar");
+        return parent;
     }
 }

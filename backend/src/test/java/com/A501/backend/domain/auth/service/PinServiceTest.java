@@ -40,7 +40,9 @@ class PinServiceTest {
 
     @BeforeEach
     void setUp() {
-        pinService = new PinService(parentRepository, passwordEncoder, PIN_PROPERTIES);
+        // ParentFinder는 목이 아니라 실제 구현을 끼운다 — 소프트 삭제 필터가 실제로 도는지까지
+        // 이 테스트가 계속 검증하도록 하기 위함이다.
+        pinService = new PinService(new ParentFinder(parentRepository), passwordEncoder, PIN_PROPERTIES);
     }
 
     @Test

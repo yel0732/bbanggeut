@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 /**
  * 튜토리얼 공용 껍데기.
@@ -115,24 +115,28 @@ function StepDots({ current, total }: { current: number; total: number }) {
  * 쓰기에서만 줄이 바뀐다.
  */
 export function SpeechBubble({
+  className = '',
   side = 'left',
   size = 'large',
   speech,
+  textScale = 1,
 }: {
+  className?: string
   side?: 'left' | 'right' | 'top'
   size?: 'large' | 'small'
   speech: string
+  textScale?: number
 }) {
   const large = size === 'large'
 
   return (
-    <div className="relative">
+    <div className={`relative ${className}`}>
       <div
         className="rounded-[26px] border-[3px] border-[#e2caa0] bg-white/92 text-center break-keep whitespace-pre-line text-[#6f4a1f] shadow-[0_6px_14px_rgba(120,80,30,0.18)]"
         style={{
           ...jua,
           padding: large ? '20px 30px' : '14px 24px',
-          fontSize: large ? 32 : 26,
+          fontSize: (large ? 32 : 26) * textScale,
           lineHeight: 1.4,
         }}
       >
@@ -162,9 +166,24 @@ export function SpeechBubble({
 }
 
 /** 데모·실습이 들어가는 패널. 도블 미리보기와 같은 테두리를 쓴다. */
-export function TutorialPanel({ children }: { children: ReactNode }) {
+export function TutorialPanel({
+  children,
+  className = '',
+  overflowVisible = false,
+  style,
+}: {
+  children: ReactNode
+  className?: string
+  overflowVisible?: boolean
+  style?: CSSProperties
+}) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border-[3px] border-dashed border-[#c39a5d] bg-[#fffaec]/70 p-3 shadow-[inset_0_2px_10px_rgba(120,80,30,0.12)]">
+    <div
+      className={`flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 ${
+        overflowVisible ? 'overflow-visible' : 'overflow-hidden'
+      } rounded-[24px] border-[3px] border-dashed border-[#c39a5d] bg-[#fffaec]/70 p-3 shadow-[inset_0_2px_10px_rgba(120,80,30,0.12)] ${className}`}
+      style={style}
+    >
       {children}
     </div>
   )

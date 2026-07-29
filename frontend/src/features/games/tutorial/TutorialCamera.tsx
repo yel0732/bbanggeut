@@ -20,6 +20,7 @@ const jua = { fontFamily: "'Jua', sans-serif" } as const
 
 export function TutorialCamera({
   detected,
+  gapClassName = 'gap-2',
   hintWhenWaiting,
   modelReady,
   progress,
@@ -28,6 +29,7 @@ export function TutorialCamera({
   videoRef,
 }: {
   detected: boolean
+  gapClassName?: string
   /** 아직 못 찾았을 때 보여 줄 안내 */
   hintWhenWaiting: string
   modelReady: boolean
@@ -56,7 +58,7 @@ export function TutorialCamera({
   const message = !ready ? '카메라를 준비하고 있어요' : hintWhenWaiting
 
   return (
-    <div className="flex w-full flex-col items-center gap-2">
+    <div className={`flex w-full flex-col items-center ${gapClassName}`}>
       <div
         className="relative w-full overflow-hidden rounded-[18px] bg-[#e7dcc4]"
         style={{

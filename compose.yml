@@ -54,6 +54,7 @@ services:
     logging: *default-logging
 
   ai-server:
+    image: ${AI_SERVER_IMAGE:-a501-ai-server}
     build:
       context: ./ai-server
     restart: unless-stopped
@@ -89,6 +90,7 @@ services:
     logging: *default-logging
 
   backend:
+    image: ${BACKEND_IMAGE:-a501-backend}
     build:
       context: ./backend
     restart: unless-stopped
@@ -131,7 +133,7 @@ services:
     logging: *default-logging
 
   nginx:
-    image: a501-nginx
+    image: ${NGINX_IMAGE:-a501-nginx}
     build:
       context: .
       dockerfile: deploy/nginx.Dockerfile

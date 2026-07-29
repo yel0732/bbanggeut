@@ -1,0 +1,37 @@
+name: a501-jenkins
+
+services:
+  jenkins:
+    image: a501-jenkins:lts
+    build:
+      context: ../..
+      dockerfile: deploy/jenkins/Dockerfile
+    container_name: a501-jenkins
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    group_add:
+      - "${DOCKER_GID:?DOCKER_GID is required}"
+    environment:
+      JAVA_OPTS: >-
+        -Djenkins.install.runSetupWizard=true
+        -Dhudson.security.csrf.GlobalCrumbIssuerConfiguration.DISABLE_CSRF_PROTECTION=false
+    volumes:
+      - /srv/jenkins/home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/a501-secrets:/srv/a501-secrets:ro
+      - /srv/a501-backups:/srv/a501-backups
+      - /srv/a501-deploy-state:/srv/a501-deploy-state
+    networks:
+      - default
+      - app_edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  app_edge:
+    external: true
+    name: a501_edge

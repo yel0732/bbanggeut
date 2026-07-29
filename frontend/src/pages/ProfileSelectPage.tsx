@@ -119,7 +119,8 @@ export function ProfileSelectPage() {
               id: String(child.childId),
               name: child.name,
               photoUrl:
-                local?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+                local?.photoUrl ??
+                childPhotoFromImageNum(child.profileImageNum),
               profileImageNum: child.profileImageNum,
             }
           }),
@@ -173,9 +174,7 @@ export function ProfileSelectPage() {
   const openPin = () => {
     clearPinTimers()
     setPin('')
-    const secondsLeft = Math.ceil(
-      (pinLockUntilRef.current - Date.now()) / 1000,
-    )
+    const secondsLeft = Math.ceil((pinLockUntilRef.current - Date.now()) / 1000)
     if (secondsLeft > 0) {
       setPinMessage(
         `5번 틀렸어요. ${formatPinLockTime(secondsLeft)} 후에 다시 시도할 수 있어요.`,
@@ -229,33 +228,34 @@ export function ProfileSelectPage() {
 
     if (next.length === PIN_LENGTH) {
       const confirmTimerId = window.setTimeout(() => {
-        void verifyParentPin(next).then(() => {
-          grantParentAccess()
-          setIsPinError(false)
-          setPinMessage('확인되었습니다 ✓')
-          const navigateTimerId = window.setTimeout(() => {
-            navigate(locationState?.parentRedirectTo ?? '/parent', {
-              replace: Boolean(locationState?.openParentPin),
-            })
-          }, 500)
-          pinTimersRef.current.push(navigateTimerId)
-          setPinFailCount(0)
-        }).catch(() => {
+        void verifyParentPin(next)
+          .then(() => {
+            grantParentAccess()
+            setIsPinError(false)
+            setPinMessage('확인되었습니다 ✓')
+            const navigateTimerId = window.setTimeout(() => {
+              navigate(locationState?.parentRedirectTo ?? '/parent', {
+                replace: Boolean(locationState?.openParentPin),
+              })
+            }, 500)
+            pinTimersRef.current.push(navigateTimerId)
+            setPinFailCount(0)
+          })
+          .catch(() => {
+            const nextFailCount = pinFailCount + 1
+            setPinFailCount(nextFailCount)
 
-        const nextFailCount = pinFailCount + 1
-        setPinFailCount(nextFailCount)
+            if (nextFailCount >= MAX_PIN_FAILS) {
+              startPinLock()
+              return
+            }
 
-        if (nextFailCount >= MAX_PIN_FAILS) {
-          startPinLock()
-          return
-        }
-
-        setIsPinError(true)
-        setPinMessage(
-          `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
-        )
-        setPin('')
-        })
+            setIsPinError(true)
+            setPinMessage(
+              `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
+            )
+            setPin('')
+          })
       }, 150)
       pinTimersRef.current.push(confirmTimerId)
     }
@@ -286,14 +286,13 @@ export function ProfileSelectPage() {
   })
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -354,57 +353,57 @@ export function ProfileSelectPage() {
             className={
               hasTwoChildRows
                 ? 'grid grid-cols-5 gap-x-6 gap-y-5'
-                : 'grid grid-flow-col auto-cols-[150px] gap-x-6'
+                : 'grid auto-cols-[150px] grid-flow-col gap-x-6'
             }
           >
             {childProfiles.map((profile) => {
-            const isActive = activeChildProfileId === profile.id
+              const isActive = activeChildProfileId === profile.id
 
-            return (
-              <button
-                aria-pressed={isActive}
-                className="relative flex w-[150px] flex-col items-center gap-3.5 border-none bg-none p-0 transition hover:-translate-y-1.5"
-                key={profile.id}
-                onClick={() => {
-                  saveActiveChildProfileId(profile.id)
-                  setActiveChildProfileId(profile.id)
-                  navigate('/child')
-                }}
-                type="button"
-              >
-                <div
-                  className={`size-[130px] overflow-hidden rounded-full border-[7px] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105 ${
-                    isActive
-                      ? 'border-[#dfff76] ring-[7px] ring-[#6eaa3f]'
-                      : 'border-white'
-                  }`}
-                >
-                  <img
-                    alt={profile.name}
-                    className="h-full w-full object-cover"
-                    decoding="async"
-                    src={profile.photoUrl ?? childAvatarUrl}
-                  />
-                </div>
-                {isActive ? (
-                  <span
-                    className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#65983e] px-3 py-0.5 text-[14px] whitespace-nowrap text-white shadow-md"
-                    style={jua}
-                  >
-                    현재 프로필
-                  </span>
-                ) : null}
-                <span
-                  className="text-[26px] text-white"
-                  style={{
-                    ...jua,
-                    paintOrder: 'stroke fill',
-                    WebkitTextStroke: '5px #3c7d38',
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className="relative flex w-[150px] flex-col items-center gap-3.5 border-none bg-none p-0 transition hover:-translate-y-1.5"
+                  key={profile.id}
+                  onClick={() => {
+                    saveActiveChildProfileId(profile.id)
+                    setActiveChildProfileId(profile.id)
+                    navigate('/child')
                   }}
+                  type="button"
                 >
-                  {profile.name}
-                </span>
-              </button>
+                  <div
+                    className={`size-[130px] overflow-hidden rounded-full border-[7px] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,0.3)] transition hover:scale-105 ${
+                      isActive
+                        ? 'border-[#dfff76] ring-[7px] ring-[#6eaa3f]'
+                        : 'border-white'
+                    }`}
+                  >
+                    <img
+                      alt={profile.name}
+                      className="h-full w-full object-cover"
+                      decoding="async"
+                      src={profile.photoUrl ?? childAvatarUrl}
+                    />
+                  </div>
+                  {isActive ? (
+                    <span
+                      className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[#65983e] px-3 py-0.5 text-[14px] whitespace-nowrap text-white shadow-md"
+                      style={jua}
+                    >
+                      현재 프로필
+                    </span>
+                  ) : null}
+                  <span
+                    className="text-[26px] text-white"
+                    style={{
+                      ...jua,
+                      paintOrder: 'stroke fill',
+                      WebkitTextStroke: '5px #3c7d38',
+                    }}
+                  >
+                    {profile.name}
+                  </span>
+                </button>
               )
             })}
           </div>
@@ -437,7 +436,7 @@ export function ProfileSelectPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[12px] left-[78px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}
@@ -457,7 +456,7 @@ export function ProfileSelectPage() {
             onClick={closePin}
           >
             <div
-              className="relative -top-[30px] h-[560px] w-[440px]"
+              className="relative h-[560px] w-[440px]"
               onClick={(event) => event.stopPropagation()}
             >
               <img

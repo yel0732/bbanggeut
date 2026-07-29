@@ -98,9 +98,9 @@ export function ReportDetailPage() {
   const listHref = `/reports?childId=${encodeURIComponent(childId)}&childName=${encodeURIComponent(childName)}`
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)]">
       <div
-        className="relative h-[720px] w-[1280px] shrink-0 origin-top overflow-hidden"
+        className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
         ref={canvasRef}
       >
         <audio loop preload="auto" ref={audioRef} src={bgmUrl} />
@@ -123,7 +123,7 @@ export function ReportDetailPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[24px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
           onClick={() => void toggleBgm()}
           type="button"
         >

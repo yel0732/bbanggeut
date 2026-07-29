@@ -169,7 +169,7 @@ class RealtimeDialogueManager:
         speak: SpeakCallback | None = None,
         stream_producer: ConversationStreamProducer | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-        low_confidence_threshold: float = 0.67,
+        low_confidence_threshold: float = 0.45,
         low_confidence_reask_limit: int = 1,
     ) -> None:
         self._pipeline = dialogue_pipeline
@@ -661,7 +661,7 @@ async def create_realtime_dialogue_session(
     speaker: SpeakerHandle | None = None,
     synthesis_service_factory: SynthesisServiceFactory | None = None,
     stream_producer_factory: StreamProducerFactory | None = None,
-    low_confidence_threshold: float = 0.67,
+    low_confidence_threshold: float = 0.45,
     low_confidence_reask_limit: int = 1,
 ) -> RealtimeDialogueSession:
     """Assemble one connection's dialogue session (T11 read-once included).

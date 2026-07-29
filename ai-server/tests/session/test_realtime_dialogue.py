@@ -313,8 +313,8 @@ class TestChildTurn:
 
 
 def _low_confidence_result(text: str = "심부란 노랐어.") -> SttResult:
-    # exp(-0.6) ≈ 0.549 < 기본 임계값 0.65 — 오인식 의심 신뢰도.
-    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-0.6)
+    # exp(-1.0) ≈ 0.368 < 기본 임계값 0.45 — 심하게 깨진 전사 수준의 신뢰도.
+    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-1.0)
 
 
 class TestLowConfidenceReask:
@@ -368,7 +368,7 @@ class TestLowConfidenceReask:
         await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
 
         assert len(pipeline.requests) == 1
-        assert pipeline.requests[0].stt_confidence == pytest.approx(0.5488, abs=1e-3)
+        assert pipeline.requests[0].stt_confidence == pytest.approx(0.3679, abs=1e-3)
 
     @pytest.mark.asyncio
     async def test_confident_final_resets_the_reask_counter(self) -> None:
@@ -380,6 +380,30 @@ class TestLowConfidenceReask:
 
         assert len(pipeline.requests) == 1  # 확신 턴만 파이프라인에 들어갔다
         assert state.consecutive_low_confidence_reasks == 1  # 세 번째가 다시 되물음
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("confidence_logprob", [-0.51, -0.42, -0.40])
+    async def test_real_speech_confidence_band_is_not_reasked(
+        self,
+        confidence_logprob: float,
+    ) -> None:
+        """실제 마이크 음성의 정확 전사대(≈0.60~0.67)는 되묻지 않는다.
+
+        회귀: 합성 음성 기준(0.67)으로 보정했을 때 정상 대화가 매 턴 되묻기에
+        걸렸다 — 재발화해도 같은 문장이라 되묻기가 정확도를 높이지 못했다.
+        """
+
+        manager, _, _, pipeline, _, sequencer = _build_manager()
+        result = SttResult(
+            text="오늘 친구랑 모래성을 쌓았어",
+            audio_seconds=2.0,
+            no_speech_prob=0.0,
+            avg_logprob=confidence_logprob,
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), result)
+
+        assert len(pipeline.requests) == 1
 
     @pytest.mark.asyncio
     async def test_missing_confidence_skips_the_gate(self) -> None:

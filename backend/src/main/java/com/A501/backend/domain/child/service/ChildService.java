@@ -11,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.exception.PinErrorCode;
+import com.A501.backend.domain.auth.service.ParentFinder;
 import com.A501.backend.domain.auth.service.PinService;
 import com.A501.backend.domain.child.dto.response.ChildResponse;
 import com.A501.backend.domain.child.entity.Child;
@@ -29,14 +30,22 @@ public class ChildService {
 
     private final ChildRepository childRepository;
     private final ChildProperties childProperties;
+    private final ParentFinder parentFinder;
     private final PinService pinService;
     private final ProfileImageService profileImageService;
 
+    // 탈퇴 계정의 만료 전 access token을 걸러낸다. JwtAuthenticationFilter는 서명만 보고
+    // 탈퇴 여부는 확인하지 않으므로 서비스 계층이 유일한 차단 지점이다.
+    //
+    // 게이트가 없으면 응답이 경로마다 어긋난다 — 조회는 200 빈 배열, 수정·삭제는 자녀가 소프트
+    // 삭제된 탓에 404가 나갔다. 프론트는 401을 기준으로 로그아웃 처리하므로 전부 401로 맞춘다.
     public boolean isNameAvailable(Long parentId, String name) {
+        parentFinder.assertActive(parentId);
         return !childRepository.existsByParentIdAndNameAndDeletedAtIsNull(parentId, name);
     }
 
     public List<ChildResponse> listChildren(Long parentId) {
+        parentFinder.assertActive(parentId);
         return childRepository.findAllByParentIdAndDeletedAtIsNull(parentId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -72,6 +81,7 @@ public class ChildService {
 
     @Transactional
     public ChildResponse updateChild(Long parentId, Long childId, String name, String imageKey) {
+        parentFinder.assertActive(parentId);
         // 키 검증을 먼저 한다 — 거절될 요청 때문에 이전 이미지를 지우는 일이 없도록.
         profileImageService.assertValidPreset(imageKey);
 
@@ -91,6 +101,7 @@ public class ChildService {
     // 없어 키를 만들 수 없으므로, 웹캠 사진은 생성 이후 이 경로로만 붙는다.
     @Transactional
     public ChildResponse uploadChildImage(Long parentId, Long childId, MultipartFile file) {
+        parentFinder.assertActive(parentId);
         // 소유권 검증을 먼저 한다 — 남의 자녀 경로에 사진을 올리려는 시도를 업로드 전에 막는다.
         Child child = findOwnedChild(parentId, childId);
         String previousKey = child.getProfileImageKey();
@@ -110,6 +121,7 @@ public class ChildService {
     // 롤백된다 — PinService 안에서 겪은 self-invocation 문제와 같은 종류의 버그다.
     @Transactional(noRollbackFor = BusinessException.class)
     public void deleteChild(Long parentId, Long childId, String pin) {
+        parentFinder.assertActive(parentId);
         // 소유권 검증(404)을 PIN 검증보다 먼저 한다 — 어차피 404로 끝날 요청 때문에
         // PIN 실패 카운터를 소모하지 않기 위함이다. PIN 검증은 대상 자녀와 무관하게 호출자
         // 본인 계정만 보므로, 순서를 바꿔도 자녀 존재 여부가 새어나가지는 않는다.

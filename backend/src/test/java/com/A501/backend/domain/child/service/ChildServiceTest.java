@@ -22,6 +22,7 @@ import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.common.storage.ImageErrorCode;
 import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.exception.PinErrorCode;
+import com.A501.backend.domain.auth.service.ParentFinder;
 import com.A501.backend.domain.auth.service.PinService;
 import com.A501.backend.domain.child.dto.response.ChildResponse;
 import com.A501.backend.domain.child.entity.Child;
@@ -44,6 +45,10 @@ class ChildServiceTest {
     @Mock
     private ChildRepository childRepository;
 
+    // 탈퇴 게이트용. 목이라 기본적으로 아무것도 하지 않으므로 "활성 계정"으로 동작한다.
+    @Mock
+    private ParentFinder parentFinder;
+
     @Mock
     private PinService pinService;
 
@@ -54,7 +59,8 @@ class ChildServiceTest {
 
     @BeforeEach
     void setUp() {
-        childService = new ChildService(childRepository, CHILD_PROPERTIES, pinService, profileImageService);
+        childService = new ChildService(
+                childRepository, CHILD_PROPERTIES, parentFinder, pinService, profileImageService);
     }
 
     @Test

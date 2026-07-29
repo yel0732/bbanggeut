@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import com.A501.backend.domain.auth.security.AccountPurgeProperties;
 import com.A501.backend.domain.child.service.ChildPurgeService;
 import com.A501.backend.domain.childdiary.service.ChildDiaryPurgeService;
+import com.A501.backend.domain.conversation.service.ConversationPurgeService;
 import com.A501.backend.domain.game.service.GamePurgeService;
 import com.A501.backend.domain.report.service.ReportPurgeService;
 
@@ -22,9 +23,8 @@ import lombok.extern.slf4j.Slf4j;
  * 묶으면 대량 삭제 시 락 점유 시간이 길어진다. 모든 단계가 idempotent라 중간에 실패해 일부만
  * 삭제된 상태로 남아도 다음 주기 재시도로 수렴한다.
  *
- * <p>conversation 도메인은 아직 childIds 기반 purge를 제공하지 않아 연결되지 않았다.
- * 그래서 <b>이 서비스만으로는 파기가 완결되지 않는다</b> — 대화 데이터가 남는다.
- * 자세한 내용은 docs/account-hard-delete-role-plan.md 참고.
+ * <p>도메인 삭제 순서는 AccountHardDeleteServiceTest가 InOrder로 고정한다. 도메인 간 참조에는
+ * FK가 없어 순서를 틀려도 DB가 막지 않고 고아 데이터가 조용히 남기 때문이다.
  */
 @Slf4j
 @Service
@@ -39,6 +39,7 @@ public class AccountHardDeleteService {
     private final ChildPurgeService childPurgeService;
     private final ReportPurgeService reportPurgeService;
     private final ChildDiaryPurgeService childDiaryPurgeService;
+    private final ConversationPurgeService conversationPurgeService;
     private final GamePurgeService gamePurgeService;
 
     /**
@@ -85,8 +86,8 @@ public class AccountHardDeleteService {
         // child_id를 참조하는 도메인들. child row보다 먼저 지워야 고아가 남지 않는다.
         reportPurgeService.purgeByParentIdAndChildIds(parentId, childIds);
         childDiaryPurgeService.purgeByChildIds(childIds);
+        conversationPurgeService.purgeByChildIds(childIds);
         gamePurgeService.purgeByChildIds(childIds);
-        // TODO: conversationPurgeService.purgeByChildIds(childIds) — 담당자 구현 대기
 
         // refresh token은 parent보다 먼저여야 한다(FK + @ManyToOne).
         authPurgeService.hardDeleteRefreshTokens(parentId);

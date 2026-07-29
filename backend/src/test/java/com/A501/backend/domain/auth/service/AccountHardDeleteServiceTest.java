@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.A501.backend.domain.auth.security.AccountPurgeProperties;
 import com.A501.backend.domain.child.service.ChildPurgeService;
 import com.A501.backend.domain.childdiary.service.ChildDiaryPurgeService;
+import com.A501.backend.domain.conversation.service.ConversationPurgeService;
 import com.A501.backend.domain.game.service.GamePurgeService;
 import com.A501.backend.domain.report.service.ReportPurgeService;
 
@@ -42,6 +43,8 @@ class AccountHardDeleteServiceTest {
     @Mock
     private ChildDiaryPurgeService childDiaryPurgeService;
     @Mock
+    private ConversationPurgeService conversationPurgeService;
+    @Mock
     private GamePurgeService gamePurgeService;
 
     private AccountHardDeleteService service(Duration gracePeriod, int batchSize) {
@@ -52,6 +55,7 @@ class AccountHardDeleteServiceTest {
                 childPurgeService,
                 reportPurgeService,
                 childDiaryPurgeService,
+                conversationPurgeService,
                 gamePurgeService);
     }
 
@@ -70,13 +74,15 @@ class AccountHardDeleteServiceTest {
 
         InOrder order = inOrder(
                 authPurgeService, profilePurgeService, childPurgeService,
-                reportPurgeService, childDiaryPurgeService, gamePurgeService);
+                reportPurgeService, childDiaryPurgeService, conversationPurgeService,
+                gamePurgeService);
         // childIds는 child row를 지우기 전에 확보해야 한다.
         order.verify(childPurgeService).findChildIdsIncludingDeleted(PARENT_ID);
         order.verify(profilePurgeService).deleteParentProfileImage(PARENT_ID);
         order.verify(childPurgeService).deleteChildProfileImagesByParentId(PARENT_ID);
         order.verify(reportPurgeService).purgeByParentIdAndChildIds(PARENT_ID, CHILD_IDS);
         order.verify(childDiaryPurgeService).purgeByChildIds(CHILD_IDS);
+        order.verify(conversationPurgeService).purgeByChildIds(CHILD_IDS);
         order.verify(gamePurgeService).purgeByChildIds(CHILD_IDS);
         // refresh token은 parent보다 먼저(FK), parent는 반드시 마지막.
         order.verify(authPurgeService).hardDeleteRefreshTokens(PARENT_ID);
@@ -94,7 +100,7 @@ class AccountHardDeleteServiceTest {
 
         verifyNoInteractions(
                 profilePurgeService, childPurgeService, reportPurgeService,
-                childDiaryPurgeService, gamePurgeService);
+                childDiaryPurgeService, conversationPurgeService, gamePurgeService);
         verify(authPurgeService, never()).hardDeleteParent(anyLong());
         verify(authPurgeService, never()).hardDeleteRefreshTokens(anyLong());
     }
@@ -122,7 +128,7 @@ class AccountHardDeleteServiceTest {
 
         verifyNoInteractions(
                 profilePurgeService, childPurgeService, reportPurgeService,
-                childDiaryPurgeService, gamePurgeService);
+                childDiaryPurgeService, conversationPurgeService, gamePurgeService);
     }
 
     @Test

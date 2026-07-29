@@ -7,6 +7,30 @@ DIARY 스키마 기록. 운영 스키마 변경은 Flyway 마이그레이션으�
 src/main/resources/db/migration/V1__initial_schema.sql이며, 이후 변경은 V2 이상으로 누적한다.
 컬럼을 바꾸면 Entity, 이 문서, Flyway 마이그레이션을 함께 갱신한다.
 
+## 외래 키 방침 — 도메인 내부만 건다
+
+업무 테이블의 FK는 도메인 **안쪽** 참조에만 건다. 도메인을 넘는 참조에는 걸지 않는다.
+
+    걸려 있음  refresh_token.parent_id      -> parent            (auth 내부)
+               fruit_score_config.*         -> rule/fruit_type   (game 내부)
+               card_round.game_session_id   -> game_session      (game 내부)
+
+    걸지 않음  child.parent_id              -> parent
+               conversation_session.child_id, daily_report.child_id,
+               child_diary.child_id, game_session.child_id  -> child
+               report_game_result.game_session_id,
+               conversation_game_session.game_session_id    -> game_session
+
+도메인 간 결합을 만들지 않는다는 코드 컨벤션의 DB 레벨 반영이다. 엔티티도 같은 규칙을 따른다 —
+@ManyToOne/@JoinColumn을 쓰는 엔티티는 RefreshToken과 FruitScoreConfig 둘뿐이고 모두 도메인
+내부다. Child는 @ManyToOne Parent가 아니라 Long parentId를 들고 있다.
+
+**결과: 도메인 간 참조 무결성과 삭제 순서는 전적으로 애플리케이션 책임이다.**
+회원 탈퇴 hard delete처럼 여러 도메인을 가로지르는 삭제는 leaf부터 순서대로 지워야 하며,
+순서를 틀리거나 일부를 누락해도 DB는 막지 않고 고아 row가 조용히 남는다.
+예외는 refresh_token 하나로, FK가 있어 parent보다 먼저 지우지 않으면 제약 위반으로 실패한다.
+(상세: docs/account-hard-delete-role-plan.md)
+
 -- External child-domain ownership contract used by report adapters:
 -- child.child_id BIGINT PRIMARY KEY
 -- child.parent_id BIGINT NOT NULL

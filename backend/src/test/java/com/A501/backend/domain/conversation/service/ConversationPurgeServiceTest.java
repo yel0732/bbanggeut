@@ -2,6 +2,7 @@ package com.A501.backend.domain.conversation.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,6 +46,30 @@ class ConversationPurgeServiceTest {
         order.verify(contentPurger).purge("conv-1");
         order.verify(contentPurger).purge("conv-2");
         order.verify(sessionRepository).deleteByChildIds(CHILD_IDS);
+    }
+
+    // purge()는 DB 삭제를 끝낸 뒤 마지막에 Redis를 정리하므로, 여기 오는 예외는 사실상
+    // Redis 장애다. 삼키지 않으면 Redis가 죽어 있는 동안 계정 파기 전체가 매 주기 실패한다
+    // (로컬에서 Redis 없이 돌렸을 때 실제로 발생했다). 세션 삭제까지 진행되어야 한다.
+    @Test
+    void purgeByChildIds_deletesSessionsEvenWhenRealtimeCleanupFails() {
+        when(sessionRepository.findIdsByChildIds(CHILD_IDS)).thenReturn(List.of("conv-1", "conv-2"));
+        doThrow(new IllegalStateException("redis down")).when(contentPurger).purge("conv-1");
+
+        conversationPurgeService.purgeByChildIds(CHILD_IDS);
+
+        verify(contentPurger).purge("conv-2");
+        verify(sessionRepository).deleteByChildIds(CHILD_IDS);
+    }
+
+    @Test
+    void purgeByChildIds_deletesSessionsWhenEveryRealtimeCleanupFails() {
+        when(sessionRepository.findIdsByChildIds(CHILD_IDS)).thenReturn(List.of("conv-1"));
+        doThrow(new IllegalStateException("redis down")).when(contentPurger).purge(anyString());
+
+        conversationPurgeService.purgeByChildIds(CHILD_IDS);
+
+        verify(sessionRepository).deleteByChildIds(CHILD_IDS);
     }
 
     @Test

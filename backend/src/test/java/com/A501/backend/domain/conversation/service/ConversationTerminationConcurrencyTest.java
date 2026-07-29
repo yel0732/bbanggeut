@@ -58,7 +58,7 @@ class ConversationTerminationConcurrencyTest {
         // 인증 없이 도는 이 테스트에서 local 기본 보호자(app.local.mock-principal-id)와
         // 맞춘다.
         Long childId = childRepository
-                .saveAndFlush(Child.create(1L, "테스터", 1))
+                .saveAndFlush(Child.create(1L, "테스터", "profile-presets/child-avatar"))
                 .getChildId();
         ConversationSession session = ConversationSession.create(
                 CONVERSATION_ID, childId, null, ContextType.DAILY, ConversationGoal.DIARY, 6);

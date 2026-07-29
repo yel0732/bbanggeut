@@ -35,6 +35,7 @@ from app.dialogue.pipeline import (
     DialogueTurnPipeline,
     DialogueTurnRequest,
     DialogueTurnResponse,
+    conversation_opening_question,
 )
 from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
@@ -364,6 +365,33 @@ class RealtimeDialogueManager:
         # last_question은 갱신하지 않는다 — 재발화는 원래 질문에 대한 답으로
         # 평가되어야 한다. 질문 수도 세지 않는다(무응답 재질문 §7-E와 동일).
 
+    # --- 대화 오프닝 ----------------------------------------------------------
+
+    def open_conversation(self) -> None:
+        """연결 직후 AI가 첫 질문을 먼저 던진다 — 아이가 먼저 말할 필요가 없다.
+
+        주제 전환 오프닝과 동일하게 첫 질문으로 세며(question_count=1),
+        last_question을 세팅해 아이의 첫 답변이 이 질문에 대한 답으로 평가되게
+        한다. 이미 질문이 나갔거나 진행된 세션(스냅숏 복원)에는 다시 열지 않는다.
+        """
+
+        state = self._state
+        topic = state.current_topic
+        if (
+            state.terminated
+            or state.last_question is not None
+            or topic.question_count > 0
+        ):
+            return
+        question = conversation_opening_question(topic.snapshot.type)
+        ai_ref = self._publish_assistant_text(question)
+        if ai_ref is None:
+            return
+        topic.question_count = 1
+        target = select_next_question_target(topic.slots)
+        self._emit_ai_turn_generated(ai_ref, question, question, target, topic)
+        state.remember_question(question)
+
     # --- no-response (ADR-018 연결) -----------------------------------------
 
     def handle_no_speech(self) -> None:
@@ -674,6 +702,10 @@ async def create_realtime_dialogue_session(
 
     if stream_producer is not None:
         stream_producer.publish_session_started(datetime.now(timezone.utc))
+
+    # 연결이 열린 직후 AI가 먼저 첫 질문을 던진다 — DataChannel은 이 조립이
+    # 실행되는 시점(on_data_channel_received)에 이미 열려 있다.
+    manager.open_conversation()
 
     audio_sink = stt_pipeline_factory(
         publisher,

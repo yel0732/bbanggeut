@@ -518,6 +518,105 @@ class TestNoSpeechLadder:
         assert channel.sent == []
 
 
+class TestConversationOpening:
+    """연결 직후 AI가 먼저 첫 질문을 던진다 — 아이가 먼저 말할 필요가 없다."""
+
+    def test_opening_publishes_the_first_question_and_counts_it(self) -> None:
+        manager, state, channel, _, _, _ = _build_manager()
+
+        manager.open_conversation()
+
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+        ]
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+        )
+        assert state.current_topic.question_count == 1
+        assert state.last_question == channel.sent[1]["payload"]["text"]
+
+    def test_opening_uses_the_daily_question_without_games(self) -> None:
+        manager, _, channel, _, _, _ = _build_manager(
+            snapshot=default_context_snapshot("conv_daily")
+        )
+
+        manager.open_conversation()
+
+        assert channel.sent[1]["payload"]["text"] == "오늘 있었던 일 하나를 말해 줄래?"
+
+    def test_opening_is_idempotent(self) -> None:
+        manager, state, channel, _, _, _ = _build_manager()
+
+        manager.open_conversation()
+        manager.open_conversation()
+
+        assert len(channel.sent) == 2
+        assert state.current_topic.question_count == 1
+
+    def test_opening_skips_a_session_with_restored_progress(self) -> None:
+        """스냅숏이 진행 중이던 카운트를 복원했으면 다시 열지 않는다."""
+
+        manager, state, channel, _, _, _ = _build_manager()
+        state.current_topic.question_count = 3
+
+        manager.open_conversation()
+
+        assert channel.sent == []
+
+    def test_opening_emits_ai_turn_generated_with_count_one(self) -> None:
+        manager, _, _, stream, _ = _build_manager_with_stream()
+
+        manager.open_conversation()
+
+        ai = next(c for c in stream.calls if c[0] == "AI_TURN_GENERATED")
+        assert ai[9] == 1  # topic_question_count
+        assert ai[5] == "GAME"
+
+    @pytest.mark.asyncio
+    async def test_assembly_opens_the_conversation(self) -> None:
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel,
+            conversation_id="conv_open",
+            realtime_session_id="rt_1",
+            session_epoch=1,
+            logger=_LOGGER,
+        )
+
+        def stt_pipeline_factory(
+            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+        ):
+            class _SinkStub:
+                async def aclose(self) -> None: ...
+
+            return _SinkStub()
+
+        async def read_snapshot(conversation_id: str):
+            return _TWO_TOPIC_SNAPSHOT
+
+        session = await create_realtime_dialogue_session(
+            publisher=publisher,
+            conversation_id="conv_open",
+            read_snapshot=read_snapshot,
+            default_snapshot=default_context_snapshot,
+            dialogue_pipeline=_FakeDialoguePipeline(),
+            termination_policy=DialogueTerminationPolicy(
+                required_targets=frozenset(QuestionTarget)
+            ),
+            is_epoch_current=lambda: True,
+            stt_pipeline_factory=stt_pipeline_factory,
+            logger=_LOGGER,
+        )
+
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+        ]
+        assert session.state.last_question is not None
+        await session.aclose()
+
+
 class TestSessionAssembly:
     @pytest.mark.asyncio
     async def test_missing_snapshot_falls_back_to_the_default_topic(self) -> None:

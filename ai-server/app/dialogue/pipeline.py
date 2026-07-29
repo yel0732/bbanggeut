@@ -565,6 +565,8 @@ def fixed_assistant_messages() -> tuple[str, ...]:
         *SIMPLIFIED_QUESTION_BY_TARGET.values(),
         *CHOICE_QUESTION_BY_TARGET.values(),
         ASK_TO_REPEAT_PROMPT,
+        # 연결 직후 오프닝 질문(DAILY 오프닝은 EVENT 단순화 질문과 동일해 위에 포함).
+        *(conversation_opening_question(topic) for topic in DialogueTopic),
     ]
     for current in DialogueTopic:
         for following in DialogueTopic:
@@ -780,10 +782,26 @@ def _to_acknowledgement(child_answer: str) -> str:
     return f"{statement}구나."
 
 
+_GAME_OPENING_QUESTION = "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+
+
+def conversation_opening_question(topic: DialogueTopic) -> str:
+    """연결 직후 AI가 먼저 던지는 주제별 고정 첫 질문.
+
+    주제 전환용 ``_topic_opening_question``과 달리 대화의 맨 처음에 쓰므로
+    "이번에는/다른 일도" 같은 전환 표현이 없어야 한다. DAILY는 이미 검증된
+    EVENT 단순화 질문을 재사용한다.
+    """
+
+    if topic is DialogueTopic.GAME:
+        return _GAME_OPENING_QUESTION
+    return SIMPLIFIED_QUESTION_BY_TARGET[QuestionTarget.EVENT]
+
+
 def _topic_opening_question(topic: DialogueTopic) -> str:
     if topic is DialogueTopic.DAILY:
         return "이번에는 오늘 있었던 다른 일도 이야기해 줄래?"
-    return "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+    return _GAME_OPENING_QUESTION
 
 
 def _topic_transition_message(

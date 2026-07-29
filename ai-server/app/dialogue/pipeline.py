@@ -64,6 +64,7 @@ from app.dialogue.policy.target import (
     QuestionTarget,
     select_next_question_target,
 )
+from app.dialogue.policy.stop_intent import is_stop_request
 from app.dialogue.policy.termination import (
     ChildTurnSignal,
     DialoguePolicyRequest,
@@ -313,6 +314,19 @@ class DialogueTurnPipeline:
         self,
         request: DialogueTurnRequest,
     ) -> DialogueTurnResponse:
+        if is_stop_request(request.child_answer):
+            # 아이의 명시적 종료 의사는 모든 정책보다 우선한다(§9). 다음 주제가
+            # 남아 있어도 전환하지 않고 즉시 종료하며, 종료 문구에 슬롯 분석
+            # LLM을 돌리지 않는다. COMPLETED로 종료되므로 그때까지 채운 슬롯으로
+            # 일기 생성이 가능하다.
+            return DialogueTurnResponse(
+                updated_slots=request.current_slots.model_copy(deep=True),
+                decision=DialogueTurnDecision.TERMINATE_SESSION,
+                termination_reason=(
+                    DialogueTerminationReason.CHILD_REQUESTED_STOP
+                ),
+            )
+
         asked_target = _current_unanswered_target(request)
         slot_analysis = analyze_answer_with_retry(
             DiaryAnswerAnalysisRequest(

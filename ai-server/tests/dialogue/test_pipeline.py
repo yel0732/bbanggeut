@@ -18,7 +18,10 @@ from app.dialogue.question.fallback import (
     QuestionGenerationSource,
     QuestionGenerationStatus,
 )
-from app.dialogue.policy.termination import DialogueTerminationPolicy
+from app.dialogue.policy.termination import (
+    DialogueTerminationPolicy,
+    DialogueTerminationReason,
+)
 
 
 class FakeClient:
@@ -321,6 +324,77 @@ async def test_redirects_off_topic_answer_with_brief_acknowledgement() -> None:
     assert relevance_payload["currentQuestion"] == "그때 어떤 기분이었어?"
     assert relevance_payload["childAnswer"] == "그런데 지금은 배가 고파."
     assert client.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stop_request_terminates_without_llm_calls() -> None:
+    """아이의 종료 의사는 슬롯 분석 없이 즉시 CHILD_REQUESTED_STOP으로 종료한다."""
+
+    client = FakeClient([])
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="과일 게임", emotion="신남"),
+            "current_question": "왜 그런 마음이 들었는지 말해 줄래?",
+            "child_answer": "이제 그만할래",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.TERMINATE_SESSION
+    assert result.termination_reason is DialogueTerminationReason.CHILD_REQUESTED_STOP
+    assert result.updated_slots == request.current_slots
+    assert client.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_stop_request_never_switches_to_the_next_topic() -> None:
+    """다음 주제가 남아 있어도 종료 의사를 전환으로 바꾸지 않는다."""
+
+    client = FakeClient([])
+    request = _request().model_copy(
+        update={
+            "current_topic": DialogueTopic.GAME,
+            "next_topic": DialogueTopic.DAILY,
+            "current_question": "게임에서 뭐가 재미있었어?",
+            "child_answer": "그만하고 싶어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.TERMINATE_SESSION
+    assert result.termination_reason is DialogueTerminationReason.CHILD_REQUESTED_STOP
+    assert result.assistant_message is None
+    assert result.assistant_question is None
+
+
+@pytest.mark.asyncio
+async def test_story_mentioning_stop_words_continues_the_dialogue() -> None:
+    """이야기 속에 '그만'이 포함된 발화는 종료로 오탐하지 않는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":"동생과 놀이","people":["동생"],"place":null,'
+                '"emotion":"속상함","emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            '{"answered":true,"childQuestion":false,"bridgeResponse":null}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="동생과 놀이"),
+            "current_question": "그때 어떤 기분이었어?",
+            "child_answer": "동생이 그만하라고 해서 속상했어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.updated_slots.emotion == "속상함"
 
 
 @pytest.mark.asyncio

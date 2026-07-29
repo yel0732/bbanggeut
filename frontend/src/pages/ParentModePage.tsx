@@ -30,6 +30,8 @@ import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
 import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
 import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
+import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
+import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
@@ -40,6 +42,7 @@ import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreat
 import {
   createChildProfile as createBackendChildProfile,
   changeParentPin,
+  deleteChildProfile as deleteBackendChildProfile,
   getChildProfiles as getBackendChildProfiles,
   updateParentProfileImage,
   updateChildProfile as updateBackendChildProfile,
@@ -181,6 +184,7 @@ export function ParentModePage() {
   const [isParentCameraOn, setIsParentCameraOn] = useState(false)
   const [pin, setPin] = useState('')
   const [pinStep, setPinStep] = useState<PinStep>('current')
+  const [verifiedCurrentPin, setVerifiedCurrentPin] = useState('')
   const [newPin, setNewPin] = useState('')
   const [pinMessage, setPinMessage] = useState(
     '현재 핀 번호 4자리를 입력해 주세요.',
@@ -212,6 +216,10 @@ export function ParentModePage() {
   const [editingChildProfile, setEditingChildProfile] =
     useState<ChildProfile | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialog>(null)
+  const [isChildDeletionPinOpen, setIsChildDeletionPinOpen] = useState(false)
+  const [childDeletionPin, setChildDeletionPin] = useState('')
+  const [childDeletionMessage, setChildDeletionMessage] = useState('')
+  const [isDeletingChildProfile, setIsDeletingChildProfile] = useState(false)
 
   useEffect(() => {
     const video = parentVideoRef.current
@@ -423,6 +431,7 @@ export function ParentModePage() {
 
   const resetPin = () => {
     setPin('')
+    setVerifiedCurrentPin('')
     setNewPin('')
     setPinStep('current')
     const secondsLeft = Math.ceil(
@@ -532,6 +541,7 @@ export function ParentModePage() {
       void verifyParentPin(nextPin)
         .then(() => {
           setPinFailCount(0)
+          setVerifiedCurrentPin(nextPin)
           setPin('')
           setPinStep('new')
           setPinMessage('변경할 새 PIN 번호를 입력해 주세요.')
@@ -566,10 +576,11 @@ export function ParentModePage() {
     }
 
     if (nextPin === newPin) {
-      void changeParentPin(newPin, nextPin)
+      void changeParentPin(verifiedCurrentPin, newPin)
         .then(() => setPinMessage('PIN 번호가 변경되었어요.'))
         .catch((error: unknown) => {
           setPin('')
+          setVerifiedCurrentPin('')
           setNewPin('')
           setPinStep('current')
           setPinMessage(error instanceof Error ? error.message : 'PIN 번호를 변경하지 못했어요.')
@@ -671,16 +682,80 @@ export function ParentModePage() {
   }
 
   const removeChildProfile = (profile: ChildProfile) => {
+    setIsChildDeletionPinOpen(false)
+    setChildDeletionPin('')
+    setChildDeletionMessage('')
     setNoticeDialog({ kind: 'delete', profile })
   }
 
-  const confirmChildProfileRemoval = () => {
-    if (!noticeDialog || noticeDialog.kind !== 'delete') return
-    updateChildProfiles(
-      profiles.filter((item) => item.id !== noticeDialog.profile.id),
-    )
+  const closeChildProfileRemoval = () => {
+    if (isDeletingChildProfile) return
     setNoticeDialog(null)
+    setIsChildDeletionPinOpen(false)
+    setChildDeletionPin('')
+    setChildDeletionMessage('')
   }
+
+  const openChildDeletionPin = () => {
+    setChildDeletionPin('')
+    setChildDeletionMessage('')
+    setIsChildDeletionPinOpen(true)
+  }
+
+  const confirmChildProfileRemoval = (deletionPin: string) => {
+    if (!noticeDialog || noticeDialog.kind !== 'delete') return
+    const profileId = noticeDialog.profile.id
+    setIsDeletingChildProfile(true)
+    setChildDeletionMessage('')
+
+    void deleteBackendChildProfile(Number(profileId), deletionPin)
+      .then(() => {
+        updateChildProfiles(profiles.filter((item) => item.id !== profileId))
+        setNoticeDialog(null)
+        setIsChildDeletionPinOpen(false)
+        setChildDeletionPin('')
+        setChildDeletionMessage('')
+      })
+      .catch((error: unknown) => {
+        setChildDeletionPin('')
+        setChildDeletionMessage(
+          error instanceof Error ? error.message : '프로필을 삭제하지 못했어요.',
+        )
+      })
+      .finally(() => setIsDeletingChildProfile(false))
+  }
+
+  const pressChildDeletionPinKey = (key: string) => {
+    if (isDeletingChildProfile) return
+    if (key === '←') {
+      setChildDeletionPin((value) => value.slice(0, -1))
+      setChildDeletionMessage('')
+      return
+    }
+    if (!/^\d$/.test(key) || childDeletionPin.length >= 4) return
+
+    const nextPin = childDeletionPin + key
+    setChildDeletionPin(nextPin)
+    setChildDeletionMessage('')
+    if (nextPin.length === 4) confirmChildProfileRemoval(nextPin)
+  }
+
+  useEffect(() => {
+    if (!isChildDeletionPinOpen) return
+
+    const handleChildDeletionPinKeyboard = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) {
+        event.preventDefault()
+        pressChildDeletionPinKey(event.key)
+      } else if (event.key === 'Backspace') {
+        event.preventDefault()
+        pressChildDeletionPinKey('←')
+      }
+    }
+
+    window.addEventListener('keydown', handleChildDeletionPinKeyboard)
+    return () => window.removeEventListener('keydown', handleChildDeletionPinKeyboard)
+  })
 
   const childPageCount = Math.max(1, Math.ceil(profiles.length / 3))
   const currentChildPage = Math.min(childListPage, childPageCount - 1)
@@ -1664,14 +1739,90 @@ export function ParentModePage() {
             </section>
           </div>
         ) : null}
-        {noticeDialog?.kind === 'delete' ? (
+        {noticeDialog?.kind === 'delete' && !isChildDeletionPinOpen ? (
           <ParentNoticeDialog
-            confirmLabel="삭제"
+            confirmLabel="PIN 입력"
             message={`${noticeDialog.profile.name} 프로필을 삭제할까요?`}
-            onCancel={() => setNoticeDialog(null)}
-            onConfirm={confirmChildProfileRemoval}
+            onCancel={closeChildProfileRemoval}
+            onConfirm={openChildDeletionPin}
             title="프로필 삭제"
           />
+        ) : null}
+        {noticeDialog?.kind === 'delete' && isChildDeletionPinOpen ? (
+          <div
+            aria-modal="true"
+            className="absolute inset-0 z-100 flex items-center justify-center bg-[rgba(18,30,18,0.6)]"
+            onClick={closeChildProfileRemoval}
+            role="dialog"
+          >
+            <div
+              className="relative -top-[30px] h-[560px] w-[440px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <img
+                alt=""
+                className="pointer-events-none absolute inset-0 size-full object-contain"
+                src={pinPanelUrl}
+              />
+              <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
+                <h2 className="text-center text-[30px] text-[#3a7d2c]" style={jua}>
+                  부모 확인
+                </h2>
+                <p className="mt-1.5 text-center text-[17px] text-[#8a7a5a]" style={jua}>
+                  삭제하려면 PIN 번호 4자리를 입력하세요
+                </p>
+                <div className="mt-5 mb-1.5 flex justify-center gap-4">
+                  {Array.from({ length: 4 }).map((_, index) => {
+                    const isFilled = index < childDeletionPin.length
+                    return (
+                      <span className="flex size-[30px] items-center justify-center" key={index}>
+                        <img
+                          alt=""
+                          className={isFilled ? 'size-[56px] max-w-none object-contain' : 'size-[30px] object-contain'}
+                          src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
+                        />
+                      </span>
+                    )
+                  })}
+                </div>
+                <div
+                  className="h-[22px] text-center text-[16px] text-[#d1483a]"
+                  style={jua}
+                >
+                  {isDeletingChildProfile
+                    ? '확인하고 있어요...'
+                    : childDeletionMessage || '.'}
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-2.5">
+                  {KEYS.map((key, index) =>
+                    key ? (
+                      <button
+                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={isDeletingChildProfile}
+                        key={key}
+                        onClick={() => pressChildDeletionPinKey(key)}
+                        style={{ ...jua, backgroundImage: `url(${pinKeyUrl})` }}
+                        type="button"
+                      >
+                        {key}
+                      </button>
+                    ) : (
+                      <div key={`blank-${index}`} />
+                    ),
+                  )}
+                </div>
+              </div>
+              <button
+                aria-label="닫기"
+                className="absolute -top-4 -right-4 grid size-[46px] place-items-center rounded-full border-[3px] border-white bg-[#cf6f4e] text-xl text-white shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 disabled:opacity-40"
+                disabled={isDeletingChildProfile}
+                onClick={closeChildProfileRemoval}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

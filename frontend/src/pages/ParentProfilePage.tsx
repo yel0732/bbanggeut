@@ -542,10 +542,13 @@ export function ParentProfilePage() {
             src={childAvatarUrl}
           />
           <div
-            className="absolute top-[77.5%] left-[42%] text-[27px] text-[#3a7d2c]"
+            className="absolute top-[77.5%] left-[42%] flex items-baseline gap-2 text-[27px] text-[#3a7d2c]"
             style={jua}
           >
-            아이 프로필
+            <span>아이 프로필</span>
+            <span className="text-[18px] text-[#8a7a55]">
+              ({childProfileCount}/{MAX_CHILD_PROFILES})
+            </span>
           </div>
           <button
             className="absolute top-[80.5%] left-[37.5%] flex h-[78px] w-[276px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[17px] text-white active:translate-y-0.5"

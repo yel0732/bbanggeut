@@ -11,9 +11,11 @@ import {
 
 import {
   getChildReports,
+  getReportNotificationPreference,
   getStoredAccessToken,
   isBackendChildId,
   subscribeToReportNotifications,
+  updateReportNotificationPreference,
 } from '@/api/parentMode'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -361,6 +363,25 @@ export function ParentModePage() {
     if (!getStoredAccessToken()) return
     const controller = new AbortController()
 
+    void getReportNotificationPreference(controller.signal)
+      .then((preference) => {
+        setNotification(preference)
+        window.localStorage.setItem(
+          NOTIFICATION_KEY,
+          JSON.stringify(preference),
+        )
+      })
+      .catch(() => {
+        // Keep the last local preference while the server is unavailable.
+      })
+
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!getStoredAccessToken() || !notification.enabled) return
+    const controller = new AbortController()
+
     void subscribeToReportNotifications((event) => {
       const childName = event.childName.trim()
       const message = childName
@@ -388,7 +409,7 @@ export function ParentModePage() {
     })
 
     return () => controller.abort()
-  }, [])
+  }, [notification.enabled])
 
   const openArrivedReport = (arrival: ReportArrivalNotification) => {
     const profile = profiles.find(
@@ -804,9 +825,20 @@ export function ParentModePage() {
   }
 
   const saveNotification = () => {
-    window.localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notification))
-    setSavedMessage('알림 설정을 저장했어요.')
-    window.setTimeout(() => setPopup(null), 500)
+    void updateReportNotificationPreference(notification)
+      .then((saved) => {
+        setNotification(saved)
+        window.localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(saved))
+        setSavedMessage('알림 설정을 저장했어요.')
+        window.setTimeout(() => setPopup(null), 500)
+      })
+      .catch((error: unknown) => {
+        setSavedMessage(
+          error instanceof Error
+            ? error.message
+            : '알림 설정을 저장하지 못했어요.',
+        )
+      })
   }
 
   const closePopup = () => {

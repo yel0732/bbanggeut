@@ -496,6 +496,8 @@ CREATE TABLE report_notification (
     notification_type    VARCHAR(30)  NOT NULL,
     notification_status  VARCHAR(20)  NOT NULL,
     message              VARCHAR(200) NOT NULL,
+    scheduled_at         DATETIME(6)  NULL,
+    delivered_at         DATETIME(6)  NULL,
     created_at           DATETIME(6)  NOT NULL,
     updated_at           DATETIME(6)  NOT NULL,
     PRIMARY KEY (notification_id),
@@ -509,16 +511,31 @@ CREATE INDEX idx_report_notification_parent_created
 CREATE INDEX idx_report_notification_report
     ON report_notification (report_id);
 
+CREATE INDEX idx_report_notification_delivery
+    ON report_notification (delivered_at, scheduled_at);
+
+-- REPORT-09A: report_notification_preference -------------------------------
+
+CREATE TABLE report_notification_preference (
+    preference_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    parent_id BIGINT NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    notification_time TIME NOT NULL,
+    time_zone VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    CONSTRAINT uk_report_notification_preference_parent UNIQUE (parent_id)
+);
+
 -- notification_type: REPORT_COMPLETED | REPORT_FAILED
 -- notification_status: UNREAD | READ
 -- The message contains no game result, conversation content, or internal
 -- generation failure reason.
 -- REPORT-10 prevents duplicate creation with the report_id and
 -- notification_type unique constraint.
--- REPORT-11 delivers stored notifications over SSE. The auto-increment
--- notification_id is used as the SSE event id, and Last-Event-ID recovery
--- queries by (parent_id, notification_id > lastEventId) ordered by
--- notification_id. No column change is required for REPORT-11.
+-- REPORT-11 delivers stored notifications over SSE. scheduled_at controls
+-- delivery time, delivered_at prevents duplicate delivery, and only delivered
+-- rows participate in Last-Event-ID recovery.
 -- Entity: backend/src/main/java/com/A501/backend/domain/report/entity/ReportNotification.java
 
 

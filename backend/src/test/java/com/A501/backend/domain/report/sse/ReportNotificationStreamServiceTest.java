@@ -82,7 +82,7 @@ class ReportNotificationStreamServiceTest {
 
         assertThat(registry.findByParent(1L)).hasSize(1);
         verify(notificationRepository, never())
-                .findByParentIdAndIdGreaterThanOrderByIdAsc(any(), any());
+                .findByParentIdAndDeliveredAtIsNotNullAndIdGreaterThanOrderByIdAsc(any(), any());
     }
 
     @Test
@@ -95,13 +95,13 @@ class ReportNotificationStreamServiceTest {
         ReportNotification second =
                 notification(7L, ReportNotificationType.REPORT_FAILED);
         when(notificationRepository
-                .findByParentIdAndIdGreaterThanOrderByIdAsc(1L, 5L))
+                .findByParentIdAndDeliveredAtIsNotNullAndIdGreaterThanOrderByIdAsc(1L, 5L))
                 .thenReturn(List.of(first, second));
 
         streamService.subscribe(1L, 5L);
 
         verify(notificationRepository)
-                .findByParentIdAndIdGreaterThanOrderByIdAsc(1L, 5L);
+                .findByParentIdAndDeliveredAtIsNotNullAndIdGreaterThanOrderByIdAsc(1L, 5L);
         // connected comment 1건 + 복구 2건.
         verify(emitter, times(3)).send(any(SseEmitter.SseEventBuilder.class));
     }

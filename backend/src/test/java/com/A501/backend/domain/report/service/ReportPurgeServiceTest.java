@@ -23,6 +23,7 @@ import com.A501.backend.domain.report.repository.ReportGenerationAttemptReposito
 import com.A501.backend.domain.report.repository.ReportManualRegenerationRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationFailureRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
+import com.A501.backend.domain.report.repository.ReportNotificationPreferenceRepository;
 
 @ExtendWith(MockitoExtension.class)
 class ReportPurgeServiceTest {
@@ -40,6 +41,8 @@ class ReportPurgeServiceTest {
     @Mock
     private ReportNotificationRepository reportNotificationRepository;
     @Mock
+    private ReportNotificationPreferenceRepository reportNotificationPreferenceRepository;
+    @Mock
     private ReportManualRegenerationRepository reportManualRegenerationRepository;
 
     @InjectMocks
@@ -49,6 +52,7 @@ class ReportPurgeServiceTest {
     void skipsPurgeWhenChildIdsAreEmpty() {
         reportPurgeService.purgeByParentIdAndChildIds(10L, List.of());
 
+        verify(reportNotificationPreferenceRepository).deleteByParentId(10L);
         verifyNoInteractions(
                 dailyReportRepository,
                 reportGameResultRepository,
@@ -74,6 +78,7 @@ class ReportPurgeServiceTest {
                 reportGenerationAttemptRepository,
                 reportNotificationFailureRepository,
                 reportNotificationRepository,
+                reportNotificationPreferenceRepository,
                 reportManualRegenerationRepository);
     }
 

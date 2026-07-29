@@ -27,6 +27,10 @@ public enum ReportApiErrorCode implements ErrorCode {
             HttpStatus.CONFLICT,
             "REPORT_REGENERATION_NOT_ALLOWED",
             "Only a failed report can be regenerated."),
+    INVALID_NOTIFICATION_PREFERENCE(
+            HttpStatus.BAD_REQUEST,
+            "INVALID_NOTIFICATION_PREFERENCE",
+            "Notification time or time zone is invalid."),
     IDEMPOTENCY_KEY_CONFLICT(
             HttpStatus.CONFLICT,
             "IDEMPOTENCY_KEY_CONFLICT",

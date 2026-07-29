@@ -116,7 +116,6 @@ export function EmailLoginPage() {
         onSubmit={(event) => void handleSubmit(event)}
         style={boardSize}
       >
-        <div className="absolute top-[12%] left-[10%] h-[76%] w-[80%] rounded-[40px] bg-[#f5df9f] shadow-[0_20px_48px_rgba(24,45,20,0.34),inset_0_0_0_5px_rgba(117,92,42,0.22)]" />
         <img
           alt=""
           className="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
@@ -138,7 +137,7 @@ export function EmailLoginPage() {
         </span>
 
         <input
-          className="absolute top-[40%] left-[19%] z-20 h-[7.4%] w-[62%] border-none bg-transparent px-[4%] text-[clamp(14px,4vw,20px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:outline-none"
+          className="auth-transparent-input absolute top-[40%] left-[19%] z-20 h-[7.4%] w-[62%] appearance-none border-none bg-transparent px-[4%] text-[clamp(14px,4vw,20px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
           onChange={(event) => setEmail(event.target.value)}
           placeholder="이메일"
           required
@@ -148,7 +147,7 @@ export function EmailLoginPage() {
         />
 
         <input
-          className="absolute top-[51.2%] left-[19%] z-20 h-[7.4%] w-[54%] border-none bg-transparent px-[4%] text-[clamp(14px,4vw,20px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:outline-none"
+          className="auth-transparent-input absolute top-[51.2%] left-[19%] z-20 h-[7.4%] w-[54%] appearance-none border-none bg-transparent px-[4%] text-[clamp(14px,4vw,20px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
           onChange={(event) => setPassword(event.target.value)}
           placeholder="비밀번호"
           required
@@ -182,17 +181,10 @@ export function EmailLoginPage() {
           </span>
           로그인 유지
         </button>
-        <a
-          className="absolute top-[62.7%] right-[19%] z-20 text-[clamp(12px,3.2vw,15px)] text-[#6f8a5e]"
-          href="#"
-          style={jua}
-        >
-          비밀번호 찾기
-        </a>
 
         {error ? (
           <p
-            className="absolute top-[66.1%] right-[18%] left-[18%] z-20 truncate text-center text-[clamp(11px,2.8vw,14px)] text-[#b64b35]"
+            className="absolute top-[65.1%] right-[18%] left-[18%] z-20 truncate text-center text-[clamp(11px,2.8vw,14px)] text-[#b64b35]"
             style={jua}
           >
             {error}

@@ -129,6 +129,68 @@ class TestHappyPath:
         await service.aclose()
 
 
+class TestIsSpeakingGate:
+    """ADR-020: STT 입력 게이트가 이 값을 읽는다 — 반드시 다시 열려야 한다."""
+
+    @pytest.mark.asyncio
+    async def test_starts_speaking_synchronously_on_speak(self) -> None:
+        """게이트는 TTFB(실측 1.9초)를 기다리지 않고 즉시 닫혀야 한다."""
+
+        service, _, _, _ = _build(FakeSpeechSynthesizer([_CHUNK]))
+        assert service.is_speaking is False
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+
+        assert service.is_speaking is True
+        await service.aclose()
+
+    @pytest.mark.asyncio
+    async def test_stops_speaking_after_playback_completes(self) -> None:
+        synth = FakeSpeechSynthesizer([_CHUNK])
+        service, channel, _, speaker = _build(synth)
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+
+        async def _completed() -> None:
+            while not any(e["type"] == "assistant.audio.completed" for e in channel.sent):
+                queue = speaker._current  # noqa: SLF001
+                if queue is not None:
+                    while queue.get_nowait() is not None:
+                        pass
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(_completed(), timeout=2)
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        assert service.is_speaking is False
+
+    @pytest.mark.asyncio
+    async def test_stops_speaking_when_synthesis_fails(self) -> None:
+        """TTS 실패로 게이트가 열린 채 남으면 아이 말을 영구히 못 듣는다."""
+
+        synth = FakeSpeechSynthesizer([], error=TtsError(TtsFailureCode.PROVIDER_FAILED))
+        service, channel, _, _ = _build(synth)
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+        for _ in range(10):
+            await asyncio.sleep(0)
+
+        assert any(e["type"] == "assistant.audio.failed" for e in channel.sent)
+        assert service.is_speaking is False
+
+    @pytest.mark.asyncio
+    async def test_stops_speaking_when_the_task_is_cancelled(self) -> None:
+        synth = FakeSpeechSynthesizer([_CHUNK, _CHUNK, _CHUNK])
+        service, _, _, _ = _build(synth)
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+        await synth.started.wait()
+        await service.aclose()
+
+        assert service.is_speaking is False
+
+
 class TestFailure:
     @pytest.mark.asyncio
     async def test_provider_failure_emits_failed_and_flushes(self) -> None:
@@ -233,3 +295,63 @@ class TestEmptyAudio:
             await asyncio.sleep(0)
 
         assert channel.sent == []
+
+
+class TestOnCompleted:
+    @pytest.mark.asyncio
+    async def test_on_completed_fires_with_wall_times(self) -> None:
+        from datetime import datetime, timezone
+
+        seen: list = []
+        synth = FakeSpeechSynthesizer([_CHUNK])
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel, conversation_id="c", realtime_session_id="r",
+            session_epoch=1, logger=_LOGGER)
+        registry = ResponseRegistry(response_id_factory=lambda: "resp_x")
+        speaker = SpeakerHandle(SpeakerAudioTrack(), max_queue_frames=500)
+        service = SpeechSynthesisService(
+            synth, speaker, publisher, registry.is_cancelled, _LOGGER,
+            on_completed=lambda *a: seen.append(a),
+            clock=lambda: datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc),
+        )
+
+        service.speak("turn_2", 2, "resp_1", "질문")
+        async def _drain() -> None:
+            while not seen:
+                q = speaker._current  # noqa: SLF001
+                if q is not None:
+                    while q.get_nowait() is not None:
+                        pass
+                await asyncio.sleep(0.01)
+        await asyncio.wait_for(_drain(), timeout=2)
+
+        turn_id, turn_seq, response_id, text, started, completed = seen[0]
+        assert (turn_id, turn_seq, response_id, text) == ("turn_2", 2, "resp_1", "질문")
+        assert started.tzinfo is not None and completed.tzinfo is not None
+
+    @pytest.mark.asyncio
+    async def test_on_completed_not_called_on_cancel(self) -> None:
+        seen: list = []
+        synth = FakeSpeechSynthesizer([_CHUNK, _CHUNK, _CHUNK])
+        synth.release = asyncio.Event()
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel, conversation_id="c", realtime_session_id="r",
+            session_epoch=1, logger=_LOGGER)
+        registry = ResponseRegistry(response_id_factory=lambda: "resp_x")
+        speaker = SpeakerHandle(SpeakerAudioTrack(), max_queue_frames=500)
+        service = SpeechSynthesisService(
+            synth, speaker, publisher, registry.is_cancelled, _LOGGER,
+            on_completed=lambda *a: seen.append(a))
+
+        registry.issue()
+        service.speak("turn_2", 2, "resp_x", "질문")
+        await synth.started.wait()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        registry.cancel("resp_x")
+        synth.release.set()
+        await service.aclose()
+
+        assert seen == []

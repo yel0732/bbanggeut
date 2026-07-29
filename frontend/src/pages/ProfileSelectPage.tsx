@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
-import { logout } from '@/api/auth'
+import {
+  getStoredAccessToken,
+  hasPendingNewSignupOnboarding,
+  logout,
+  verifyParentPin,
+} from '@/api/auth'
+import { getChildProfiles as getBackendChildProfiles } from '@/api/profiles'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
@@ -16,15 +22,21 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
+  childPhotoFromImageNum,
   loadActiveChildProfileId,
   loadChildProfiles,
   saveActiveChildProfileId,
   type ChildProfile,
 } from '@/lib/childProfiles'
+import { grantParentAccess, revokeParentAccess } from '@/lib/parentAccess'
+
+type ProfileSelectLocationState = {
+  openParentPin?: boolean
+  parentRedirectTo?: string
+}
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
-const DEMO_PIN = '1234'
 const MAX_PIN_FAILS = 5
 const PIN_LOCK_SECONDS = 5 * 60
 
@@ -57,9 +69,11 @@ const DEMO_CHILD_PROFILES: ChildProfile[] = [
 
 export function ProfileSelectPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const locationState = location.state as ProfileSelectLocationState | null
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const [childProfiles] = useState(() => {
+  const [childProfiles, setChildProfiles] = useState(() => {
     const storedProfiles = loadChildProfiles()
     return storedProfiles.length ? storedProfiles : DEMO_CHILD_PROFILES
   })
@@ -68,7 +82,7 @@ export function ProfileSelectPage() {
   )
   const hasTwoChildRows = childProfiles.length > 5
   const pinTimersRef = useRef<number[]>([])
-  const [showPin, setShowPin] = useState(false)
+  const [showPin, setShowPin] = useState(Boolean(locationState?.openParentPin))
   const [pin, setPin] = useState('')
   const [pinMessage, setPinMessage] = useState('')
   const [isPinError, setIsPinError] = useState(false)
@@ -78,6 +92,44 @@ export function ProfileSelectPage() {
   const [logoutError, setLogoutError] = useState('')
   const lockTimerRef = useRef<number | null>(null)
   const pinLockUntilRef = useRef(0)
+
+  useEffect(() => {
+    revokeParentAccess()
+  }, [])
+
+  useEffect(() => {
+    if (hasPendingNewSignupOnboarding()) {
+      navigate('/profiles/new', { replace: true })
+    }
+  }, [navigate])
+
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        const localProfiles = loadChildProfiles()
+        setChildProfiles(
+          children.map((child) => {
+            const local = localProfiles.find(
+              (profile) => profile.id === String(child.childId),
+            )
+            return {
+              id: String(child.childId),
+              name: child.name,
+              photoUrl:
+                local?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+              profileImageNum: child.profileImageNum,
+            }
+          }),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -177,15 +229,18 @@ export function ProfileSelectPage() {
 
     if (next.length === PIN_LENGTH) {
       const confirmTimerId = window.setTimeout(() => {
-        if (next === DEMO_PIN) {
+        void verifyParentPin(next).then(() => {
+          grantParentAccess()
           setIsPinError(false)
           setPinMessage('확인되었습니다 ✓')
           const navigateTimerId = window.setTimeout(() => {
-            navigate('/parent')
+            navigate(locationState?.parentRedirectTo ?? '/parent', {
+              replace: Boolean(locationState?.openParentPin),
+            })
           }, 500)
           pinTimersRef.current.push(navigateTimerId)
-          return
-        }
+          setPinFailCount(0)
+        }).catch(() => {
 
         const nextFailCount = pinFailCount + 1
         setPinFailCount(nextFailCount)
@@ -200,6 +255,7 @@ export function ProfileSelectPage() {
           `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
         )
         setPin('')
+        })
       }, 150)
       pinTimersRef.current.push(confirmTimerId)
     }
@@ -255,7 +311,7 @@ export function ProfileSelectPage() {
 
         <button
           aria-label="로그아웃"
-          className="absolute top-[21px] right-[25px] z-40 flex h-[46px] w-[210px] items-center justify-center border-0 bg-transparent p-0 text-[22px] text-white drop-shadow-[0_4px_8px_rgba(0,0,0,.25)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-[.98] disabled:cursor-wait disabled:opacity-70"
+          className="absolute top-[21px] right-[25px] z-40 flex h-[46px] w-[210px] items-center justify-center border-0 bg-transparent p-0 text-[26px] text-white drop-shadow-[0_4px_8px_rgba(0,0,0,.25)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-[.98] disabled:cursor-wait disabled:opacity-70"
           disabled={isLoggingOut}
           onClick={() => void handleLogout()}
           style={jua}
@@ -283,7 +339,7 @@ export function ProfileSelectPage() {
         ) : null}
 
         <div
-          className="absolute top-[118px] right-0 left-0 z-10 text-center text-[44px] text-white [text-shadow:0_6px_14px_rgba(0,0,0,0.28)]"
+          className="absolute top-[60px] right-0 left-0 z-10 text-center text-[53px] text-white [text-shadow:0_6px_14px_rgba(0,0,0,0.28)]"
           style={{
             ...jua,
             paintOrder: 'stroke fill',
@@ -293,7 +349,7 @@ export function ProfileSelectPage() {
           누가 놀러 왔어요?
         </div>
 
-        <div className="absolute top-[190px] right-[120px] bottom-[78px] left-[120px] z-10 flex items-center justify-center gap-7">
+        <div className="absolute top-[140px] right-[120px] bottom-[78px] left-[120px] z-10 flex items-center justify-center gap-7">
           <div
             className={
               hasTwoChildRows

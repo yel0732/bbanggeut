@@ -327,6 +327,65 @@
       white-space: pre-wrap;
     }
 
+    /* --- W08: 대화 Transcript --- */
+    .transcript {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      padding: 6px 2px;
+      min-height: 120px;
+    }
+    .bubble {
+      max-width: 82%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.45;
+      box-shadow: var(--shadow);
+    }
+    .bubble .bubble-meta {
+      display: block;
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .bubble.child {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.child .bubble-meta { color: rgba(255,255,255,0.8); }
+    .bubble.ai {
+      align-self: flex-start;
+      background: var(--brand-soft);
+      color: var(--ink);
+      border-bottom-left-radius: 4px;
+    }
+    .bubble.pending { opacity: 0.55; font-style: italic; }
+    /* 되묻기로 폐기된 아이 발화 — 대화·일기에 들어가지 않았음을 시각적으로 구분 */
+    .bubble.low-confidence {
+      background: #b45309;
+      box-shadow: inset 0 0 0 2px #f59e0b;
+    }
+    .audio-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--surface-strong);
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .audio-status[data-state="speaking"] { color: var(--brand); border-color: var(--brand); }
+    .audio-status[data-state="failed"] { color: var(--danger); border-color: var(--danger); }
+    .latency-value.warn { color: var(--danger); }
+
     .sidebar {
       display: flex;
       flex-direction: column;
@@ -468,9 +527,19 @@
           </div>
           <audio id="remoteAudio" autoplay></audio>
           <p class="notice">
-            연결되면 <code>remoteAudio</code>가 FastAPI가 되돌려주는 Echo를 재생합니다 —
-            마이크에 말한 내용이 그대로 들리면 정상입니다.
+            연결되면 <code>remoteAudio</code>가 FastAPI의 <strong>AI 음성(TTS)</strong>을
+            재생합니다 — 말하고 잠시 멈추면 아이 말이 STT로 확정된 뒤 AI가 질문을
+            음성으로 되묻습니다(에코 아님, W04에서 교체됨).
           </p>
+        </div>
+
+        <div class="section stack">
+          <h2>대화</h2>
+          <div class="audio-row" style="justify-content: space-between;">
+            <span id="aiAudioStatus" class="audio-status" data-state="idle">AI 음성 대기</span>
+            <span class="metric-name" id="convStateValue">상태 —</span>
+          </div>
+          <div id="transcript" class="transcript" aria-live="polite"></div>
         </div>
 
         <div class="section" style="padding-bottom: 0; flex: 1; display: flex; flex-direction: column;">
@@ -524,6 +593,28 @@
           </div>
         </section>
 
+        <section class="section">
+          <h2>응답 지연 (마지막 턴)</h2>
+          <div class="metric-grid">
+            <div class="metric">
+              <span class="metric-name">STT확정→질문</span>
+              <span id="latencySttToTextValue" class="metric-value latency-value">—</span>
+            </div>
+            <div class="metric">
+              <span class="metric-name">질문→첫음성</span>
+              <span id="latencyTextToAudioValue" class="metric-value latency-value">—</span>
+            </div>
+            <div class="metric">
+              <span class="metric-name">STT확정→첫음성</span>
+              <span id="latencySttToAudioValue" class="metric-value latency-value">—</span>
+            </div>
+            <div class="metric">
+              <span class="metric-name">발화종료→첫음성</span>
+              <span id="latencySpeechToAudioValue" class="metric-value latency-value">—</span>
+            </div>
+          </div>
+        </section>
+
         <section class="section stack">
           <h2>테스트 도구</h2>
           <button id="reuseTicketButton" class="secondary-button" type="button" disabled>
@@ -564,7 +655,11 @@
       lastTicket: null,
       lastSignalingUrl: null,
       eventSeqCounter: 0,
-      busy: false
+      busy: false,
+      // W08: transcript·지연 추적
+      turns: new Map(),        // turnId → {speaker, el}
+      lastSpeechAt: null,      // 로컬 레벨이 마지막으로 발화 임계 위였던 시각
+      pendingLatency: null     // {sttFinalAt, textFinalAt} — 다음 audio.started까지
     };
 
     const elements = {
@@ -588,7 +683,15 @@
       rtpBytesValue: document.querySelector("#rtpBytesValue"),
       rtpJitterValue: document.querySelector("#rtpJitterValue"),
       iceStateValue: document.querySelector("#iceStateValue"),
-      toast: document.querySelector("#toast")
+      toast: document.querySelector("#toast"),
+      // W08
+      transcript: document.querySelector("#transcript"),
+      aiAudioStatus: document.querySelector("#aiAudioStatus"),
+      convStateValue: document.querySelector("#convStateValue"),
+      latencySttToText: document.querySelector("#latencySttToTextValue"),
+      latencyTextToAudio: document.querySelector("#latencyTextToAudioValue"),
+      latencySttToAudio: document.querySelector("#latencySttToAudioValue"),
+      latencySpeechToAudio: document.querySelector("#latencySpeechToAudioValue")
     };
 
     function showToast(message) {
@@ -808,8 +911,19 @@
     // --- 3단계: Offer/Answer/ICE + Audio Echo ---
 
     async function setupPeerConnectionAndOffer() {
+      resetTranscript();
       try {
-        state.localStream = await navigator.mediaDevices.getUserMedia({audio: true});
+        // 오디오 제약을 명시한다 — 브라우저 기본값에 암묵적으로 기대지 않는다.
+        // echoCancellation: AI 자기 음성 차단(게이트의 이중화), noiseSuppression:
+        // 정상성 배경음 억제(서버 VAD의 턴 종료 판정 보호), autoGainControl:
+        // 저음량 아동 발화 보정. ADR-020 클라이언트 오디오 요구사항의 참조 구현.
+        state.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
         startLocalLevelMeter(state.localStream);
       } catch (error) {
         logEvent("error", "MIC_PERMISSION_DENIED", error.message);
@@ -892,15 +1006,132 @@
       });
 
       channel.addEventListener("message", event => {
-        let payload;
+        let envelope;
         try {
-          payload = JSON.parse(event.data);
+          envelope = JSON.parse(event.data);
         } catch {
           logEvent("error", "MALFORMED_EVENT", "JSON 파싱 실패");
           return;
         }
-        logEvent("recv", payload.type || "unknown");
+        handleConversationEvent(envelope);
       });
+    }
+
+    // W08: conversation-events 렌더링 (REALTIME_EVENT_CONTRACT §6.2)
+    function handleConversationEvent(env) {
+      const type = env.type || "unknown";
+      const payload = env.payload || {};
+      const now = performance.now();
+      logEvent("recv", type, env.turnSeq != null ? `turnSeq=${env.turnSeq}` : "");
+
+      switch (type) {
+        case "conversation.state.changed":
+          elements.convStateValue.textContent = `상태 ${payload.currentState || "—"}`;
+          break;
+        case "stt.final": {
+          const conf = payload.confidence != null
+            ? ` · conf ${Number(payload.confidence).toFixed(2)}` : "";
+          upsertBubble(env.turnId, "child", payload.text || "",
+            `아이 · turnSeq ${env.turnSeq}${conf}`);
+          state.pendingLatency = {sttFinalAt: now, textFinalAt: null};
+          setAiAudioStatus("idle", "AI 생각 중…");
+          break;
+        }
+        case "assistant.response.created":
+          upsertBubble(env.turnId, "ai", "", `AI · turnSeq ${env.turnSeq} · 생성 중…`, true);
+          break;
+        case "assistant.text.final":
+          upsertBubble(env.turnId, "ai", payload.text || "", `AI · turnSeq ${env.turnSeq}`);
+          if (state.pendingLatency) state.pendingLatency.textFinalAt = now;
+          break;
+        case "assistant.audio.started":
+          setAiAudioStatus("speaking", "AI 말하는 중…");
+          recordLatency(now);
+          break;
+        case "assistant.audio.completed":
+          setAiAudioStatus("idle", "AI 음성 완료");
+          break;
+        case "assistant.audio.failed":
+          setAiAudioStatus("failed", "TTS 실패 → 텍스트로 확인");
+          break;
+        case "error":
+          logEvent("error", payload.code || "ERROR",
+            payload.recoverable ? "recoverable" : "fatal");
+          // 낮은 신뢰도 되묻기는 임계값 보정의 관찰 대상이다 — 어떤 발화가 왜
+          // 되물어졌는지 Transcript에서 바로 보이게 표시한다.
+          if (payload.code === "STT_LOW_CONFIDENCE") {
+            markLowConfidence(env.turnId);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    function upsertBubble(turnId, speaker, text, meta, pending) {
+      let entry = turnId != null ? state.turns.get(turnId) : null;
+      if (!entry) {
+        const el = document.createElement("div");
+        el.className = `bubble ${speaker}`;
+        el.innerHTML = `<span class="bubble-text"></span><span class="bubble-meta"></span>`;
+        elements.transcript.append(el);
+        entry = {speaker, el};
+        if (turnId != null) state.turns.set(turnId, entry);
+      }
+      entry.el.classList.toggle("pending", !!pending);
+      entry.el.querySelector(".bubble-text").textContent = text || (pending ? "…" : "");
+      entry.el.querySelector(".bubble-meta").textContent = meta || "";
+      elements.transcript.scrollTop = elements.transcript.scrollHeight;
+    }
+
+    function markLowConfidence(turnId) {
+      const entry = turnId != null ? state.turns.get(turnId) : null;
+      if (!entry) return;
+      entry.el.classList.add("low-confidence");
+      const meta = entry.el.querySelector(".bubble-meta");
+      meta.textContent = `${meta.textContent} · 신뢰도 낮음 → 되묻기`;
+    }
+
+    function setAiAudioStatus(dataState, label) {
+      elements.aiAudioStatus.dataset.state = dataState;
+      elements.aiAudioStatus.textContent = label;
+    }
+
+    function resetTranscript() {
+      state.turns.clear();
+      state.pendingLatency = null;
+      state.lastSpeechAt = null;
+      elements.transcript.innerHTML = "";
+      elements.convStateValue.textContent = "상태 —";
+      setAiAudioStatus("idle", "AI 음성 대기");
+      for (const el of [elements.latencySttToText, elements.latencyTextToAudio,
+                        elements.latencySttToAudio, elements.latencySpeechToAudio]) {
+        el.textContent = "—";
+        el.classList.remove("warn");
+      }
+    }
+
+    function recordLatency(audioStartedAt) {
+      const p = state.pendingLatency;
+      const fmt = ms => `${Math.round(ms)}ms`;
+      const warn = (el, ms, limit) => el.classList.toggle("warn", ms > limit);
+      if (p && p.sttFinalAt != null) {
+        if (p.textFinalAt != null) {
+          const a = audioStartedAt - p.sttFinalAt;
+          const b = audioStartedAt - p.textFinalAt;
+          const c = p.textFinalAt - p.sttFinalAt;
+          elements.latencySttToText.textContent = fmt(c);
+          elements.latencyTextToAudio.textContent = fmt(b);
+          elements.latencySttToAudio.textContent = fmt(a);
+          warn(elements.latencySttToAudio, a, 5000);
+        }
+      }
+      if (state.lastSpeechAt != null) {
+        const felt = audioStartedAt - state.lastSpeechAt;
+        elements.latencySpeechToAudio.textContent = fmt(felt);
+        warn(elements.latencySpeechToAudio, felt, 8000);
+      }
+      state.pendingLatency = null;
     }
 
     function sendConversationEvent(type, payload) {
@@ -960,6 +1191,8 @@
         analyser.getByteFrequencyData(data);
         const average = data.reduce((sum, value) => sum + value, 0) / data.length;
         elements.localLevelFill.style.width = `${Math.min(100, (average / 128) * 100)}%`;
+        // W08: 발화 임계 위면 '마지막 발화 시각' 갱신 → 발화종료→첫음성 지연 측정용
+        if (average > 8) state.lastSpeechAt = performance.now();
         state.levelAnimationFrame = window.requestAnimationFrame(tick);
       }
       tick();

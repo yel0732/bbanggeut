@@ -5,7 +5,7 @@ import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
 import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
 import diaryListButtonUrl from '@/assets/images/conversation/diary-list-btn.webp'
-import dinoUrl from '@/assets/images/conversation/dino.webp'
+import talkListenDinosaurUrl from '@/assets/images/conversation/talk-listen-dinosaur.webp'
 import micOffButtonUrl from '@/assets/images/conversation/mic-off-btn.webp'
 import micOnButtonUrl from '@/assets/images/conversation/mic-on-btn.webp'
 import readyMicUrl from '@/assets/images/conversation/talk_ready_pic_1.webp'
@@ -20,6 +20,8 @@ import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
+import musicOnUrl from '@/assets/images/start/music-btn.webp'
+import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
@@ -78,6 +80,16 @@ const DIARY_LINES = [
   '가장 기억에 남는 순간을 이야기해서 기분이 좋았다.',
   '내일도 신나게 놀고 빵긋이와 이야기하고 싶다.',
 ]
+const DINO_FRAME_SEQUENCE = [0, 1, 2, 1, 0] as const
+const DINO_FRAME_POSITIONS = [
+  '0% 0%',
+  '50% 0%',
+  '100% 0%',
+  '0% 100%',
+  '50% 100%',
+  '100% 100%',
+] as const
+const DINO_FRAME_OFFSETS = [0, 12.7, 49.3, 0, 12.7, 37.5] as const
 
 const STATUS_COPY: Record<VoiceStatus, string> = {
   ready: '마이크 버튼을 누르고 이야기해 줘',
@@ -103,10 +115,13 @@ export function ConversationPage() {
   const [status, setStatus] = useState<VoiceStatus>('ready')
   const conversationBgmVolume =
     status === 'listening' || status === 'speaking' ? 0.055 : 0.22
-  const { audioRef } = useBgmPlayer({ volume: conversationBgmVolume })
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer({
+    volume: conversationBgmVolume,
+  })
   const [questionIndex, setQuestionIndex] = useState(0)
   const [transcript, setTranscript] = useState('')
   const [micLevel, setMicLevel] = useState(0)
+  const [dinoFrameStep, setDinoFrameStep] = useState(0)
   const [guideMessage, setGuideMessage] = useState('')
   const [isDiaryOpen, setIsDiaryOpen] = useState(false)
   const [isDiaryAttached, setIsDiaryAttached] = useState(false)
@@ -134,6 +149,20 @@ export function ConversationPage() {
   }, [stopListening])
 
   useEffect(() => stopVoiceResources, [stopVoiceResources])
+
+  useEffect(() => {
+    if (status !== 'speaking' && status !== 'listening') {
+      setDinoFrameStep(0)
+      return
+    }
+
+    setDinoFrameStep(0)
+    const frameTimer = window.setInterval(() => {
+      setDinoFrameStep((current) => (current + 1) % DINO_FRAME_SEQUENCE.length)
+    }, 380)
+
+    return () => window.clearInterval(frameTimer)
+  }, [status])
 
   useEffect(() => {
     if (status !== 'listening' || !streamRef.current) {
@@ -304,12 +333,27 @@ export function ConversationPage() {
       setStage('conversation')
       setStatus('speaking')
       speak(QUESTIONS[0])
-    } catch {
+    } catch (error) {
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
       setGuideMessage(
         '대화를 시작하려면 브라우저에서 마이크 사용을 허용해 주세요.',
       )
     }
   }
+
+  const openDiary = useCallback(() => {
+    setIsDiaryOpen(true)
+  }, [])
+
+  const attachDiary = useCallback(() => {
+    if (isDiaryAttached) {
+      stopVoiceResources()
+      navigate('/diaries')
+      return
+    }
+    setIsDiaryAttached(true)
+  }, [isDiaryAttached, navigate, stopVoiceResources])
 
   const leaveConversation = () => {
     if (stage === 'conversation') {
@@ -363,7 +407,7 @@ export function ConversationPage() {
           <button
             aria-label="오늘의 일기"
             className="size-[58px] bg-transparent p-0 transition hover:scale-105"
-            onClick={() => setIsDiaryOpen(true)}
+            onClick={() => void openDiary()}
             type="button"
           >
             <img
@@ -387,6 +431,22 @@ export function ConversationPage() {
 
         <ChildProfileSwitchButton className="right-[100px]" />
 
+        <button
+          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
+          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+          onClick={() => {
+            void toggleBgm()
+          }}
+          type="button"
+        >
+          <img
+            alt=""
+            className="block size-full object-contain"
+            decoding="async"
+            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          />
+        </button>
+
         {stage === 'conversation' ? (
           <div
             aria-label={`대화 진행 ${questionIndex + 1}/${QUESTIONS.length}`}
@@ -409,11 +469,33 @@ export function ConversationPage() {
           </div>
         ) : null}
 
-        <img
-          alt="공룡 친구 빵긋"
-          className="absolute bottom-[72px] left-5/7 h-[530px] w-auto max-w-none -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
-          src={dinoUrl}
-        />
+        <div
+          aria-label="공룡 친구 빵긋"
+          className="absolute bottom-[260px] left-12/19 size-[400px] -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
+          role="img"
+        >
+          {DINO_FRAME_POSITIONS.map((backgroundPosition, frameIndex) => {
+            const sequenceFrame = DINO_FRAME_SEQUENCE[dinoFrameStep]
+            const activeFrame =
+              status === 'listening' ? sequenceFrame + 3 : sequenceFrame
+
+            return (
+              <span
+                aria-hidden="true"
+                className={`absolute inset-0 bg-no-repeat [backface-visibility:hidden] [will-change:transform] ${
+                  frameIndex === activeFrame ? 'opacity-100' : 'opacity-0'
+                }`}
+                key={backgroundPosition}
+                style={{
+                  backgroundImage: `url(${talkListenDinosaurUrl})`,
+                  backgroundPosition,
+                  backgroundSize: '300% 200%',
+                  transform: `translate3d(${DINO_FRAME_OFFSETS[frameIndex]}px, 0, 0)`,
+                }}
+              />
+            )
+          })}
+        </div>
 
         {stage !== 'guide' ? (
           <>
@@ -424,13 +506,13 @@ export function ConversationPage() {
                 src={dialogBoxUrl}
               />
               <span
-                className="absolute top-[11.9%] left-[9.3%] -translate-1/2 text-[24px] whitespace-nowrap text-white drop-shadow"
+                className="absolute top-[11.9%] left-[9.3%] -translate-1/2 text-[29px] whitespace-nowrap text-white drop-shadow"
                 style={jua}
               >
                 빵긋
               </span>
               <p
-                className="absolute top-[48%] right-[8%] left-[9%] -translate-y-1/2 text-[28px] leading-[1.35] text-[#6a4a1e]"
+                className="absolute top-[48%] right-[8%] left-[9%] -translate-y-1/2 text-[30px] leading-[1.35] text-[#6a4a1e]"
                 style={jua}
               >
                 {QUESTIONS[questionIndex]}
@@ -502,13 +584,13 @@ export function ConversationPage() {
                 src={readyPopupUrl}
               />
               <h2
-                className="absolute top-[10.5%] right-0 left-0 text-[34px] text-[#52733b]"
+                className="absolute top-[10.5%] right-0 left-0 text-[39px] text-[#52733b]"
                 style={jua}
               >
                 도란도란 얘기해요
               </h2>
               <p
-                className="absolute top-[19.5%] right-0 left-0 text-[17px] text-[#8b7650]"
+                className="absolute top-[20%] right-0 left-0 text-[20px] text-[#8b7650]"
                 style={jua}
               >
                 빵긋이와 이야기할 준비를 해볼까요?
@@ -533,14 +615,14 @@ export function ConversationPage() {
                     }`}
                     src={imageUrl}
                   />
-                  <p className="mt-1 text-[16px] text-[#725b33]" style={jua}>
+                  <p className="mt-2 text-[18px] text-[#725b33]" style={jua}>
                     {index + 1}. {label}
                   </p>
                 </div>
               ))}
 
               <p
-                className="absolute top-[70%] right-[12%] left-[12%] min-h-6 text-[15px] text-[#bc5b4c]"
+                className="absolute top-[70%] right-[12%] left-[12%] min-h-6 text-[17px] text-[#bc5b4c]"
                 role="alert"
                 style={jua}
               >
@@ -548,7 +630,7 @@ export function ConversationPage() {
                   '빵긋이가 말하는 중에도 언제든 이야기할 수 있어요.'}
               </p>
               <button
-                className="absolute top-[76%] left-1/2 flex h-[11%] w-[45%] -translate-x-1/2 items-center justify-center bg-transparent pb-1 text-[22px] text-white transition hover:scale-[1.02]"
+                className="absolute top-[76%] left-1/2 flex h-[11%] w-[45%] -translate-x-1/2 items-center justify-center bg-transparent pb-1 text-[26px] text-white transition hover:scale-[1.02]"
                 onClick={() => void startConversation()}
                 style={{
                   ...jua,
@@ -583,7 +665,7 @@ export function ConversationPage() {
                     className="h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-white"
                     onClick={() => {
                       stopVoiceResources()
-                      setIsDiaryOpen(true)
+                      void openDiary()
                     }}
                     style={{
                       ...jua,
@@ -667,15 +749,8 @@ export function ConversationPage() {
                 </p>
                 <div className="-mt-1 flex flex-col items-center">
                   <button
-                    className="relative block w-[320px] translate-x-2.4 transition hover:scale-105 active:scale-[.98]"
-                    onClick={() => {
-                      if (isDiaryAttached) {
-                        stopVoiceResources()
-                        navigate('/diaries')
-                        return
-                      }
-                      setIsDiaryAttached(true)
-                    }}
+                    className="translate-x-2.4 relative block w-[320px] transition hover:scale-105 active:scale-[.98]"
+                    onClick={attachDiary}
                     type="button"
                   >
                     <img
@@ -693,7 +768,7 @@ export function ConversationPage() {
                     </span>
                   </button>
                   <button
-                    className="relative mt-0 block w-[345px] translate-x-2.4 -translate-y-[5px] transition hover:scale-105 active:scale-[.98]"
+                    className="translate-x-2.4 relative mt-0 block w-[345px] -translate-y-[5px] transition hover:scale-105 active:scale-[.98]"
                     onClick={() => {
                       stopVoiceResources()
                       navigate('/child')

@@ -91,5 +91,7 @@ export function useCameraStream() {
   // MGAME-02: 화면 이탈/언마운트 시 카메라 즉시 종료.
   useEffect(() => stopCamera, [stopCamera])
 
-  return { videoRef, status, requestCamera, stopCamera }
+  // streamRef를 함께 노출한다. video 엘리먼트가 권한 획득보다 늦게 마운트되는
+  // 화면(단계별 튜토리얼처럼)에서는 status 변화만으로는 연결 시점을 놓친다.
+  return { videoRef, streamRef, status, requestCamera, stopCamera }
 }

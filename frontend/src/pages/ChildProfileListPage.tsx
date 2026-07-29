@@ -15,28 +15,46 @@ import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
+import childTigerAvatarUrl from '@/assets/images/profile/child-avatar-tiger.webp'
+import childRabbitAvatarUrl from '@/assets/images/profile/child-avatar-rabbit.webp'
 import backgroundUrl from '@/assets/images/profile/background.webp'
+import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
+import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
+import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
+import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import {
+  deleteChildProfile as deleteBackendChildProfile,
+  getChildProfiles as getBackendChildProfiles,
+  updateChildProfile as updateBackendChildProfile,
+} from '@/api/profiles'
+import { getStoredAccessToken } from '@/api/auth'
+import {
+  childImageNumFromPhoto,
+  childPhotoFromImageNum,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
+  saveActiveChildProfileId,
   saveChildProfiles,
   type ChildProfile,
 } from '@/lib/childProfiles'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PAGE_SIZE = 3
+const DELETE_PIN_LENGTH = 4
+const DELETE_PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫']
 
 export function ChildProfileListPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const editPhotoInputRef = useRef<HTMLInputElement>(null)
   const editVideoRef = useRef<HTMLVideoElement>(null)
   const editStreamRef = useRef<MediaStream | null>(null)
+  const deletionPinKeyHandlerRef = useRef<(key: string) => void>(() => undefined)
   const [profiles, setProfiles] = useState(loadChildProfiles)
   const [page, setPage] = useState(0)
   const [editingProfile, setEditingProfile] = useState<ChildProfile | null>(
@@ -46,6 +64,12 @@ export function ChildProfileListPage() {
   const [editingNameMessage, setEditingNameMessage] = useState('')
   const [editingPhotoUrl, setEditingPhotoUrl] = useState<string | null>(null)
   const [isEditCameraOn, setIsEditCameraOn] = useState(false)
+  const [profilePendingDeletion, setProfilePendingDeletion] =
+    useState<ChildProfile | null>(null)
+  const [isDeletionPinOpen, setIsDeletionPinOpen] = useState(false)
+  const [deletionPin, setDeletionPin] = useState('')
+  const [deletionPinMessage, setDeletionPinMessage] = useState('')
+  const [isDeletingProfile, setIsDeletingProfile] = useState(false)
   const isProfileLimitReached = profiles.length >= MAX_CHILD_PROFILES
   const pageCount = Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
@@ -62,6 +86,30 @@ export function ChildProfileListPage() {
     setProfiles(nextProfiles)
     saveChildProfiles(nextProfiles)
   }
+
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        const local = loadChildProfiles()
+        updateProfiles(
+          children.map((child) => ({
+            id: String(child.childId),
+            name: child.name,
+            photoUrl:
+              local.find((profile) => profile.id === String(child.childId))
+                ?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+            profileImageNum: child.profileImageNum,
+          })),
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
 
   const stopEditCamera = () => {
     editStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -81,9 +129,76 @@ export function ChildProfileListPage() {
   useEffect(() => () => stopEditCamera(), [])
 
   const removeProfile = (profile: ChildProfile) => {
-    if (!window.confirm(`${profile.name} 프로필을 삭제할까요?`)) return
-    updateProfiles(profiles.filter(({ id }) => id !== profile.id))
+    setProfilePendingDeletion(profile)
+    setIsDeletionPinOpen(false)
+    setDeletionPin('')
+    setDeletionPinMessage('')
   }
+
+  const closeProfileRemoval = () => {
+    if (isDeletingProfile) return
+    setProfilePendingDeletion(null)
+    setIsDeletionPinOpen(false)
+    setDeletionPin('')
+    setDeletionPinMessage('')
+  }
+
+  const openDeletionPin = () => {
+    setDeletionPin('')
+    setDeletionPinMessage('')
+    setIsDeletionPinOpen(true)
+  }
+
+  const confirmProfileRemoval = (pin: string) => {
+    if (!profilePendingDeletion || isDeletingProfile) return
+    const childId = Number(profilePendingDeletion.id)
+    setIsDeletingProfile(true)
+    setDeletionPinMessage('')
+    void deleteBackendChildProfile(childId, pin)
+      .then(() => {
+        updateProfiles(profiles.filter(({ id }) => id !== profilePendingDeletion.id))
+        setProfilePendingDeletion(null)
+        setIsDeletionPinOpen(false)
+        setDeletionPin('')
+      })
+      .catch((error: unknown) => {
+        setDeletionPin('')
+        setDeletionPinMessage(
+          error instanceof Error ? error.message : '프로필을 삭제하지 못했어요.',
+        )
+      })
+      .finally(() => setIsDeletingProfile(false))
+  }
+
+  const pressDeletionPinKey = (key: string) => {
+    if (isDeletingProfile) return
+    if (key === '⌫') {
+      setDeletionPin((value) => value.slice(0, -1))
+      setDeletionPinMessage('')
+      return
+    }
+    if (!/^\d$/.test(key) || deletionPin.length >= DELETE_PIN_LENGTH) return
+    const nextPin = deletionPin + key
+    setDeletionPin(nextPin)
+    setDeletionPinMessage('')
+    if (nextPin.length === DELETE_PIN_LENGTH) {
+      confirmProfileRemoval(nextPin)
+    }
+  }
+
+  useEffect(() => {
+    deletionPinKeyHandlerRef.current = pressDeletionPinKey
+  })
+
+  useEffect(() => {
+    if (!isDeletionPinOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) deletionPinKeyHandlerRef.current(event.key)
+      if (event.key === 'Backspace') deletionPinKeyHandlerRef.current('⌫')
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isDeletionPinOpen])
 
   const openEdit = (profile: ChildProfile) => {
     stopEditCamera()
@@ -91,17 +206,6 @@ export function ChildProfileListPage() {
     setEditingName(profile.name)
     setEditingNameMessage('')
     setEditingPhotoUrl(profile.photoUrl)
-  }
-
-  const selectEditingPhoto = (file: File | undefined) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setEditingPhotoUrl(reader.result)
-      }
-    }
-    reader.readAsDataURL(file)
   }
 
   const toggleEditCamera = async () => {
@@ -144,18 +248,51 @@ export function ChildProfileListPage() {
     stopEditCamera()
   }
 
+  const cycleDefaultEditPhoto = () => {
+    stopEditCamera()
+    setEditingPhotoUrl((current) => {
+      if (current === childTigerAvatarUrl) return childRabbitAvatarUrl
+      if (current === childRabbitAvatarUrl) return null
+      if (current === null || current === childAvatarUrl) {
+        return childTigerAvatarUrl
+      }
+      return null
+    })
+  }
+
   const saveEdit = () => {
     const nextName = editingName.trim()
     if (!editingProfile || !nextName) return
-    updateProfiles(
-      profiles.map((profile) =>
-        profile.id === editingProfile.id
-          ? { ...profile, name: nextName, photoUrl: editingPhotoUrl }
-          : profile,
-      ),
+    const profileImageNum = childImageNumFromPhoto(
+      editingPhotoUrl,
+      editingProfile.profileImageNum,
     )
-    stopEditCamera()
-    setEditingProfile(null)
+    void updateBackendChildProfile(
+      Number(editingProfile.id),
+      nextName,
+      profileImageNum,
+    )
+      .then((updated) => {
+        updateProfiles(
+          profiles.map((profile) =>
+            profile.id === editingProfile.id
+              ? {
+                  ...profile,
+                  name: updated.name,
+                  photoUrl: editingPhotoUrl,
+                  profileImageNum: updated.profileImageNum,
+                }
+              : profile,
+          ),
+        )
+        stopEditCamera()
+        setEditingProfile(null)
+      })
+      .catch((error: unknown) => {
+        setEditingNameMessage(
+          error instanceof Error ? error.message : '프로필을 수정하지 못했어요.',
+        )
+      })
   }
 
   return (
@@ -183,7 +320,7 @@ export function ChildProfileListPage() {
         <Link
           aria-label="뒤로"
           className="absolute top-[25px] left-[25px] z-30 size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
-          to="/parent"
+          to="/profiles/new"
         >
           <img
             alt=""
@@ -237,7 +374,10 @@ export function ChildProfileListPage() {
                   />
                   <button
                     className="relative z-10 flex min-w-0 flex-1 -translate-y-0.5 items-center bg-transparent text-left"
-                    onClick={() => navigate('/child')}
+                    onClick={() => {
+                      saveActiveChildProfileId(profile.id)
+                      navigate('/child')
+                    }}
                     type="button"
                   >
                     <img
@@ -308,7 +448,7 @@ export function ChildProfileListPage() {
                 paintOrder: 'stroke fill',
                 WebkitTextStroke: '3px #4a7d1e',
               }}
-              to="/profiles/new?add=1"
+              to="/profiles/new?add=1&source=onboarding"
             >
               + 새 프로필 생성
             </Link>
@@ -380,7 +520,7 @@ export function ChildProfileListPage() {
                 src={revisePopupUrl}
               />
               <h2
-                className="relative text-center text-[28px] text-[#3a7d2c]"
+                className="relative -mt-2 text-center text-[28px] text-[#3a7d2c]"
                 style={jua}
               >
                 아이 프로필 수정
@@ -406,20 +546,6 @@ export function ChildProfileListPage() {
                 <div className="relative left-2 flex flex-col">
                   <button
                     className="h-18 w-58 bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#5a4a2a]"
-                    onClick={() => {
-                      stopEditCamera()
-                      editPhotoInputRef.current?.click()
-                    }}
-                    style={{
-                      ...jua,
-                      backgroundImage: `url(${photoButtonUrl})`,
-                    }}
-                    type="button"
-                  >
-                    사진 추가
-                  </button>
-                  <button
-                    className="-mt-7 h-18 w-58 bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#5a4a2a]"
                     onClick={() => void toggleEditCamera()}
                     style={{
                       ...jua,
@@ -431,10 +557,7 @@ export function ChildProfileListPage() {
                   </button>
                   <button
                     className="-mt-7 h-18 w-58 bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#5a4a2a]"
-                    onClick={() => {
-                      stopEditCamera()
-                      setEditingPhotoUrl(null)
-                    }}
+                    onClick={cycleDefaultEditPhoto}
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
@@ -444,19 +567,16 @@ export function ChildProfileListPage() {
                     기본 이미지
                   </button>
                 </div>
-                <input
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(event) =>
-                    selectEditingPhoto(event.target.files?.[0])
-                  }
-                  ref={editPhotoInputRef}
-                  type="file"
-                />
               </div>
+              <p
+                className="relative mt-3 text-center text-[14px] text-[#8a7a55]"
+                style={jua}
+              >
+                세 마리의 동물이 있어요! 눌러서 확인해보세요!
+              </p>
               <input
                 autoFocus
-                className="relative mx-auto mt-3 block h-14 w-[90%] rounded-full border-2 border-[#d9c79a] bg-white px-6 text-center text-[20px] text-[#5a4a2a] outline-none"
+                className="relative mx-auto mt-7 block h-14 w-[90%] rounded-full border-2 border-[#d9c79a] bg-white px-6 text-center text-[20px] text-[#5a4a2a] outline-none"
                 onChange={(event) => {
                   const nextName = event.target.value
                   setEditingName(nextName.slice(0, 15))
@@ -473,9 +593,9 @@ export function ChildProfileListPage() {
               >
                 {editingNameMessage}
               </p>
-              <div className="relative mt-5 flex w-full justify-center">
+              <div className="relative mt-0 flex w-full justify-center">
                 <button
-                  className="w-64 bg-[length:100%_100%] bg-no-repeat px-4 py-6 text-[18px] text-white"
+                  className="w-64 bg-[length:100%_100%] bg-no-repeat px-4 py-6 text-[23px] text-white"
                   onClick={saveEdit}
                   style={{
                     ...jua,
@@ -500,6 +620,90 @@ export function ChildProfileListPage() {
                   취소
                 </button>
               </div>
+            </div>
+          </div>
+        ) : null}
+        {profilePendingDeletion && !isDeletionPinOpen ? (
+          <ParentNoticeDialog
+            compact
+            confirmLabel="PIN 입력"
+            message={`${profilePendingDeletion.name} 프로필을 삭제할까요?`}
+            onCancel={closeProfileRemoval}
+            onConfirm={openDeletionPin}
+            title="프로필 삭제"
+          />
+        ) : null}
+        {profilePendingDeletion && isDeletionPinOpen ? (
+          <div
+            aria-modal="true"
+            className="absolute inset-0 z-100 flex items-center justify-center bg-[rgba(18,30,18,0.6)]"
+            onClick={closeProfileRemoval}
+            role="dialog"
+          >
+            <div
+              className="relative -top-[30px] h-[560px] w-[440px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <img
+                alt=""
+                className="pointer-events-none absolute inset-0 size-full object-contain"
+                src={pinPanelUrl}
+              />
+              <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
+                <h2 className="text-center text-[30px] text-[#3a7d2c]" style={jua}>
+                  부모 확인
+                </h2>
+                <p className="mt-1.5 text-center text-[17px] text-[#8a7a5a]" style={jua}>
+                  삭제하려면 PIN 번호 4자리를 입력하세요
+                </p>
+                <div className="mt-5 mb-1.5 flex justify-center gap-4">
+                  {Array.from({ length: DELETE_PIN_LENGTH }).map((_, index) => {
+                    const isFilled = index < deletionPin.length
+                    return (
+                      <span className="flex size-[30px] items-center justify-center" key={index}>
+                        <img
+                          alt=""
+                          className={isFilled ? 'size-[56px] max-w-none object-contain' : 'size-[30px] object-contain'}
+                          src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
+                        />
+                      </span>
+                    )
+                  })}
+                </div>
+                <div
+                  className="h-[22px] text-center text-[16px] text-[#d1483a]"
+                  style={jua}
+                >
+                  {isDeletingProfile ? '확인하고 있어요...' : deletionPinMessage || '.'}
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-2.5">
+                  {DELETE_PIN_KEYS.map((key, index) =>
+                    key ? (
+                      <button
+                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={isDeletingProfile}
+                        key={key}
+                        onClick={() => pressDeletionPinKey(key)}
+                        style={{ ...jua, backgroundImage: `url(${pinKeyUrl})` }}
+                        type="button"
+                      >
+                        {key}
+                      </button>
+                    ) : (
+                      <div key={`blank-${index}`} />
+                    ),
+                  )}
+                </div>
+              </div>
+              <button
+                aria-label="닫기"
+                className="absolute -top-4 -right-4 grid size-[46px] place-items-center rounded-full border-[3px] border-white bg-[#cf6f4e] text-xl text-white shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 disabled:opacity-40"
+                disabled={isDeletingProfile}
+                onClick={closeProfileRemoval}
+                type="button"
+              >
+                ✕
+              </button>
             </div>
           </div>
         ) : null}

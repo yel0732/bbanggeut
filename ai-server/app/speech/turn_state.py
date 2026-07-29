@@ -87,12 +87,22 @@ class SttTurn:
 class TurnSequencer:
     """Issues ``turnId``/``turnSeq`` for one conversation connection.
 
-    §4: both identifiers are FastAPI's to generate and ``turnSeq`` starts at 1.
+    §4: both identifiers are FastAPI's to generate and ``turnSeq`` starts at 1
+    for a fresh conversation. On a reconnect the caller passes ``start_seq`` =
+    the snapshot's ``lastTurnSeq + 1`` so numbering continues past the turns
+    already stored, instead of colliding at 1 (W05 §11-A).
     """
 
-    def __init__(self, turn_id_factory: TurnIdFactory = _default_turn_id_factory) -> None:
+    def __init__(
+        self,
+        turn_id_factory: TurnIdFactory = _default_turn_id_factory,
+        *,
+        start_seq: int = 1,
+    ) -> None:
+        if start_seq < 1:
+            raise ValueError("start_seq must be at least 1")
         self._turn_id_factory = turn_id_factory
-        self._next_seq = 1
+        self._next_seq = start_seq
 
     def next_turn(self) -> SttTurn:
         turn = SttTurn(self._turn_id_factory(), self._next_seq)

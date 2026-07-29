@@ -11,9 +11,9 @@ match exactly: ``topics[].games[]`` == ``GameSessionContext`` and
 ``topics[].initialSlots`` == ``DiarySlots`` (aliases included). Redefining
 them here would just create a second source of truth.
 
-What the snapshot deliberately does NOT carry (§8): per-topic question counts
-— "질문 수는 스냅숏에 포함하지 않고 FastAPI가 매 턴 이후 자체 메모리로
-관리한다". That memory is ``DialogueSessionState`` (T12).
+Question counts are persisted progress and are included so reconnecting does
+not reset the policy budget. ``DialogueSessionState`` owns the mutable
+in-connection copy and publishes authoritative counts with confirmed turns.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from redis.exceptions import RedisError
 
 from app.dialogue.schemas import DialogueTopic, DiarySlots, GameSessionContext
@@ -43,6 +43,16 @@ class ConversationContext(BaseModel):
     language: str
     current_topic: DialogueTopic = Field(alias="currentTopic")
     total_max_question_count: int = Field(alias="totalMaxQuestionCount", gt=0)
+    question_count: int = Field(default=0, alias="questionCount", ge=0)
+    # 이 대화에 저장된 마지막 turnSeq(없으면 0). 재연결 시 다음부터 발급해
+    # 연결 메모리 카운터가 1로 되돌아가 충돌하는 것을 막는다(W05 §11-A).
+    last_turn_seq: int = Field(default=0, alias="lastTurnSeq", ge=0)
+
+    @model_validator(mode="after")
+    def validate_question_count(self) -> "ConversationContext":
+        if self.question_count > self.total_max_question_count:
+            raise ValueError("questionCount cannot exceed totalMaxQuestionCount")
+        return self
 
 
 class TopicSnapshot(BaseModel):
@@ -51,8 +61,15 @@ class TopicSnapshot(BaseModel):
     type: DialogueTopic
     order: int = Field(gt=0)
     max_question_count: int = Field(alias="maxQuestionCount", gt=0)
+    question_count: int = Field(default=0, alias="questionCount", ge=0)
     games: tuple[GameSessionContext, ...] = ()
     initial_slots: DiarySlots = Field(alias="initialSlots", repr=False)
+
+    @model_validator(mode="after")
+    def validate_question_count(self) -> "TopicSnapshot":
+        if self.question_count > self.max_question_count:
+            raise ValueError("questionCount cannot exceed maxQuestionCount")
+        return self
 
 
 class PolicySnapshot(BaseModel):
@@ -76,6 +93,13 @@ class ContextSnapshot(BaseModel):
     )
     topics: tuple[TopicSnapshot, ...] = ()
     policy: PolicySnapshot
+
+    @model_validator(mode="after")
+    def validate_question_progress(self) -> "ContextSnapshot":
+        topic_total = sum(topic.question_count for topic in self.topics)
+        if topic_total != self.conversation.question_count:
+            raise ValueError("topic question counts must equal conversation questionCount")
+        return self
 
     def ordered_topics(self) -> tuple[TopicSnapshot, ...]:
         return tuple(sorted(self.topics, key=lambda topic: topic.order))

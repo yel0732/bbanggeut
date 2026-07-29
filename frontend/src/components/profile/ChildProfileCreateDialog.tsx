@@ -25,7 +25,6 @@ export function ChildProfileCreateDialog({
   onCreate: (profile: ChildProfile) => void
   profiles: ChildProfile[]
 }) {
-  const photoInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [name, setName] = useState(initialProfile?.name ?? '')
@@ -51,18 +50,6 @@ export function ChildProfileCreateDialog({
   }, [isCameraOn])
 
   useEffect(() => () => stopCamera(), [])
-
-  const selectPhoto = (file: File | undefined) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setPhotoUrl(reader.result)
-        setMessage('')
-      }
-    }
-    reader.readAsDataURL(file)
-  }
 
   const cycleDefaultPhoto = () => {
     stopCamera()
@@ -152,7 +139,7 @@ export function ChildProfileCreateDialog({
         className="relative mt-9 h-[640px] w-[500px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
       >
         <img alt="" className="pointer-events-none absolute inset-0 size-full" src={portraitFrameUrl} />
-        <h2 className="absolute top-[12.5%] right-0 left-0 text-center text-[27px] text-[#3a7d2c]" style={jua}>
+        <h2 className="absolute top-[12.5%] right-0 left-0 text-center text-[29px] text-[#3a7d2c]" style={jua}>
           {isEditMode ? '아이 프로필 수정' : '아이 프로필 생성'}
         </h2>
 
@@ -164,14 +151,12 @@ export function ChildProfileCreateDialog({
           )}
         </div>
 
-        <div className="absolute top-[18.2%] right-[18%] flex flex-col">
-          <PhotoButton label="사진 추가" onClick={() => { stopCamera(); photoInputRef.current?.click() }} />
+        <div className="absolute top-[21.2%] right-[18%] flex flex-col">
           <PhotoButton label={isCameraOn ? '사진 찍기' : '웹캠 촬영'} onClick={() => void toggleCamera()} />
           <PhotoButton label="기본 이미지" onClick={cycleDefaultPhoto} />
         </div>
-        <input accept="image/*" className="hidden" onChange={(event) => selectPhoto(event.target.files?.[0])} ref={photoInputRef} type="file" />
 
-        <p className="absolute top-[42%] right-0 left-0 text-center text-[15px] text-[#8a7a55]" style={jua}>
+        <p className="absolute top-[42%] right-0 left-0 text-center text-[16px] text-[#8a7a55]" style={jua}>
           세 마리의 동물이 있어요! 눌러서 확인해보세요!
         </p>
         <label className="absolute top-[48.5%] left-[20%] text-[22px] text-[#3a7d2c]" htmlFor="parent-child-profile-name" style={jua}>
@@ -179,7 +164,7 @@ export function ChildProfileCreateDialog({
         </label>
         <div className="absolute top-[52.5%] right-[19.5%] left-[19.5%] h-[72px] -translate-x-1.5 bg-[length:100%_100%] bg-center bg-no-repeat" style={{ backgroundImage: `url(${inputBarUrl})` }}>
           <input
-            className="absolute inset-y-1.5 right-5 left-5 bg-transparent text-center text-[19px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f]"
+            className="absolute inset-y-1.5 right-5 left-5 bg-transparent text-center text-[20px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f]"
             id="parent-child-profile-name"
             onChange={(event) => {
               setName(event.target.value.slice(0, 15))
@@ -194,7 +179,7 @@ export function ChildProfileCreateDialog({
           {isLimitReached ? `아이 프로필은 최대 ${MAX_CHILD_PROFILES}개까지 만들 수 있어요` : message}
         </p>
         <button
-          className="absolute top-[65.5%] left-1/2 h-[84px] w-[370px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white active:translate-y-0.5 disabled:opacity-50"
+          className="absolute top-[65.5%] left-1/2 h-[84px] w-[370px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[23px] text-white active:translate-y-0.5 disabled:opacity-50"
           disabled={isLimitReached}
           onClick={createProfile}
           style={{ ...jua, backgroundImage: `url(${completeButtonUrl})`, paintOrder: 'stroke fill', WebkitTextStroke: '3px #4a7d1e' }}
@@ -203,7 +188,7 @@ export function ChildProfileCreateDialog({
           {isEditMode ? '아이 프로필 수정하기' : '아이 프로필 만들기'}
         </button>
         <button
-          className="absolute top-[74.5%] left-1/2 h-[78px] w-[265px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[18px] text-[#5a4a2a] active:translate-y-0.5"
+          className="absolute top-[74.5%] left-1/2 h-[78px] w-[265px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
           onClick={() => { stopCamera(); onBack() }}
           style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
           type="button"
@@ -218,7 +203,7 @@ export function ChildProfileCreateDialog({
 function PhotoButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
-      className="-mt-5 first:mt-0 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
+      className="-mt-5 first:mt-0 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[18px] text-[#5a4a2a] active:translate-y-0.5"
       onClick={onClick}
       style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
       type="button"

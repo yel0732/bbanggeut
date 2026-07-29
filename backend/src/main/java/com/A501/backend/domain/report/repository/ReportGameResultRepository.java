@@ -5,7 +5,9 @@ import java.util.Collection;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.A501.backend.domain.report.entity.ReportGameResult;
 
@@ -26,4 +28,8 @@ public interface ReportGameResultRepository
     boolean existsByReportIdAndGameSessionId(
             Long reportId,
             UUID gameSessionId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from ReportGameResult result where result.reportId in :reportIds")
+    int deleteByReportIds(@Param("reportIds") Collection<Long> reportIds);
 }

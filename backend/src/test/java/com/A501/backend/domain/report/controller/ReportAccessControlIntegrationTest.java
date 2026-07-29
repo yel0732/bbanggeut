@@ -1,7 +1,6 @@
 package com.A501.backend.domain.report.controller;
 
 import static org.mockito.Mockito.doThrow;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -11,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Date;
-import java.util.List;
 
 import javax.crypto.SecretKey;
 
@@ -20,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -31,7 +29,6 @@ import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportManualRegenerationRepository;
-import com.A501.backend.domain.report.service.JwtReportParentAccessTokenVerifier;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -71,35 +68,10 @@ class ReportAccessControlIntegrationTest {
 
     @Test
     void missingAccessTokenIsUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(PARENT_ID)))
+        mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error")
                         .value("REPORT_UNAUTHORIZED"));
-    }
-
-    @Test
-    void invalidParentAccessTokenIsUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .with(parentAuthentication(PARENT_ID))
-                        .header("X-Parent-Access-Token", "invalid-token"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error")
-                        .value("INVALID_PARENT_ACCESS_TOKEN"));
-    }
-
-    @Test
-    void parentAccessTokenCannotBeUsedByAnotherParent() throws Exception {
-        mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .with(parentAuthentication(OTHER_PARENT_ID))
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(PARENT_ID)))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error")
-                        .value("INVALID_PARENT_ACCESS_TOKEN"));
     }
 
     @Test
@@ -107,10 +79,7 @@ class ReportAccessControlIntegrationTest {
         denyChildAccess(OTHER_PARENT_ID);
 
         mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .with(parentAuthentication(OTHER_PARENT_ID))
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(OTHER_PARENT_ID)))
+                        .with(parentBearer(OTHER_PARENT_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("CHILD_NOT_FOUND"));
     }
@@ -120,10 +89,7 @@ class ReportAccessControlIntegrationTest {
         denyChildAccess(PARENT_ID);
 
         mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .with(parentAuthentication(PARENT_ID))
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(PARENT_ID)))
+                        .with(parentBearer(PARENT_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("CHILD_NOT_FOUND"));
     }
@@ -138,10 +104,7 @@ class ReportAccessControlIntegrationTest {
                         "/api/children/{childId}/reports/{reportDate}",
                         CHILD_ID,
                         REPORT_DATE)
-                        .with(parentAuthentication(PARENT_ID))
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(PARENT_ID)))
+                        .with(parentBearer(PARENT_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("REPORT_NOT_FOUND"));
     }
@@ -152,10 +115,7 @@ class ReportAccessControlIntegrationTest {
                         "/api/children/{childId}/reports/{reportDate}/regenerate",
                         CHILD_ID,
                         REPORT_DATE)
-                        .header("Idempotency-Key", "idor-regeneration")
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(PARENT_ID)))
+                        .header("Idempotency-Key", "idor-regeneration"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error")
                         .value("REPORT_UNAUTHORIZED"));
@@ -164,10 +124,7 @@ class ReportAccessControlIntegrationTest {
     @Test
     void authenticatedOwnerCanAccessReportList() throws Exception {
         mockMvc.perform(get("/api/children/{childId}/reports", CHILD_ID)
-                        .with(parentAuthentication(PARENT_ID))
-                        .header(
-                                "X-Parent-Access-Token",
-                                parentAccessToken(PARENT_ID)))
+                        .with(parentBearer(PARENT_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.childId").value(CHILD_ID))
                 .andExpect(jsonPath("$.reports").isArray());
@@ -180,23 +137,22 @@ class ReportAccessControlIntegrationTest {
     }
 
     private org.springframework.test.web.servlet.request.RequestPostProcessor
-            parentAuthentication(Long parentId) {
-        return authentication(new UsernamePasswordAuthenticationToken(
-                parentId,
-                null,
-                List.of()));
+            parentBearer(Long parentId) {
+        return request -> {
+            request.addHeader(
+                    HttpHeaders.AUTHORIZATION,
+                    "Bearer " + accessToken(parentId));
+            return request;
+        };
     }
 
-    private String parentAccessToken(Long parentId) {
+    private String accessToken(Long parentId) {
         SecretKey key = Keys.hmacShaKeyFor(
                 SECRET.getBytes(StandardCharsets.UTF_8));
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(String.valueOf(parentId))
-                .claim(
-                        "purpose",
-                        JwtReportParentAccessTokenVerifier
-                                .PURPOSE_PARENT_ACCESS)
+                .claim("purpose", "ACCESS")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(300)))
                 .signWith(key)

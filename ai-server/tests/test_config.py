@@ -67,7 +67,10 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.stt_max_utterance_seconds == 30.0
     assert settings.stt_min_utterance_seconds == 0.5
     assert settings.stt_no_speech_prob_threshold == 0.6
+    assert settings.stt_low_confidence_threshold == 0.67
+    assert settings.stt_low_confidence_reask_limit == 1
     assert settings.stt_vad_aggressiveness == 2
+    assert settings.stt_vad_min_frame_rms == 0
     assert settings.stt_min_speech_ms == 250
     assert settings.stt_trailing_silence_seconds == 3.0
     assert settings.stt_preroll_ms == 300
@@ -75,6 +78,9 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.tts_model == "gpt-4o-mini-tts"
     assert settings.tts_voice == "alloy"
     assert settings.tts_timeout_seconds == 10.0
+    assert settings.stream_publish_max_attempts == 3
+    assert settings.stream_publish_retry_seconds == 0.5
+    assert settings.stream_outbox_size == 256
 
 
 def test_reads_realtime_settings_from_environment() -> None:
@@ -95,7 +101,10 @@ def test_reads_realtime_settings_from_environment() -> None:
             "STT_MAX_UTTERANCE_SECONDS": "20",
             "STT_MIN_UTTERANCE_SECONDS": "1",
             "STT_NO_SPEECH_PROB_THRESHOLD": "0.75",
+            "STT_LOW_CONFIDENCE_THRESHOLD": "0.5",
+            "STT_LOW_CONFIDENCE_REASK_LIMIT": "2",
             "STT_VAD_AGGRESSIVENESS": "3",
+            "STT_VAD_MIN_FRAME_RMS": "250",
             "STT_MIN_SPEECH_MS": "300",
             "STT_TRAILING_SILENCE_SECONDS": "2.5",
             "STT_PREROLL_MS": "200",
@@ -103,6 +112,9 @@ def test_reads_realtime_settings_from_environment() -> None:
             "TTS_MODEL": "tts-x",
             "TTS_VOICE": "verse",
             "TTS_TIMEOUT_SECONDS": "7",
+            "STREAM_PUBLISH_MAX_ATTEMPTS": "5",
+            "STREAM_PUBLISH_RETRY_SECONDS": "1.5",
+            "STREAM_OUTBOX_SIZE": "64",
         }
     )
 
@@ -125,7 +137,10 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.stt_max_utterance_seconds == 20.0
     assert settings.stt_min_utterance_seconds == 1.0
     assert settings.stt_no_speech_prob_threshold == 0.75
+    assert settings.stt_low_confidence_threshold == 0.5
+    assert settings.stt_low_confidence_reask_limit == 2
     assert settings.stt_vad_aggressiveness == 3
+    assert settings.stt_vad_min_frame_rms == 250
     assert settings.stt_min_speech_ms == 300
     assert settings.stt_trailing_silence_seconds == 2.5
     assert settings.stt_preroll_ms == 200
@@ -133,6 +148,9 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.tts_model == "tts-x"
     assert settings.tts_voice == "verse"
     assert settings.tts_timeout_seconds == 7.0
+    assert settings.stream_publish_max_attempts == 5
+    assert settings.stream_publish_retry_seconds == 1.5
+    assert settings.stream_outbox_size == 64
 
 
 def test_supports_legacy_model_for_analysis_only() -> None:
@@ -174,10 +192,15 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "STT_MIN_UTTERANCE_SECONDS": "-1"},
         {"GMS_KEY": "key", "STT_NO_SPEECH_PROB_THRESHOLD": "0"},
         {"GMS_KEY": "key", "STT_NO_SPEECH_PROB_THRESHOLD": "1.5"},
+        # 1 이상이면 모든 발화를 되묻는다 — 대화가 성립하지 않는다(0은 비활성으로 허용)
+        {"GMS_KEY": "key", "STT_LOW_CONFIDENCE_THRESHOLD": "1"},
+        {"GMS_KEY": "key", "STT_LOW_CONFIDENCE_THRESHOLD": "-0.1"},
+        {"GMS_KEY": "key", "STT_LOW_CONFIDENCE_REASK_LIMIT": "-1"},
         # 최소가 최대보다 크면 어떤 발화도 인식되지 않는다
         {"GMS_KEY": "key", "STT_MIN_UTTERANCE_SECONDS": "40"},
         {"GMS_KEY": "key", "STT_VAD_AGGRESSIVENESS": "4"},
         {"GMS_KEY": "key", "STT_VAD_AGGRESSIVENESS": "-1"},
+        {"GMS_KEY": "key", "STT_VAD_MIN_FRAME_RMS": "-1"},
         {"GMS_KEY": "key", "STT_MIN_SPEECH_MS": "0"},
         {"GMS_KEY": "key", "STT_TRAILING_SILENCE_SECONDS": "0"},
         {"GMS_KEY": "key", "STT_PREROLL_MS": "-1"},
@@ -185,6 +208,9 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "TTS_MODEL": " "},
         {"GMS_KEY": "key", "TTS_VOICE": " "},
         {"GMS_KEY": "key", "TTS_TIMEOUT_SECONDS": "0"},
+        {"GMS_KEY": "key", "STREAM_PUBLISH_MAX_ATTEMPTS": "0"},
+        {"GMS_KEY": "key", "STREAM_OUTBOX_SIZE": "0"},
+        {"GMS_KEY": "key", "STREAM_PUBLISH_RETRY_SECONDS": "0"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

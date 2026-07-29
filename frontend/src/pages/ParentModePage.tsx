@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { verifyParentPin } from '@/api/auth'
+import { changeAccountPassword, verifyParentPin, withdrawAccount } from '@/api/auth'
 
 import {
   getChildReports,
@@ -24,12 +24,14 @@ import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import menuBoardUrl from '@/assets/images/parent-mode/menu-board.webp'
-import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide.webp'
+import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide-trimmed.png'
 import reportNotificationButtonUrl from '@/assets/images/parent-mode/report-notification-button.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
 import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
 import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
+import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
+import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
@@ -38,6 +40,16 @@ import { useFitScale } from '@/hooks/useFitScale'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreateDialog'
 import {
+  createChildProfile as createBackendChildProfile,
+  changeParentPin,
+  deleteChildProfile as deleteBackendChildProfile,
+  getChildProfiles as getBackendChildProfiles,
+  updateParentProfileImage,
+  updateChildProfile as updateBackendChildProfile,
+} from '@/api/profiles'
+import {
+  childImageNumFromPhoto,
+  childPhotoFromImageNum,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
   saveChildProfiles,
@@ -80,6 +92,8 @@ const PARENT_PHOTO_KEY = 'bbanggut-parent-photo'
 const NOTIFICATION_KEY = 'bbanggut-report-notification'
 const REPORT_ARRIVALS_KEY = 'bbanggut-report-arrivals'
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
+const MAX_PIN_FAILS = 5
+const PIN_LOCK_SECONDS = 5 * 60
 const ALLOWED_PASSWORD_SPECIALS = `!"#$%&'()*+,-./:;<=>?@[\\]₩^_\`{|}~`
 const PASSWORD_GUIDE =
   '8~16자의 영문, 숫자, 특수문자를 각각 1자 이상 포함해 주세요.'
@@ -89,6 +103,12 @@ const DEMO_PROFILES: ChildProfile[] = [
   { id: 'demo-2', name: '아이2', photoUrl: null },
   { id: 'demo-3', name: '아이3', photoUrl: null },
 ]
+
+function formatPinLockTime(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}분 ${seconds}초`
+}
 
 function loadNotificationSettings(): NotificationSettings {
   try {
@@ -150,7 +170,8 @@ export function ParentModePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
-  const photoInputRef = useRef<HTMLInputElement>(null)
+  const parentVideoRef = useRef<HTMLVideoElement>(null)
+  const parentStreamRef = useRef<MediaStream | null>(null)
   const [popup, setPopup] = useState<PopupType>(null)
   const [profileView, setProfileView] = useState<ProfileView>('menu')
   const [profiles, setProfiles] = useState(() => {
@@ -160,12 +181,18 @@ export function ParentModePage() {
   const [parentPhoto, setParentPhoto] = useState<string | null>(() =>
     window.localStorage.getItem(PARENT_PHOTO_KEY),
   )
+  const [isParentCameraOn, setIsParentCameraOn] = useState(false)
   const [pin, setPin] = useState('')
   const [pinStep, setPinStep] = useState<PinStep>('current')
+  const [verifiedCurrentPin, setVerifiedCurrentPin] = useState('')
   const [newPin, setNewPin] = useState('')
   const [pinMessage, setPinMessage] = useState(
     '현재 핀 번호 4자리를 입력해 주세요.',
   )
+  const [pinFailCount, setPinFailCount] = useState(0)
+  const [isPinLocked, setIsPinLocked] = useState(false)
+  const pinLockTimerRef = useRef<number | null>(null)
+  const pinLockUntilRef = useRef(0)
   const [withdrawPin, setWithdrawPin] = useState('')
   const [firstWithdrawPin, setFirstWithdrawPin] = useState('')
   const [withdrawMessage, setWithdrawMessage] = useState('핀 번호를 입력해 주세요.')
@@ -189,6 +216,63 @@ export function ParentModePage() {
   const [editingChildProfile, setEditingChildProfile] =
     useState<ChildProfile | null>(null)
   const [noticeDialog, setNoticeDialog] = useState<NoticeDialog>(null)
+  const [isChildDeletionPinOpen, setIsChildDeletionPinOpen] = useState(false)
+  const [childDeletionPin, setChildDeletionPin] = useState('')
+  const [childDeletionMessage, setChildDeletionMessage] = useState('')
+  const [isDeletingChildProfile, setIsDeletingChildProfile] = useState(false)
+
+  useEffect(() => {
+    const video = parentVideoRef.current
+    const stream = parentStreamRef.current
+    if (!isParentCameraOn || !video || !stream) return
+
+    video.srcObject = stream
+    void video.play()
+  }, [isParentCameraOn])
+
+  useEffect(
+    () => () => {
+      parentStreamRef.current?.getTracks().forEach((track) => track.stop())
+      if (pinLockTimerRef.current) {
+        window.clearInterval(pinLockTimerRef.current)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        const localProfiles = loadChildProfiles()
+        const nextProfiles = children.map((child) => {
+          const local = localProfiles.find(
+            (profile) => profile.id === String(child.childId),
+          )
+          return {
+            id: String(child.childId),
+            name: child.name,
+            photoUrl:
+              local?.photoUrl ?? childPhotoFromImageNum(child.profileImageNum),
+            profileImageNum: child.profileImageNum,
+          }
+        })
+        updateChildProfiles(nextProfiles)
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        setNotificationToast(
+          error instanceof Error
+            ? error.message
+            : '아이 프로필을 불러오지 못했어요.',
+        )
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -290,27 +374,107 @@ export function ParentModePage() {
     setPopup(nextPopup)
   }
 
-  const selectParentPhoto = (file: File | undefined) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return
-      setParentPhoto(reader.result)
-      window.localStorage.setItem(PARENT_PHOTO_KEY, reader.result)
+  const stopParentCamera = () => {
+    parentStreamRef.current?.getTracks().forEach((track) => track.stop())
+    parentStreamRef.current = null
+    setIsParentCameraOn(false)
+  }
+
+  const toggleParentCamera = async () => {
+    if (!isParentCameraOn) {
+      try {
+        parentStreamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: { width: 480, height: 480 },
+        })
+        setIsParentCameraOn(true)
+      } catch {
+        setNotificationToast('웹캠을 사용할 수 없어요.')
+      }
+      return
     }
-    reader.readAsDataURL(file)
+
+    const video = parentVideoRef.current
+    if (video?.videoWidth) {
+      const sourceSize = Math.min(video.videoWidth, video.videoHeight)
+      const canvas = document.createElement('canvas')
+      canvas.width = 300
+      canvas.height = 300
+      const context = canvas.getContext('2d')
+      if (context) {
+        context.translate(300, 0)
+        context.scale(-1, 1)
+        context.drawImage(
+          video,
+          (video.videoWidth - sourceSize) / 2,
+          (video.videoHeight - sourceSize) / 2,
+          sourceSize,
+          sourceSize,
+          0,
+          0,
+          300,
+          300,
+        )
+        const nextPhoto = canvas.toDataURL('image/webp', 0.9)
+        setParentPhoto(nextPhoto)
+        window.localStorage.setItem(PARENT_PHOTO_KEY, nextPhoto)
+      }
+    }
+    stopParentCamera()
   }
 
   const useDefaultPhoto = () => {
+    stopParentCamera()
     setParentPhoto(null)
     window.localStorage.removeItem(PARENT_PHOTO_KEY)
+    void updateParentProfileImage(1).catch(() => undefined)
   }
 
   const resetPin = () => {
     setPin('')
+    setVerifiedCurrentPin('')
     setNewPin('')
     setPinStep('current')
-    setPinMessage('현재 핀 번호 4자리를 입력해 주세요.')
+    const secondsLeft = Math.ceil(
+      (pinLockUntilRef.current - Date.now()) / 1000,
+    )
+    setPinMessage(
+      secondsLeft > 0
+        ? `PIN 입력이 잠겼습니다.\n${formatPinLockTime(secondsLeft)} 후 다시 시도해 주세요.`
+        : '현재 핀 번호 4자리를 입력해 주세요.',
+    )
+  }
+
+  const clearPinLockTimer = () => {
+    if (pinLockTimerRef.current) {
+      window.clearInterval(pinLockTimerRef.current)
+      pinLockTimerRef.current = null
+    }
+  }
+
+  const startPinLock = () => {
+    clearPinLockTimer()
+    setIsPinLocked(true)
+    setPin('')
+    const lockUntil = Date.now() + PIN_LOCK_SECONDS * 1000
+    pinLockUntilRef.current = lockUntil
+
+    const updateLockMessage = () => {
+      const secondsLeft = Math.ceil((lockUntil - Date.now()) / 1000)
+      if (secondsLeft <= 0) {
+        clearPinLockTimer()
+        pinLockUntilRef.current = 0
+        setIsPinLocked(false)
+        setPinFailCount(0)
+        setPinMessage('현재 핀 번호 4자리를 입력해 주세요.')
+        return
+      }
+      setPinMessage(
+        `PIN 입력이 잠겼습니다.\n${formatPinLockTime(secondsLeft)} 후 다시 시도해 주세요.`,
+      )
+    }
+
+    updateLockMessage()
+    pinLockTimerRef.current = window.setInterval(updateLockMessage, 1000)
   }
 
   const resetWithdrawal = () => {
@@ -347,11 +511,10 @@ export function ParentModePage() {
     }
 
     setIsVerifyingWithdrawal(true)
-    void verifyParentPin(nextPin)
+    void withdrawAccount(nextPin)
       .then(() => {
-        setWithdrawMessage(
-          '핀 번호가 확인됐어요. 회원 탈퇴 API 연결이 필요해요.',
-        )
+        setWithdrawMessage('회원 탈퇴가 완료됐어요.')
+        window.setTimeout(() => navigate('/', { replace: true }), 650)
       })
       .catch((error: unknown) => {
         setWithdrawMessage(
@@ -363,6 +526,7 @@ export function ParentModePage() {
   }
 
   const pressPinKey = (key: string) => {
+    if (isPinLocked) return
     if (key === '←') {
       setPin((value) => value.slice(0, -1))
       return
@@ -374,6 +538,25 @@ export function ParentModePage() {
     if (nextPin.length < 4) return
 
     if (pinStep === 'current') {
+      void verifyParentPin(nextPin)
+        .then(() => {
+          setPinFailCount(0)
+          setVerifiedCurrentPin(nextPin)
+          setPin('')
+          setPinStep('new')
+          setPinMessage('변경할 새 PIN 번호를 입력해 주세요.')
+        })
+        .catch(() => {
+          setPin('')
+          const nextFailCount = pinFailCount + 1
+          setPinFailCount(nextFailCount)
+          if (nextFailCount >= MAX_PIN_FAILS) {
+            startPinLock()
+            return
+          }
+          setPinMessage(`PIN 번호가 틀렸습니다. (${nextFailCount}/${MAX_PIN_FAILS})`)
+        })
+      return
       window.setTimeout(() => {
         setPin('')
         setPinStep('new')
@@ -393,6 +576,16 @@ export function ParentModePage() {
     }
 
     if (nextPin === newPin) {
+      void changeParentPin(verifiedCurrentPin, newPin)
+        .then(() => setPinMessage('PIN 번호가 변경되었어요.'))
+        .catch((error: unknown) => {
+          setPin('')
+          setVerifiedCurrentPin('')
+          setNewPin('')
+          setPinStep('current')
+          setPinMessage(error instanceof Error ? error.message : 'PIN 번호를 변경하지 못했어요.')
+        })
+      return
       setPinMessage('핀 번호가 변경되었어요 ✓')
       return
     }
@@ -445,6 +638,21 @@ export function ParentModePage() {
     }
 
     // 변경 API 연결 후 현재 비밀번호 불일치 응답은 errors.current에 매핑한다.
+    void changeAccountPassword(currentPassword, newPassword)
+      .then(() => {
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setPasswordSuccess('비밀번호가 변경되었어요.')
+      })
+      .catch((error: unknown) => {
+        setPasswordErrors({
+          current: error instanceof Error ? error.message : '현재 비밀번호를 확인해 주세요.',
+          next: '',
+          confirm: '',
+        })
+      })
+    return
     setCurrentPassword('')
     setNewPassword('')
     setConfirmPassword('')
@@ -474,16 +682,80 @@ export function ParentModePage() {
   }
 
   const removeChildProfile = (profile: ChildProfile) => {
+    setIsChildDeletionPinOpen(false)
+    setChildDeletionPin('')
+    setChildDeletionMessage('')
     setNoticeDialog({ kind: 'delete', profile })
   }
 
-  const confirmChildProfileRemoval = () => {
-    if (!noticeDialog || noticeDialog.kind !== 'delete') return
-    updateChildProfiles(
-      profiles.filter((item) => item.id !== noticeDialog.profile.id),
-    )
+  const closeChildProfileRemoval = () => {
+    if (isDeletingChildProfile) return
     setNoticeDialog(null)
+    setIsChildDeletionPinOpen(false)
+    setChildDeletionPin('')
+    setChildDeletionMessage('')
   }
+
+  const openChildDeletionPin = () => {
+    setChildDeletionPin('')
+    setChildDeletionMessage('')
+    setIsChildDeletionPinOpen(true)
+  }
+
+  const confirmChildProfileRemoval = (deletionPin: string) => {
+    if (!noticeDialog || noticeDialog.kind !== 'delete') return
+    const profileId = noticeDialog.profile.id
+    setIsDeletingChildProfile(true)
+    setChildDeletionMessage('')
+
+    void deleteBackendChildProfile(Number(profileId), deletionPin)
+      .then(() => {
+        updateChildProfiles(profiles.filter((item) => item.id !== profileId))
+        setNoticeDialog(null)
+        setIsChildDeletionPinOpen(false)
+        setChildDeletionPin('')
+        setChildDeletionMessage('')
+      })
+      .catch((error: unknown) => {
+        setChildDeletionPin('')
+        setChildDeletionMessage(
+          error instanceof Error ? error.message : '프로필을 삭제하지 못했어요.',
+        )
+      })
+      .finally(() => setIsDeletingChildProfile(false))
+  }
+
+  const pressChildDeletionPinKey = (key: string) => {
+    if (isDeletingChildProfile) return
+    if (key === '←') {
+      setChildDeletionPin((value) => value.slice(0, -1))
+      setChildDeletionMessage('')
+      return
+    }
+    if (!/^\d$/.test(key) || childDeletionPin.length >= 4) return
+
+    const nextPin = childDeletionPin + key
+    setChildDeletionPin(nextPin)
+    setChildDeletionMessage('')
+    if (nextPin.length === 4) confirmChildProfileRemoval(nextPin)
+  }
+
+  useEffect(() => {
+    if (!isChildDeletionPinOpen) return
+
+    const handleChildDeletionPinKeyboard = (event: KeyboardEvent) => {
+      if (/^\d$/.test(event.key)) {
+        event.preventDefault()
+        pressChildDeletionPinKey(event.key)
+      } else if (event.key === 'Backspace') {
+        event.preventDefault()
+        pressChildDeletionPinKey('←')
+      }
+    }
+
+    window.addEventListener('keydown', handleChildDeletionPinKeyboard)
+    return () => window.removeEventListener('keydown', handleChildDeletionPinKeyboard)
+  })
 
   const childPageCount = Math.max(1, Math.ceil(profiles.length / 3))
   const currentChildPage = Math.min(childListPage, childPageCount - 1)
@@ -542,13 +814,13 @@ export function ParentModePage() {
           <button
             aria-expanded={isArrivalListOpen}
             aria-label="도착한 일일 리포트 알림"
-            className="relative size-[62px] overflow-hidden rounded-[17px] bg-[#f6edcf] p-0 shadow-[0_4px_9px_rgba(0,0,0,.34)] transition hover:scale-106"
+            className="relative size-[62px] bg-transparent p-0 transition hover:scale-106"
             onClick={() => setIsArrivalListOpen((value) => !value)}
             type="button"
           >
             <img
               alt=""
-              className="size-full scale-[1.62] object-cover"
+              className="size-full scale-[1.62] object-cover drop-shadow-[0_4px_5px_rgba(0,0,0,.3)]"
               src={reportNotificationButtonUrl}
             />
             {reportArrivals.some((item) => !item.read) ? (
@@ -567,7 +839,7 @@ export function ParentModePage() {
               className="absolute bottom-0 left-[76px] w-[360px] rounded-[22px] border-4 border-[#d8bd79] bg-[#fff9e9] p-4 shadow-[0_12px_30px_rgba(0,0,0,.32)]"
             >
               <div className="mb-2 flex items-center justify-between px-1">
-                <h2 className="text-[20px] text-[#4f6f35]" style={jua}>
+                <h2 className="text-[23px] text-[#4f6f35]" style={jua}>
                   도착한 일일 리포트
                 </h2>
                 <button
@@ -603,7 +875,7 @@ export function ParentModePage() {
                   ))
                 ) : (
                   <p
-                    className="py-8 text-center text-[15px] text-[#8a7a55]"
+                    className="py-8 text-center text-[18px] text-[#8a7a55]"
                     style={jua}
                   >
                     새로 도착한 리포트가 없어요.
@@ -616,7 +888,7 @@ export function ParentModePage() {
 
         <nav className="absolute top-[25px] right-[10px] z-40 flex gap-3">
           <button
-            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('children')}
             style={{ ...jua, backgroundImage: `url(${menuBoardUrl})` }}
             type="button"
@@ -624,7 +896,7 @@ export function ParentModePage() {
             아이 프로필 관리
           </button>
           <button
-            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('profile')}
             style={{ ...jua, backgroundImage: `url(${menuBoardUrl})` }}
             type="button"
@@ -632,7 +904,7 @@ export function ParentModePage() {
             내 프로필 관리
           </button>
           <button
-            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
+            className="flex h-[58px] w-[220px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#f7ecd2] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-105"
             onClick={() => openPopup('notification')}
             style={{ ...jua, backgroundImage: `url(${menuBoardUrl})` }}
             type="button"
@@ -642,7 +914,7 @@ export function ParentModePage() {
         </nav>
 
         <h1
-          className="absolute top-[110px] right-0 left-0 z-10 text-center text-[40px] text-white [-webkit-text-stroke:6px_#3c7d38] [paint-order:stroke_fill]"
+          className="absolute top-[110px] right-0 left-0 z-10 text-center text-[50px] text-white [-webkit-text-stroke:6px_#3c7d38] [paint-order:stroke_fill]"
           style={jua}
         >
           리포트를 볼 아이를 선택하세요
@@ -762,7 +1034,7 @@ export function ParentModePage() {
                       </div>
                       <div className="relative z-10 mr-[22px] flex -translate-y-0.5 flex-col">
                         <button
-                          className="h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#7a5a1e] transition hover:scale-105"
+                          className="h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#7a5a1e] transition hover:scale-105"
                           onClick={() => editChildProfile(profile)}
                           style={{
                             ...jua,
@@ -773,7 +1045,7 @@ export function ParentModePage() {
                           수정
                         </button>
                         <button
-                          className="-mt-[23px] h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#9a4a3e] transition hover:scale-105"
+                          className="-mt-[23px] h-[72px] w-[184px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#9a4a3e] transition hover:scale-105"
                           onClick={() => removeChildProfile(profile)}
                           style={{
                             ...jua,
@@ -897,11 +1169,27 @@ export function ParentModePage() {
           <ChildProfileCreateDialog
             onBack={() => setPopup('children')}
             onCreate={(profile) => {
-              updateChildProfiles([...profiles, profile])
-              setChildListPage(
-                Math.floor(profiles.length / 3),
-              )
-              setPopup('children')
+              const profileImageNum = childImageNumFromPhoto(profile.photoUrl)
+              void createBackendChildProfile(profile.name, profileImageNum)
+                .then((created) => {
+                  updateChildProfiles([
+                    ...profiles,
+                    {
+                      ...profile,
+                      id: String(created.childId),
+                      profileImageNum: created.profileImageNum,
+                    },
+                  ])
+                  setChildListPage(Math.floor(profiles.length / 3))
+                  setPopup('children')
+                })
+                .catch((error: unknown) =>
+                  setNotificationToast(
+                    error instanceof Error
+                      ? error.message
+                      : '아이 프로필을 만들지 못했어요.',
+                  ),
+                )
             }}
             profiles={profiles}
           />
@@ -915,13 +1203,34 @@ export function ParentModePage() {
               setPopup('children')
             }}
             onCreate={(updatedProfile) => {
-              updateChildProfiles(
-                profiles.map((profile) =>
-                  profile.id === updatedProfile.id ? updatedProfile : profile,
-                ),
+              const childId = Number(updatedProfile.id)
+              const profileImageNum = childImageNumFromPhoto(
+                updatedProfile.photoUrl,
+                updatedProfile.profileImageNum,
               )
-              setEditingChildProfile(null)
-              setPopup('children')
+              void updateBackendChildProfile(
+                childId,
+                updatedProfile.name,
+                profileImageNum,
+              )
+                .then(() => {
+                  updateChildProfiles(
+                    profiles.map((profile) =>
+                      profile.id === updatedProfile.id
+                        ? { ...updatedProfile, profileImageNum }
+                        : profile,
+                    ),
+                  )
+                  setEditingChildProfile(null)
+                  setPopup('children')
+                })
+                .catch((error: unknown) =>
+                  setNotificationToast(
+                    error instanceof Error
+                      ? error.message
+                      : '아이 프로필을 수정하지 못했어요.',
+                  ),
+                )
             }}
             profiles={profiles}
           />
@@ -955,8 +1264,8 @@ export function ParentModePage() {
                 />
               </button>
               <h2
-                className={`absolute right-0 left-0 text-center text-[31px] text-[#3a7d2c] ${
-                  profileView === 'menu' ? 'top-[10.5%]' : 'top-[12.5%]'
+                className={`absolute right-0 left-0 text-center text-[32px] text-[#3a7d2c] ${
+                  profileView === 'menu' ? 'top-[11.5%]' : 'top-[12.5%]'
                 }`}
                 style={jua}
               >
@@ -987,10 +1296,10 @@ export function ParentModePage() {
               ) : null}
 
               {profileView === 'menu' ? (
-                <div className="absolute top-[18%] right-[17%] left-[17%] flex flex-col items-center">
+                <div className="absolute top-[20%] right-[17%] left-[17%] flex flex-col items-center">
                   <img
                     alt="부모 프로필"
-                    className="-mb-4 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
+                    className="mb-6 size-[108px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_5px_#d9c79a,0_7px_14px_rgba(0,0,0,.18)]"
                     src={parentPhoto ?? parentAvatarUrl}
                   />
                   {[
@@ -1016,7 +1325,7 @@ export function ParentModePage() {
                     },
                   ].map((item) => (
                     <button
-                      className="relative -mb-22 h-[170px] w-[410px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition hover:scale-103"
+                      className="relative mb-[9px] h-[73px] w-[406px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition first:mt-[46px] hover:scale-103"
                       key={item.view}
                       onClick={() => {
                         if (item.view === 'pin') resetPin()
@@ -1029,10 +1338,10 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span className="block text-[21px] text-[#5f492a]">
+                      <span className="-mt-1.3 block text-[25px] text-[#5f492a]">
                         {item.label}
                       </span>
-                      <span className="mt-0.5 block text-[12px] text-[#82945a]">
+                      <span className="-mt-2 block text-[14px] text-[#82945a]">
                         {item.description}
                       </span>
                     </button>
@@ -1042,27 +1351,37 @@ export function ParentModePage() {
 
               {profileView === 'photo' ? (
                 <div className="absolute top-[24%] right-[18%] left-[18%] flex flex-col items-center">
-                  <img
-                    alt="부모 프로필"
-                    className="size-[190px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_6px_#d9c79a,0_8px_18px_rgba(0,0,0,.2)]"
-                    src={parentPhoto ?? parentAvatarUrl}
-                  />
+                  {isParentCameraOn ? (
+                    <video
+                      autoPlay
+                      className="size-[190px] -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_6px_#d9c79a,0_8px_18px_rgba(0,0,0,.2)]"
+                      muted
+                      playsInline
+                      ref={parentVideoRef}
+                    />
+                  ) : (
+                    <img
+                      alt="부모 프로필"
+                      className="size-[190px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_6px_#d9c79a,0_8px_18px_rgba(0,0,0,.2)]"
+                      src={parentPhoto ?? parentAvatarUrl}
+                    />
+                  )}
                   <p className="mt-5 text-[16px] text-[#8a7a55]" style={jua}>
                     부모 모드에서 사용할 프로필 사진을 골라 주세요.
                   </p>
                   <button
-                    className="mt-4 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] transition hover:scale-103"
-                    onClick={() => photoInputRef.current?.click()}
+                    className="mt-4 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#5a4a2a] transition hover:scale-103"
+                    onClick={() => void toggleParentCamera()}
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
                     }}
                     type="button"
                   >
-                    사진 추가
+                    {isParentCameraOn ? '사진 찍기' : '웹캠 촬영'}
                   </button>
                   <button
-                    className="-mt-6 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] transition hover:scale-103"
+                    className="-mt-6 h-[82px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[23px] text-[#5a4a2a] transition hover:scale-103"
                     onClick={useDefaultPhoto}
                     style={{
                       ...jua,
@@ -1072,28 +1391,19 @@ export function ParentModePage() {
                   >
                     기본 이미지로 변경
                   </button>
-                  <input
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(event) =>
-                      selectParentPhoto(event.target.files?.[0])
-                    }
-                    ref={photoInputRef}
-                    type="file"
-                  />
                 </div>
               ) : null}
 
               {profileView === 'pin' ? (
                 <div className="absolute top-[21%] right-[18%] left-[18%] text-center">
-                  <p className="h-9 text-[19px] text-[#8a7a55]" style={jua}>
+                  <p className="h-14 whitespace-pre-line text-[20px] leading-7 text-[#8a7a55]" style={jua}>
                     {pinMessage}
                   </p>
                   <div className="mt-0 flex justify-center gap-1">
                     {Array.from({ length: 4 }, (_, index) => (
                       <img
                         alt=""
-                        className="size-[55px] object-contain"
+                        className="size-[57px] object-contain"
                         key={index}
                         src={
                           index < pin.length ? pinDotFillUrl : pinDotEmptyUrl
@@ -1101,14 +1411,15 @@ export function ParentModePage() {
                       />
                     ))}
                   </div>
-                  <p className="mt-6 text-[15px] text-[#9b8862]" style={jua}>
+                  <p className="mt-5 text-[16px] text-[#9b8862]" style={jua}>
                     화면 키패드 또는 키보드 숫자 키를 사용할 수 있어요.
                   </p>
-                  <div className="mx-auto mt-2 grid w-[300px] -translate-x-2 grid-cols-3">
+                  <div className="mx-auto mt-1 grid w-[320px] -translate-x-2 grid-cols-3">
                     {KEYS.map((key, index) =>
                       key ? (
                         <button
-                          className="-m-3 mx-auto h-[85px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#3a7d2c] active:scale-95"
+                          className="-m-3 mx-auto h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95"
+                          disabled={isPinLocked}
                           key={key}
                           onClick={() => pressPinKey(key)}
                           style={{
@@ -1125,7 +1436,8 @@ export function ParentModePage() {
                     )}
                   </div>
                   <button
-                    className="mt-4 text-[15px] text-[#8a7a55] underline"
+                    className="mt-2 text-[17px] text-[#8a7a55] underline disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={isPinLocked}
                     onClick={resetPin}
                     style={jua}
                     type="button"
@@ -1136,15 +1448,15 @@ export function ParentModePage() {
               ) : null}
 
               {profileView === 'withdraw' ? (
-                <div className="absolute top-[22%] right-[18%] left-[18%] text-center">
-                  <p className="h-12 text-[17px] leading-6 text-[#a34f3d]" style={jua}>
+                <div className="absolute top-[23%] right-[18%] left-[18%] text-center">
+                  <p className="h-12 text-[19px] leading-6 text-[#a34f3d]" style={jua}>
                     {withdrawMessage}
                   </p>
-                  <div className="mt-1 flex justify-center gap-1">
+                  <div className="-mt-3 flex justify-center -gap-0">
                     {Array.from({ length: 4 }, (_, index) => (
                       <img
                         alt=""
-                        className="size-[55px] object-contain"
+                        className="size-[59px] object-contain"
                         key={index}
                         src={
                           index < withdrawPin.length
@@ -1154,14 +1466,14 @@ export function ParentModePage() {
                       />
                     ))}
                   </div>
-                  <p className="mt-4 text-[14px] text-[#8a7a55]" style={jua}>
+                  <p className="mt-2 text-[15px] text-[#8a7a55]" style={jua}>
                     탈퇴 확인을 위해 동일한 핀 번호를 두 번 입력해 주세요.
                   </p>
-                  <div className="mx-auto mt-2 grid w-[300px] -translate-x-2 grid-cols-3">
+                  <div className="mx-auto mt-1 grid w-[300px] -translate-x-2 grid-cols-3">
                     {KEYS.map((key, index) =>
                       key ? (
                         <button
-                          className="-m-3 mx-auto h-[85px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-[#3a7d2c] active:scale-95 disabled:opacity-50"
+                          className="-m-3 mx-auto h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95 disabled:opacity-50"
                           disabled={isVerifyingWithdrawal}
                           key={key}
                           onClick={() => pressWithdrawalPinKey(key)}
@@ -1179,7 +1491,7 @@ export function ParentModePage() {
                     )}
                   </div>
                   <button
-                    className="mt-4 text-[15px] text-[#8a7a55] underline"
+                    className="mt-2 text-[17px] text-[#8a7a55] underline"
                     onClick={resetWithdrawal}
                     style={jua}
                     type="button"
@@ -1192,7 +1504,7 @@ export function ParentModePage() {
               {profileView === 'password' ? (
                 <div className="absolute top-[24%] right-[21%] left-[21%]">
                   <p
-                    className="mb-4 text-center text-[15.5px] text-[#8a7a55]"
+                    className="mb-4 text-center text-[15.7px] text-[#8a7a55]"
                     style={jua}
                   >
                     현재 비밀번호를 확인한 뒤 새 비밀번호로 변경해요.
@@ -1235,7 +1547,7 @@ export function ParentModePage() {
                         <input
                           aria-invalid={Boolean(error)}
                           autoComplete={autoComplete}
-                          className={`h-[54px] w-full rounded-xl border-2 bg-[#fdf6e3] px-4 text-[20px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f] ${
+                          className={`h-[54px] w-full rounded-xl border-2 bg-[#fdf6e3] px-4 text-[22px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f] ${
                             error ? 'border-[#c7563a]' : 'border-[#cdbb92]'
                           }`}
                           onChange={(event) => {
@@ -1261,7 +1573,7 @@ export function ParentModePage() {
                     ),
                   )}
                   <p
-                    className={`h-9 text-center text-[18px] leading-[1.7] ${
+                    className={`h-9 text-center text-[20px] leading-[1.7] ${
                       passwordSuccess ? 'text-[#3a7d2c]' : 'text-[#8a7a55]'
                     }`}
                     style={jua}
@@ -1269,7 +1581,7 @@ export function ParentModePage() {
                     {passwordSuccess || PASSWORD_GUIDE}
                   </p>
                   <button
-                    className="mt-10 h-[88px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-102"
+                    className="mt-10 h-[88px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-[24px] text-white transition [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] hover:scale-102"
                     onClick={changePassword}
                     style={{
                       ...jua,
@@ -1398,10 +1710,10 @@ export function ParentModePage() {
               </label>
 
               <div className="absolute top-[68.5%] right-[16.5%] left-[16.5%] rounded-[14px] bg-[rgba(126,200,80,.14)] px-4 py-3">
-                <h3 className="text-[15px] text-[#5a7d3a]" style={jua}>
+                <h3 className="text-[16px] text-[#5a7d3a]" style={jua}>
                   알림 개인정보 보호
                 </h3>
-                <p className="mt-1 text-[13px] text-[#8a7a55]" style={jua}>
+                <p className="mt-1 text-[13.5px] text-[#8a7a55]" style={jua}>
                   알림에는 일기 내용·감정·점수 등 상세 정보를 표시하지 않습니다.
                 </p>
               </div>
@@ -1414,7 +1726,7 @@ export function ParentModePage() {
                 {savedMessage}
               </p>
               <button
-                className="absolute right-[16.5%] bottom-[7.5%] left-[16.5%] h-[90px] bg-[length:100%_100%] bg-center bg-no-repeat text-[23px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] active:translate-y-0.5"
+                className="absolute right-[16.5%] bottom-[7.5%] left-[16.5%] h-[90px] bg-[length:100%_100%] bg-center bg-no-repeat text-[26px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill] active:translate-y-0.5"
                 onClick={saveNotification}
                 style={{
                   ...jua,
@@ -1427,14 +1739,90 @@ export function ParentModePage() {
             </section>
           </div>
         ) : null}
-        {noticeDialog?.kind === 'delete' ? (
+        {noticeDialog?.kind === 'delete' && !isChildDeletionPinOpen ? (
           <ParentNoticeDialog
-            confirmLabel="삭제"
+            confirmLabel="PIN 입력"
             message={`${noticeDialog.profile.name} 프로필을 삭제할까요?`}
-            onCancel={() => setNoticeDialog(null)}
-            onConfirm={confirmChildProfileRemoval}
+            onCancel={closeChildProfileRemoval}
+            onConfirm={openChildDeletionPin}
             title="프로필 삭제"
           />
+        ) : null}
+        {noticeDialog?.kind === 'delete' && isChildDeletionPinOpen ? (
+          <div
+            aria-modal="true"
+            className="absolute inset-0 z-100 flex items-center justify-center bg-[rgba(18,30,18,0.6)]"
+            onClick={closeChildProfileRemoval}
+            role="dialog"
+          >
+            <div
+              className="relative -top-[30px] h-[560px] w-[440px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <img
+                alt=""
+                className="pointer-events-none absolute inset-0 size-full object-contain"
+                src={pinPanelUrl}
+              />
+              <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
+                <h2 className="text-center text-[30px] text-[#3a7d2c]" style={jua}>
+                  부모 확인
+                </h2>
+                <p className="mt-1.5 text-center text-[17px] text-[#8a7a5a]" style={jua}>
+                  삭제하려면 PIN 번호 4자리를 입력하세요
+                </p>
+                <div className="mt-5 mb-1.5 flex justify-center gap-4">
+                  {Array.from({ length: 4 }).map((_, index) => {
+                    const isFilled = index < childDeletionPin.length
+                    return (
+                      <span className="flex size-[30px] items-center justify-center" key={index}>
+                        <img
+                          alt=""
+                          className={isFilled ? 'size-[56px] max-w-none object-contain' : 'size-[30px] object-contain'}
+                          src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
+                        />
+                      </span>
+                    )
+                  })}
+                </div>
+                <div
+                  className="h-[22px] text-center text-[16px] text-[#d1483a]"
+                  style={jua}
+                >
+                  {isDeletingChildProfile
+                    ? '확인하고 있어요...'
+                    : childDeletionMessage || '.'}
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-2.5">
+                  {KEYS.map((key, index) =>
+                    key ? (
+                      <button
+                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={isDeletingChildProfile}
+                        key={key}
+                        onClick={() => pressChildDeletionPinKey(key)}
+                        style={{ ...jua, backgroundImage: `url(${pinKeyUrl})` }}
+                        type="button"
+                      >
+                        {key}
+                      </button>
+                    ) : (
+                      <div key={`blank-${index}`} />
+                    ),
+                  )}
+                </div>
+              </div>
+              <button
+                aria-label="닫기"
+                className="absolute -top-4 -right-4 grid size-[46px] place-items-center rounded-full border-[3px] border-white bg-[#cf6f4e] text-xl text-white shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 disabled:opacity-40"
+                disabled={isDeletingChildProfile}
+                onClick={closeChildProfileRemoval}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

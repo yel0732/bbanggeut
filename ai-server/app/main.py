@@ -1,5 +1,7 @@
 """FastAPI application factory and provider lifecycle assembly."""
 
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,12 +11,13 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.health import router as health_router
 from app.api.dialogue import router as dialogue_router
 from app.api.child_diary import router as child_diary_router
 from app.api.report import router as report_router
 from app.config import AppSettings
 from app.child_diary.generator import ChildDiaryGenerator
-from app.dialogue.pipeline import DialogueTurnPipeline
+from app.dialogue.pipeline import DialogueTurnPipeline, fixed_assistant_messages
 from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
 )
@@ -41,7 +44,9 @@ from app.signaling.error_mapping import map_ticket_failure_code
 from app.signaling.router import router as signaling_router
 from app.speech.hallucination import HallucinationGuard
 from app.speech.stt_pipeline import SessionSttPipeline
+from app.events.stream import ConversationStreamProducer
 from app.speech.synthesis import SpeechSynthesisService
+from app.speech.tts_cache import CachedSpeechSynthesizer
 from app.speech.tts_client import GmsSpeechSynthesizer
 from app.speech.turn_detector import TurnDetectionConfig
 from app.speech.vad import WebrtcVoiceActivityDetector
@@ -115,6 +120,7 @@ def create_app(
         redis_client = create_redis_client(
             resolved_settings.realtime_redis_host, resolved_settings.realtime_redis_port
         )
+        app.state.redis_client = redis_client
         # 별도 httpx.AsyncClient: GMS용 http_client는 gms_base_url·GMS 전용 transport를
         # 갖고 있어 절대 URL 요청(JWKS)에는 base_url이 영향을 주지 않지만, transport
         # override까지 공유하면 테스트에서 GMS Mock이 JWKS 요청까지 가로채게 된다.
@@ -165,7 +171,14 @@ def create_app(
             preroll_ms=resolved_settings.stt_preroll_ms,
         )
 
-        def stt_pipeline_factory(publisher, *, turn_sequencer, on_final, on_no_speech):
+        def stt_pipeline_factory(
+            publisher,
+            *,
+            turn_sequencer,
+            on_final,
+            on_no_speech,
+            is_output_active=None,
+        ):
             return SessionSttPipeline(
                 speech_recognizer,
                 publisher,
@@ -173,11 +186,15 @@ def create_app(
                 guard=hallucination_guard,
                 max_utterance_seconds=resolved_settings.stt_max_utterance_seconds,
                 # VAD 자체는 세션별 인스턴스(webrtcvad가 내부 상태를 가짐, §8).
-                vad=WebrtcVoiceActivityDetector(resolved_settings.stt_vad_aggressiveness),
+                vad=WebrtcVoiceActivityDetector(
+                    resolved_settings.stt_vad_aggressiveness,
+                    min_frame_rms=resolved_settings.stt_vad_min_frame_rms,
+                ),
                 turn_detection=turn_detection_config,
                 turn_sequencer=turn_sequencer,
                 on_final=on_final,
                 on_no_speech=on_no_speech,
+                is_output_active=is_output_active,
             )
 
         context_snapshot_reader = RedisContextSnapshotReader(
@@ -185,21 +202,43 @@ def create_app(
         )
         # TTS synthesizer는 상태 비저장(HTTP)이라 연결 간 공유. 합성 서비스는
         # speaker·publisher·registry가 연결별이라 세션마다 새로 만든다(§8).
-        speech_synthesizer = GmsSpeechSynthesizer(
-            http_client,
-            api_key=resolved_settings.gms_key,
-            model=resolved_settings.tts_model,
-            voice=resolved_settings.tts_voice,
-            first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
+        speech_synthesizer = CachedSpeechSynthesizer(
+            GmsSpeechSynthesizer(
+                http_client,
+                api_key=resolved_settings.gms_key,
+                model=resolved_settings.tts_model,
+                voice=resolved_settings.tts_voice,
+                first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
+            ),
+            logging.getLogger("app.speech.tts_cache"),
         )
+        # 매번 같은 문장(무응답 복구·되묻기·주제 전환)은 한 번만 합성한다 —
+        # TTFB 실측 1.89초를 그 경로에서 없앤다. 기동을 막지 않도록 배경에서
+        # 채운다(11회 합성 = 20초 이상). 아직 안 채워진 문장은 평소처럼 합성되고
+        # 그 결과가 캐시에 남으므로, 이 태스크가 실패해도 기능은 온전하다.
+        speech_synthesizer.register(fixed_assistant_messages())
+        prewarm_task = asyncio.create_task(speech_synthesizer.prewarm())
 
-        def synthesis_service_factory(speaker, publisher, response_registry):
+        def synthesis_service_factory(speaker, publisher, response_registry, on_completed):
             return SpeechSynthesisService(
                 speech_synthesizer,
                 speaker,
                 publisher,
                 response_registry.is_cancelled,
                 logging.getLogger("app.speech.synthesis"),
+                on_completed=on_completed,
+            )
+
+        def stream_producer_factory(publisher):
+            return ConversationStreamProducer(
+                redis_client,
+                conversation_id=publisher.conversation_id,
+                realtime_session_id=publisher.realtime_session_id,
+                session_epoch=publisher.session_epoch,
+                logger=logging.getLogger("app.events.stream"),
+                max_attempts=resolved_settings.stream_publish_max_attempts,
+                retry_backoff_seconds=resolved_settings.stream_publish_retry_seconds,
+                outbox_size=resolved_settings.stream_outbox_size,
             )
 
         async def realtime_session_factory(publisher, conversation_id, speaker):
@@ -219,6 +258,13 @@ def create_app(
                 logger=logging.getLogger("app.session.realtime_dialogue"),
                 speaker=speaker,
                 synthesis_service_factory=synthesis_service_factory,
+                stream_producer_factory=stream_producer_factory,
+                low_confidence_threshold=(
+                    resolved_settings.stt_low_confidence_threshold
+                ),
+                low_confidence_reask_limit=(
+                    resolved_settings.stt_low_confidence_reask_limit
+                ),
             )
 
         app.state.realtime_session_factory = realtime_session_factory
@@ -226,6 +272,11 @@ def create_app(
         try:
             yield
         finally:
+            # 사전 합성은 HTTP client보다 먼저 정리한다 — 닫힌 client로 요청하면
+            # 종료 경로에서 예외가 난다.
+            prewarm_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await prewarm_task
             await redis_client.aclose()
             await realtime_http_client.aclose()
             await http_client.aclose()
@@ -239,6 +290,7 @@ def create_app(
     app.include_router(child_diary_router)
     app.include_router(report_router)
     app.include_router(signaling_router)
+    app.include_router(health_router)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

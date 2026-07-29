@@ -38,7 +38,18 @@ const SESSION_KEYS = [
   'parentEmail',
 ] as const
 const REFRESH_BUFFER_MS = 60_000
+/** 인증 요청 응답 대기 한도(ms) */
+const REQUEST_TIMEOUT_MS = 6_000
 const NEW_SIGNUP_EMAIL_KEY = 'bbanggut-new-signup-email'
+const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
+const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
+const ACCOUNT_LOCAL_DATA_KEYS = [
+  'bbanggut-active-child-profile-id',
+  'bbanggut-child-profiles',
+  'bbanggut-parent-photo',
+  'bbanggut-report-arrivals',
+  'bbanggut-report-notification',
+] as const
 let refreshPromise: Promise<string | null> | null = null
 
 export async function loginWithEmail({
@@ -88,6 +99,9 @@ export function storeLoginSession(response: LoginResponse, remember: boolean) {
 }
 
 export function markNewSignup(email: string) {
+  // A previous, unfinished signup must never carry its PIN into this account.
+  window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
+  window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
   window.sessionStorage.setItem(
     NEW_SIGNUP_EMAIL_KEY,
     email.trim().toLowerCase(),
@@ -100,8 +114,14 @@ export function consumeNewSignup(email: string) {
   return signupEmail === normalizedEmail
 }
 
+export function hasPendingNewSignupOnboarding() {
+  return Boolean(window.sessionStorage.getItem(NEW_SIGNUP_EMAIL_KEY))
+}
+
 export function completeNewSignupOnboarding() {
   window.sessionStorage.removeItem(NEW_SIGNUP_EMAIL_KEY)
+  window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
+  window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
 }
 
 export function getStoredAccessToken() {
@@ -206,6 +226,46 @@ export async function verifyParentPin(pin: string) {
   }
 }
 
+export async function withdrawAccount(pin: string) {
+  const response = await authFetch(apiUrl('/api/auth/me'), {
+    body: JSON.stringify({ pin }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const error = (await response
+      .json()
+      .catch(() => null)) as ApiErrorResponse | null
+    throw new Error(
+      error?.message ?? '회원 탈퇴에 실패했어요. 잠시 후 다시 시도해 주세요.',
+    )
+  }
+  clearLoginSession()
+  ACCOUNT_LOCAL_DATA_KEYS.forEach((key) => window.localStorage.removeItem(key))
+  window.sessionStorage.removeItem(NEW_SIGNUP_EMAIL_KEY)
+}
+
+export async function changeAccountPassword(
+  currentPassword: string,
+  newPassword: string,
+) {
+  const response = await authFetch(apiUrl('/api/auth/password'), {
+    body: JSON.stringify({
+      currentPassword,
+      newPassword,
+      newPasswordConfirm: newPassword,
+    }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH',
+  })
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null
+    throw new Error(error?.message ?? '비밀번호를 변경하지 못했어요.')
+  }
+}
+
 export function clearLoginSession() {
   for (const storage of [window.localStorage, window.sessionStorage]) {
     SESSION_KEYS.forEach((key) => storage.removeItem(key))
@@ -229,10 +289,13 @@ async function ensureAccessToken() {
 function refreshAccessToken() {
   if (refreshPromise) return refreshPromise
 
-  refreshPromise = requestJson<TokenRefreshResponse>('/api/auth/token/refresh', {
-    credentials: 'include',
-    method: 'POST',
-  })
+  refreshPromise = requestJson<TokenRefreshResponse>(
+    '/api/auth/token/refresh',
+    {
+      credentials: 'include',
+      method: 'POST',
+    },
+  )
     .then((response) => {
       const storage = getSessionStorage() ?? window.localStorage
       storage.setItem('accessToken', response.accessToken)
@@ -280,7 +343,12 @@ function fetchWithToken(
 }
 
 async function requestJson<T = unknown>(path: string, init: RequestInit) {
-  const response = await fetch(apiUrl(path), init)
+  // 응답이 안 오면 무한정 기다린다. 세션 확인처럼 화면 전환을 막고 있는 요청이
+  // 걸리면 아이 눈에는 버튼이 먹통이 된 것으로 보인다.
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
   const contentType = response.headers.get('content-type') ?? ''
   if (!response.ok) {
     const error = contentType.includes('application/json')
@@ -289,7 +357,9 @@ async function requestJson<T = unknown>(path: string, init: RequestInit) {
     throw new Error(error?.message ?? `요청에 실패했어요. (${response.status})`)
   }
   if (!contentType.includes('application/json')) {
-    throw new Error('서버가 올바른 응답을 보내지 않았어요. API 주소를 확인해 주세요.')
+    throw new Error(
+      '서버가 올바른 응답을 보내지 않았어요. API 주소를 확인해 주세요.',
+    )
   }
   return (await response.json()) as T
 }

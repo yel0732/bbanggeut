@@ -186,7 +186,7 @@ class RealtimeSessionServiceTest {
         return ContextSnapshot.create(
                 "conv_1",
                 new com.A501.backend.domain.conversation.dto.realtime.RealtimeChildContext("하준"),
-                new RealtimeConversationContext(ConversationGoal.DIARY, "ko-KR", ConversationTopic.DAILY, 6),
+                new RealtimeConversationContext(ConversationGoal.DIARY, "ko-KR", ConversationTopic.DAILY, 6, 0),
                 null,
                 List.of(),
                 RealtimePolicySnapshot.defaultPolicy());

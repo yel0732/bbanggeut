@@ -157,7 +157,7 @@ class ContextSnapshotTest {
 
     private RealtimeConversationContext conversationContext() {
         return new RealtimeConversationContext(
-                ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12);
+                ConversationGoal.DIARY, "ko-KR", ConversationTopic.GAME, 12, 0);
     }
 
     private List<RealtimeTopicSnapshot> topics() {

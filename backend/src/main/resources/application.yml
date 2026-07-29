@@ -12,6 +12,8 @@ spring:
   batch:
     job:
       enabled: false
+  flyway:
+    enabled: false
   data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
@@ -44,6 +46,19 @@ report:
       heartbeat-interval: ${REPORT_SSE_HEARTBEAT:PT15S}
 
 conversation:
+  stream:
+    key: ${CONVERSATION_STREAM_KEY:conversation-events}
+    group: ${CONVERSATION_STREAM_GROUP:spring-conversation-consumers}
+    enabled: ${CONVERSATION_STREAM_ENABLED:false}
+    poll-interval: ${CONVERSATION_STREAM_POLL_INTERVAL:PT1S}
+    batch-size: ${CONVERSATION_STREAM_BATCH_SIZE:20}
+    recovery:
+      enabled: ${CONVERSATION_STREAM_RECOVERY_ENABLED:false}
+      interval: ${CONVERSATION_STREAM_RECOVERY_INTERVAL:PT30S}
+      initial-delay: ${CONVERSATION_STREAM_RECOVERY_INITIAL_DELAY:PT10S}
+      min-idle: ${CONVERSATION_STREAM_RECOVERY_MIN_IDLE:PT30S}
+      max-attempts: ${CONVERSATION_STREAM_RECOVERY_MAX_ATTEMPTS:3}
+      batch-size: ${CONVERSATION_STREAM_RECOVERY_BATCH_SIZE:100}
   ai:
     base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
     timeout: ${AI_SERVER_TIMEOUT:PT30S}
@@ -177,6 +192,14 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+  batch:
+    jdbc:
+      initialize-schema: never
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    clean-disabled: true
   jpa:
     hibernate:
       ddl-auto: validate

@@ -16,6 +16,8 @@ drags in the whole of torch (plan §11-A).
 
 from __future__ import annotations
 
+import array
+import math
 from typing import Protocol
 
 import webrtcvad
@@ -41,12 +43,22 @@ class VoiceActivityDetector(Protocol):
 
 
 class WebrtcVoiceActivityDetector:
-    """webrtcvad-backed detector for one session's audio stream."""
+    """webrtcvad-backed detector for one session's audio stream.
+
+    ``min_frame_rms`` is an energy floor **in front of** webrtcvad. webrtcvad
+    is a voice-band energy detector with no absolute threshold: measured, it
+    classifies amplitude-400 white noise as speech 100% of the time at
+    aggressiveness 0–2, and a browser's auto gain control amplifies exactly
+    that kind of ambient floor while nobody speaks. A frame whose RMS is below
+    the floor is judged non-speech without asking webrtcvad, so sustained
+    low-level room noise cannot hold a turn open forever. 0 disables the gate.
+    """
 
     def __init__(
         self,
         aggressiveness: int = 2,
         audio_format: AudioFormat = STT_INPUT_FORMAT,
+        min_frame_rms: int = 0,
     ) -> None:
         if aggressiveness not in range(4):
             raise ValueError("aggressiveness must be between 0 and 3")
@@ -54,9 +66,12 @@ class WebrtcVoiceActivityDetector:
             raise ValueError("webrtcvad does not support this sample rate")
         if audio_format.channels != 1 or audio_format.sample_width != 2:
             raise ValueError("webrtcvad requires mono s16 audio")
+        if min_frame_rms < 0:
+            raise ValueError("min_frame_rms must not be negative")
         self._vad = webrtcvad.Vad(aggressiveness)
         self._sample_rate = audio_format.sample_rate
         self._frame_bytes = audio_format.bytes_per_second * VAD_FRAME_MILLISECONDS // 1000
+        self._min_frame_rms = min_frame_rms
 
     @property
     def frame_milliseconds(self) -> int:
@@ -65,7 +80,17 @@ class WebrtcVoiceActivityDetector:
     def is_speech(self, frame: bytes) -> bool:
         if len(frame) != self._frame_bytes:
             raise ValueError("frame length does not match the VAD frame size")
+        if self._min_frame_rms > 0 and _frame_rms(frame) < self._min_frame_rms:
+            return False
         return self._vad.is_speech(frame, self._sample_rate)
+
+
+def _frame_rms(frame: bytes) -> float:
+    samples = array.array("h")
+    samples.frombytes(frame)
+    if not samples:
+        return 0.0
+    return math.sqrt(sum(value * value for value in samples) / len(samples))
 
 
 class FakeVoiceActivityDetector:

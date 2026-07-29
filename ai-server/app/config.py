@@ -43,8 +43,21 @@ class AppSettings:
     stt_max_utterance_seconds: float = 30.0  # whisper 처리 창과 동일, 초과 시 턴 강제 종료
     stt_min_utterance_seconds: float = 0.5  # 미만이면 호출하지 않음(0.4초 → "you" 환각)
     stt_no_speech_prob_threshold: float = 0.6  # 실제 발화 0.00 vs 환각 0.82~0.94
+    # 신뢰도 되묻기(FUNCTIONAL_SPEC §22 STT_LOW_CONFIDENCE). 합성 음성 20건 실측
+    # (6문장 × 목소리·음량·잡음 3조건 + 게이트 E2E 2건): 정확 17건 0.642~0.786,
+    # 오인식 3건 0.627~0.668로
+    # **분포가 겹친다** — 완전 분리는 불가능하다. 0.67은 오인식 3/3을 잡고 정확
+    # 전사 2/17을 되묻는 지점이다. 헛된 되묻기는 상냥한 한 번의 재요청에 그치지만
+    # (reask_limit), 오인식은 부모가 읽는 일기에 남으므로 되묻는 쪽으로 치우친다.
+    stt_low_confidence_threshold: float = 0.67  # 미만이면 확인 질문(0이면 비활성)
+    stt_low_confidence_reask_limit: int = 1  # 연속 되묻기 상한(도달 시 낮아도 진행)
     # Turn Detection(W02). 기본값 근거는 jira/plan/DIARY-3-W02.md §5.
     stt_vad_aggressiveness: int = 2  # 3은 저음량 아동 발화를 놓칠 위험(§11-D)
+    # webrtcvad 앞단 에너지 하한(s16 RMS). webrtcvad는 절대 문턱이 없어 진폭 400
+    # 화이트노이즈도 speech로 판정(실측)하고, 브라우저 AGC가 무발화 구간의 소음을
+    # 증폭해 턴 종료를 영구히 막을 수 있다. 0이면 비활성 — 실환경 보정 후 기본값을
+    # 정한다(하네스 테스트에서 250 부근 권장, 참고: 진폭 400 균일잡음 RMS≈231).
+    stt_vad_min_frame_rms: int = 0
     stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
     stt_trailing_silence_seconds: float = 3.0  # 종료 판정 침묵(권고 2.5~3의 상단)
     stt_preroll_ms: int = 300  # 발화 확정 전 보존할 선행 오디오
@@ -53,6 +66,10 @@ class AppSettings:
     tts_model: str = "gpt-4o-mini-tts"  # GMS의 유일한 TTS 모델
     tts_voice: str = "alloy"  # §11-B: 캐릭터 목소리는 제품 결정 — 임시 기본값
     tts_timeout_seconds: float = 10.0  # 첫 바이트까지(실측 TTFB 1.89s의 5배 여유)
+    # Conversation Event 발행(W05). 기본값 근거는 jira/plan/DIARY-3-W05.md §4.
+    stream_publish_max_attempts: int = 3
+    stream_publish_retry_seconds: float = 0.5
+    stream_outbox_size: int = 256
 
     def __post_init__(self) -> None:
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
@@ -142,6 +159,25 @@ class AppSettings:
             or self.tts_timeout_seconds <= 0
         ):
             raise ValueError("TTS_TIMEOUT_SECONDS must be a positive finite number")
+        if (
+            isinstance(self.stream_publish_max_attempts, bool)
+            or not isinstance(self.stream_publish_max_attempts, int)
+            or self.stream_publish_max_attempts < 1
+        ):
+            raise ValueError("STREAM_PUBLISH_MAX_ATTEMPTS must be a positive integer")
+        if (
+            isinstance(self.stream_outbox_size, bool)
+            or not isinstance(self.stream_outbox_size, int)
+            or self.stream_outbox_size < 1
+        ):
+            raise ValueError("STREAM_OUTBOX_SIZE must be a positive integer")
+        if (
+            isinstance(self.stream_publish_retry_seconds, bool)
+            or not isinstance(self.stream_publish_retry_seconds, (int, float))
+            or not math.isfinite(self.stream_publish_retry_seconds)
+            or self.stream_publish_retry_seconds <= 0
+        ):
+            raise ValueError("STREAM_PUBLISH_RETRY_SECONDS must be a positive finite number")
         for name, value in (
             ("STT_TIMEOUT_SECONDS", self.stt_timeout_seconds),
             ("STT_MAX_UTTERANCE_SECONDS", self.stt_max_utterance_seconds),
@@ -164,6 +200,12 @@ class AppSettings:
             or self.stt_vad_aggressiveness not in range(4)
         ):
             raise ValueError("STT_VAD_AGGRESSIVENESS must be an integer from 0 to 3")
+        if (
+            isinstance(self.stt_vad_min_frame_rms, bool)
+            or not isinstance(self.stt_vad_min_frame_rms, int)
+            or self.stt_vad_min_frame_rms < 0
+        ):
+            raise ValueError("STT_VAD_MIN_FRAME_RMS must be a non-negative integer")
         for name, value in (
             ("STT_MIN_SPEECH_MS", self.stt_min_speech_ms),
             ("STT_PREROLL_MS", self.stt_preroll_ms),
@@ -189,6 +231,21 @@ class AppSettings:
             or not 0 < self.stt_no_speech_prob_threshold <= 1
         ):
             raise ValueError("STT_NO_SPEECH_PROB_THRESHOLD must be within (0, 1]")
+        if (
+            isinstance(self.stt_low_confidence_threshold, bool)
+            or not isinstance(self.stt_low_confidence_threshold, (int, float))
+            or not math.isfinite(self.stt_low_confidence_threshold)
+            or not 0 <= self.stt_low_confidence_threshold < 1
+        ):
+            raise ValueError("STT_LOW_CONFIDENCE_THRESHOLD must be within [0, 1)")
+        if (
+            isinstance(self.stt_low_confidence_reask_limit, bool)
+            or not isinstance(self.stt_low_confidence_reask_limit, int)
+            or self.stt_low_confidence_reask_limit < 0
+        ):
+            raise ValueError(
+                "STT_LOW_CONFIDENCE_REASK_LIMIT must be a non-negative integer"
+            )
         if not isinstance(self.realtime_stun_urls, tuple):
             raise ValueError("REALTIME_STUN_URLS must be a tuple of URLs")
         for url in self.realtime_stun_urls:
@@ -288,9 +345,21 @@ class AppSettings:
                 values.get("STT_NO_SPEECH_PROB_THRESHOLD", "0.6"),
                 "STT_NO_SPEECH_PROB_THRESHOLD",
             ),
+            stt_low_confidence_threshold=_parse_float(
+                values.get("STT_LOW_CONFIDENCE_THRESHOLD", "0.67"),
+                "STT_LOW_CONFIDENCE_THRESHOLD",
+            ),
+            stt_low_confidence_reask_limit=_parse_int(
+                values.get("STT_LOW_CONFIDENCE_REASK_LIMIT", "1"),
+                "STT_LOW_CONFIDENCE_REASK_LIMIT",
+            ),
             stt_vad_aggressiveness=_parse_int(
                 values.get("STT_VAD_AGGRESSIVENESS", "2"),
                 "STT_VAD_AGGRESSIVENESS",
+            ),
+            stt_vad_min_frame_rms=_parse_int(
+                values.get("STT_VAD_MIN_FRAME_RMS", "0"),
+                "STT_VAD_MIN_FRAME_RMS",
             ),
             stt_min_speech_ms=_parse_int(
                 values.get("STT_MIN_SPEECH_MS", "250"),
@@ -313,6 +382,18 @@ class AppSettings:
             tts_timeout_seconds=_parse_float(
                 values.get("TTS_TIMEOUT_SECONDS", "10"),
                 "TTS_TIMEOUT_SECONDS",
+            ),
+            stream_publish_max_attempts=_parse_int(
+                values.get("STREAM_PUBLISH_MAX_ATTEMPTS", "3"),
+                "STREAM_PUBLISH_MAX_ATTEMPTS",
+            ),
+            stream_publish_retry_seconds=_parse_float(
+                values.get("STREAM_PUBLISH_RETRY_SECONDS", "0.5"),
+                "STREAM_PUBLISH_RETRY_SECONDS",
+            ),
+            stream_outbox_size=_parse_int(
+                values.get("STREAM_OUTBOX_SIZE", "256"),
+                "STREAM_OUTBOX_SIZE",
             ),
         )
 

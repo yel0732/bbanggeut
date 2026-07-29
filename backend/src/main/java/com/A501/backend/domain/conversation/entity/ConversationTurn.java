@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -82,6 +83,10 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
 
     @Column(name = "interruption_id", length = 40)
     private String interruptionId;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @Builder(access = AccessLevel.PRIVATE)
     private ConversationTurn(

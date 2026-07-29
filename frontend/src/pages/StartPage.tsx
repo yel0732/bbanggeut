@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { restoreSession } from '@/api/auth'
+import { hasPendingNewSignupOnboarding, restoreSession } from '@/api/auth'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
@@ -31,11 +31,14 @@ export function StartPage() {
   const enterForest = async () => {
     if (isCheckingSession) return
     setIsCheckingSession(true)
-    await playBgm()
+    // BGM은 기다리지 않는다. 로그인 창이 뜨는 속도와 아무 상관이 없다.
+    void playBgm()
 
     try {
       if (await restoreSession()) {
-        navigate('/profiles')
+        navigate(
+          hasPendingNewSignupOnboarding() ? '/profiles/new' : '/profiles',
+        )
         return
       }
       setIsLoginModalOpen(true)
@@ -75,8 +78,9 @@ export function StartPage() {
 
       <div className="absolute right-30 bottom-12 z-20">
         <MainStartButton
+          busy={isCheckingSession}
           imageUrl={greenButtonUrl}
-          label={isCheckingSession ? '확인하고 있어요...' : '숲 속 들어가기'}
+          label="숲 속 들어가기"
           onClick={() => {
             void enterForest()
           }}
@@ -113,14 +117,13 @@ function LoginModal({ onClose }: { onClose: () => void }) {
       role="dialog"
     >
       <div
-        className="relative isolate"
+        className="relative isolate -translate-y-4"
         onClick={(event) => event.stopPropagation()}
         style={{
           aspectRatio: '1 / 1',
-          width: 'min(700px, calc(100vw - 32px), calc(100vh - 32px))',
+          width: 'min(650px, calc(100vw - 32px), calc(100vh - 32px))',
         }}
       >
-        <div className="absolute inset-[12%] z-0 rounded-[42px] bg-[#f4c079] shadow-[0_18px_42px_rgba(24,45,20,0.36),inset_0_0_0_5px_rgba(118,73,31,0.28)]" />
         <img
           alt=""
           className="absolute inset-0 z-10 size-full object-contain"
@@ -135,14 +138,14 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           들어갈 문
         </p>
 
-        <div className="absolute top-[24%] left-1/2 z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
+        <div className="absolute top-[24%] left-[318px] z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
           <ModalMenuButton
             color="#6a4a12"
             fontSize={32}
             imageUrl={yellowButtonUrl}
             label="구글로 들어가기"
-            textLeft="35%"
-            textTop="44%"
+            textLeft="34%"
+            textTop="43%"
             to="/auth/google"
           />
           <ModalMenuButton
@@ -150,8 +153,8 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             fontSize={32}
             imageUrl={whiteButtonUrl}
             label="이메일로 들어가기"
-            textLeft="33%"
-            textTop="35%"
+            textLeft="31%"
+            textTop="33%"
             to="/auth/login"
           />
           <ModalMenuButton
@@ -162,15 +165,15 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             label="이메일로 등록하기"
             strokeColor="#3f7d1e"
             strokeWidth={2.5}
-            textLeft="33%"
-            textTop="36%"
+            textLeft="31%"
+            textTop="35%"
             to="/auth/signup"
           />
         </div>
 
         <button
           aria-label="로그인 창 닫기"
-          className="absolute top-[9%] right-[14%] z-30 h-[11%] w-[11%] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white"
+          className="absolute top-[12%] right-[17%] z-30 h-[11%] w-[11%] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-white"
           onClick={onClose}
           type="button"
         >
@@ -201,18 +204,27 @@ type ModalMenuButtonProps = {
 }
 
 function MainStartButton({
+  busy,
   imageUrl,
   label,
   onClick,
 }: {
+  /** 세션을 확인하는 동안 눌러도 반응이 없어 보이지 않게 표시한다. */
+  busy: boolean
   imageUrl: string
   label: string
   onClick: () => void
 }) {
   return (
     <button
-      className="relative block w-[min(500px,calc(100vw-40px))] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99]"
+      className="relative block w-[min(500px,calc(100vw-40px))] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
+      disabled={busy}
       onClick={onClick}
+      style={
+        busy
+          ? { animation: 'start-button-wait 900ms ease-in-out infinite' }
+          : undefined
+      }
       type="button"
     >
       <img
@@ -233,7 +245,7 @@ function MainStartButton({
           WebkitTextStroke: '3.5px #3f7d1e',
         }}
       >
-        {label}
+        {busy ? '들어가는 중...' : label}
       </span>
     </button>
   )

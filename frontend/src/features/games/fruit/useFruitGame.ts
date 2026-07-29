@@ -8,6 +8,16 @@ import {
   fruitDimensions,
 } from './fruitGameConfig'
 import { drawScene, type RenderBlade, type RenderFruit } from './fruitRenderer'
+import {
+  bladeTrail,
+  createBladeTracker,
+  cutAngleDeg,
+  hitRadiusFor,
+  isSlicing,
+  sweptHit,
+  updateBladeTracker,
+  type BladeTracker,
+} from './fruitSlicing'
 
 export type GamePhase =
   | 'waiting-hand'
@@ -46,6 +56,8 @@ export type FruitGameState = {
   combo: number
   /** 피버 타임 진행 중인지 — 과일이 쏟아진다 */
   fever: boolean
+  /** 폭탄에 맞아 아무것도 못 자르는 중인지 */
+  stunned: boolean
   /** 손이 보일 때의 카메라 거리 힌트 */
   distance: DistanceHint | null
   /** 과일·칼을 직접 그리는 캔버스 */
@@ -80,9 +92,9 @@ type Fruit = {
   cutAngle: number
   /** 콤보 배수까지 반영해 실제로 준 점수 */
   gained: number
+  /** 폭탄이면 점수 대신 스턴을 준다 */
+  bomb: boolean
 }
-
-type Blade = { ax: number; ay: number; bx: number; by: number }
 
 export type FruitGameRuntimeRule = {
   rulesVersion: string
@@ -108,19 +120,18 @@ type Engine = {
   comboExpiresAt: number
   /** 이 시각까지 피버 타임 */
   feverUntil: number
+  /** 폭탄에 맞아 이 시각까지 아무것도 못 자른다 */
+  stunnedUntil: number
+  /** 폭발 연출 시작 시각. 0이면 연출 없음 */
+  blastAt: number
+  /** 폭발이 일어난 자리 (화면 px) */
+  blastPos: { x: number; y: number } | null
   playElapsedMs: number
   countdownEndsAt: number
   lastSpawnAt: number
   lastFrameTs: number
-  lastHandSeenAt: number
-  /** 화면 좌표로 옮겨 평활한 현재/직전 칼날 */
-  blade: Blade | null
-  prevBlade: Blade | null
-  /** 칼끝 이동 기록 — 속도 계산과 트레일에 함께 쓴다 */
-  tipHistory: { t: number; x: number; y: number }[]
-  /** 이 시각까지는 베기 가능 상태로 본다 */
-  fastUntil: number
-  distance: DistanceHint | null
+  /** 칼날 추적·베기 판정 상태. 튜토리얼 실습과 같은 모듈을 쓴다. */
+  tracker: BladeTracker
   ended: boolean
 }
 
@@ -141,50 +152,49 @@ function createEngine(now: number): Engine {
     maxCombo: 0,
     comboExpiresAt: 0,
     feverUntil: 0,
+    stunnedUntil: 0,
+    blastAt: 0,
+    blastPos: null,
     playElapsedMs: 0,
     countdownEndsAt: 0,
     lastSpawnAt: now,
     lastFrameTs: now,
-    lastHandSeenAt: now,
-    blade: null,
-    prevBlade: null,
-    tipHistory: [],
-    fastUntil: 0,
-    distance: null,
+    tracker: createBladeTracker(now),
     ended: false,
   }
 }
 
-/** 점(cx,cy)과 선분(ax,ay)-(bx,by) 사이 최단 거리의 제곱. */
-function segmentPointDistSq(
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-  cx: number,
-  cy: number,
-): number {
-  const dx = bx - ax
-  const dy = by - ay
-  const lenSq = dx * dx + dy * dy
-  let t = lenSq > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / lenSq : 0
-  t = Math.max(0, Math.min(1, t))
-  const px = ax + t * dx
-  const py = ay + t * dy
-  const ex = cx - px
-  const ey = cy - py
-  return ex * ex + ey * ey
-}
+function spawnBomb(engine: Engine, now: number): void {
+  const size = CFG.bombSize
+  const x = CFG.spawnXMargin + Math.random() * (W - 2 * CFG.spawnXMargin)
+  const vy =
+    CFG.launchVyMin + Math.random() * (CFG.launchVyMax - CFG.launchVyMin)
+  let vx = (Math.random() * 2 - 1) * CFG.launchVxAbsMax
+  if (x < W * 0.3) vx = Math.abs(vx)
+  else if (x > W * 0.7) vx = -Math.abs(vx)
 
-/** 칼날 중 실제로 베는 바깥쪽 구간만 잘라 낸다. */
-function cuttingEdge(blade: Blade): Blade {
-  const s = CFG.bladeEdgeStart
-  return {
-    ax: blade.ax + (blade.bx - blade.ax) * s,
-    ay: blade.ay + (blade.by - blade.ay) * s,
-    bx: blade.bx,
-    by: blade.by,
-  }
+  engine.fruits.push({
+    id: engine.nextId++,
+    fruitCode: 'BOMB',
+    imageUrl: '',
+    score: 0,
+    x,
+    y: H + 90,
+    vx,
+    vy,
+    w: size,
+    h: size,
+    // 폭탄은 판정을 과일보다 살짝 좁게 잡는다. 스치기만 해도 터지면 억울하다.
+    radius: size * 0.42,
+    // 도화선이 위를 향해야 폭탄으로 읽힌다. 살짝 흔들리는 정도만 준다.
+    rotation: (Math.random() * 2 - 1) * 12,
+    spin: (Math.random() * 2 - 1) * 22,
+    sliced: false,
+    slicedAt: now,
+    cutAngle: 0,
+    gained: 0,
+    bomb: true,
+  })
 }
 
 function spawnFruit(engine: Engine, rule: FruitGameRuntimeRule): void {
@@ -232,6 +242,7 @@ function spawnFruit(engine: Engine, rule: FruitGameRuntimeRule): void {
     slicedAt: 0,
     cutAngle: 0,
     gained: 0,
+    bomb: false,
   })
   engine.totalCount++
   const fruitCode = type.id.toUpperCase()
@@ -256,6 +267,7 @@ export function useFruitGame(
   active: boolean,
   onEnd: (result: FruitGameResult) => void,
   onSlice?: (combo: number) => void,
+  onBomb?: () => void,
   redesignateHand?: () => void,
   cameraError?: boolean,
   runtimeRule?: FruitGameRuntimeRule,
@@ -281,6 +293,8 @@ export function useFruitGame(
   onEndRef.current = onEnd
   const onSliceRef = useRef(onSlice)
   onSliceRef.current = onSlice
+  const onBombRef = useRef(onBomb)
+  onBombRef.current = onBomb
   const redesignateRef = useRef(redesignateHand)
   redesignateRef.current = redesignateHand
   const cameraErrorRef = useRef(cameraError)
@@ -293,6 +307,7 @@ export function useFruitGame(
     remainingSec: rule.plannedDurationSeconds,
     combo: 0,
     fever: false,
+    stunned: false,
     distance: null,
   })
 
@@ -314,6 +329,9 @@ export function useFruitGame(
       redesignateRef.current?.()
       engine.combo = 0
       engine.feverUntil = 0
+      // 멈춰 있던 동안 폭탄 벌칙까지 흘려보내지 않는다. 재개하면 바로 벨 수 있다.
+      engine.stunnedUntil = 0
+      engine.blastAt = 0
       engine.phase = 'countdown'
       engine.countdownEndsAt = performance.now() + CFG.countdownSec * 1000
     }
@@ -338,119 +356,40 @@ export function useFruitGame(
     let rafId = 0
     let publishedKey = ''
 
-    /**
-     * 최신 인식 결과를 화면 좌표로 옮겨 평활하고, 칼끝 속도를 갱신한다.
-     *
-     * 인식이 잠깐 끊겨도 handHoldMs 동안은 직전 칼을 유지해 깜빡이지 않게 한다.
-     */
-    const readHand = (engine: Engine, now: number, dtMs: number): void => {
-      const play = handRef.current
-
-      if (play) {
-        engine.lastHandSeenAt = now
-        engine.distance = play.distance
-      } else if (now - engine.lastHandSeenAt > CFG.handHoldMs) {
-        engine.blade = null
-        engine.prevBlade = null
-        engine.tipHistory = []
-        engine.distance = null
-        return
-      }
-
-      // 카메라 미러링: 아이가 든 손이 화면에서도 같은 쪽에 보이도록 x를 뒤집는다.
-      // 칼 길이는 화면 px로 고정한다. 정규화 좌표에서 길이를 주면 세로로 뻗은
-      // 칼이 가로보다 짧아지고(화면이 16:9라서), 카메라에 가까울수록 길어진다.
-      let target: Blade | null = null
-      if (play) {
-        const wristX = (1 - play.wrist.x) * W
-        const wristY = play.wrist.y * H
-        const dirX = wristX - (1 - play.elbow.x) * W
-        const dirY = wristY - play.elbow.y * H
-        const dirLen = Math.hypot(dirX, dirY) || 1
-        target = {
-          ax: wristX,
-          ay: wristY,
-          bx: wristX + (dirX / dirLen) * CFG.bladeLengthPx,
-          by: wristY + (dirY / dirLen) * CFG.bladeLengthPx,
-        }
-      }
-
-      if (!engine.blade) {
-        if (!target) {
-          return
-        }
-        engine.blade = { ...target }
-        engine.prevBlade = { ...target }
-      } else {
-        engine.prevBlade = { ...engine.blade }
-        if (target) {
-          // 프레임 간격이 들쭉날쭉해도 같은 속도로 따라가도록 시상수를 쓴다.
-          const k = 1 - Math.exp(-dtMs / CFG.handSmoothTauMs)
-          engine.blade.ax += (target.ax - engine.blade.ax) * k
-          engine.blade.ay += (target.ay - engine.blade.ay) * k
-          engine.blade.bx += (target.bx - engine.blade.bx) * k
-          engine.blade.by += (target.by - engine.blade.by) * k
-        }
-      }
-
-      const tip = engine.blade
-      engine.tipHistory.push({ t: now, x: tip.bx, y: tip.by })
-      while (
-        engine.tipHistory.length > 2 &&
-        engine.tipHistory[0].t < now - Math.max(CFG.speedWindowMs, CFG.trailMs)
-      ) {
-        engine.tipHistory.shift()
-      }
-
-      // 한 프레임 차이는 값이 심하게 튄다. 일정 시간 구간의 평균 속도로 본다.
-      const cutoff = now - CFG.speedWindowMs
-      let base = engine.tipHistory[0]
-      for (const point of engine.tipHistory) {
-        if (point.t <= cutoff) {
-          base = point
-        } else {
-          break
-        }
-      }
-      const elapsed = now - base.t
-      if (elapsed > 0) {
-        const speed =
-          (Math.hypot(tip.bx - base.x, tip.by - base.y) / elapsed) * 1000
-        if (speed >= ruleRef.current.sliceSpeedThreshold) {
-          // 인식 프레임이 비어 속도가 순간 0이 되어도 베기가 끊기지 않게 유지한다.
-          engine.fastUntil = now + CFG.sliceSpeedHoldMs
-        }
-      }
-    }
-
     const judgeSlices = (engine: Engine, now: number): void => {
-      if (!engine.blade || now >= engine.fastUntil) {
+      // 폭탄에 맞은 뒤에는 아무것도 자를 수 없다.
+      if (now < engine.stunnedUntil || !isSlicing(engine.tracker, now)) {
         return
       }
-
-      const to = cuttingEdge(engine.blade)
-      const from = cuttingEdge(engine.prevBlade ?? engine.blade)
-      // 프레임 사이에 칼이 지나간 자리를 훑는다. 빠른 스윙에서 과일을 건너뛰지 않는다.
-      const travel = Math.hypot(to.bx - from.bx, to.by - from.by)
-      const steps = Math.min(8, Math.max(1, Math.ceil(travel / 28)))
 
       for (const fruit of engine.fruits) {
         if (fruit.sliced) continue
+        if (
+          !sweptHit(
+            engine.tracker,
+            fruit.x,
+            fruit.y,
+            hitRadiusFor(fruit.radius),
+          )
+        )
+          continue
 
-        const hitRadius =
-          fruit.radius * CFG.hitRadiusScale + CFG.bladeThicknessPx
-        let hit = false
-        for (let i = 0; i <= steps && !hit; i++) {
-          const t = i / steps
-          const ax = from.ax + (to.ax - from.ax) * t
-          const ay = from.ay + (to.ay - from.ay) * t
-          const bx = from.bx + (to.bx - from.bx) * t
-          const by = from.by + (to.by - from.by) * t
-          hit =
-            segmentPointDistSq(ax, ay, bx, by, fruit.x, fruit.y) <=
-            hitRadius * hitRadius
+        if (fruit.bomb) {
+          // 폭탄: 점수도 자른 수도 늘지 않는다. 콤보와 피버가 날아가고 잠시 멈춘다.
+          fruit.sliced = true
+          fruit.slicedAt = now
+          engine.stunnedUntil = now + CFG.bombStunMs
+          engine.blastAt = now
+          engine.blastPos = { x: fruit.x, y: fruit.y }
+          engine.combo = 0
+          engine.comboExpiresAt = 0
+          engine.feverUntil = 0
+          onBombRef.current?.()
+          // 폭발 연출만 남기고 판을 비운다. 못 자르는 3초 동안 과일이 계속
+          // 떠다니면 아이가 계속 팔을 휘두르다 더 답답해한다.
+          engine.fruits = [fruit]
+          return
         }
-        if (!hit) continue
 
         // 최초 성공 시 한 번만 반영, 이후 판정 대상에서 제외 (MGAME-15/16).
         // 앞선 베기와 짧은 간격이면 콤보가 이어져 배수가 올라간다.
@@ -461,9 +400,14 @@ export function useFruitGame(
         engine.comboExpiresAt = now + CFG.comboWindowMs
         engine.maxCombo = Math.max(engine.maxCombo, engine.combo)
 
-        // 콤보가 기준에 처음 닿을 때 피버를 열고, 진행 중에는 시간을 연장하지 않는다.
-        if (engine.feverUntil === 0 && engine.combo === CFG.feverCombo) {
+        // 피버는 한 번 열리면 정해진 시간만큼만 간다. 콤보로 연장하지 않는다.
+        // 언제 끝나는지 알 수 있어야 아이가 "지금 몰아서 베는 구간"으로 쓴다.
+        // 한 스윙에 여러 개를 베면 콤보가 한 번에 여러 칸 오르므로 >= 로 본다.
+        if (engine.feverUntil === 0 && engine.combo >= CFG.feverCombo) {
           engine.feverUntil = now + CFG.feverDurationMs
+          // 이미 떠 있던 폭탄은 치운다. 피버로 들어가는 순간 화면에 남아 있던
+          // 폭탄 때문에 8초가 중간에 끊기면 억울하다.
+          engine.fruits = engine.fruits.filter((other) => !other.bomb)
         }
 
         // 콤보는 과일 생성량(피버)에만 영향을 주며 점수는 과일 기본 점수로 계산한다.
@@ -471,8 +415,7 @@ export function useFruitGame(
         fruit.sliced = true
         fruit.slicedAt = now
         fruit.gained = gained
-        fruit.cutAngle =
-          (Math.atan2(to.by - to.ay, to.bx - to.ax) * 180) / Math.PI
+        fruit.cutAngle = cutAngleDeg(engine.tracker)
         engine.score += gained
         engine.slicedScoreSum += gained
         engine.slicedCount++
@@ -517,11 +460,21 @@ export function useFruitGame(
         (count, fruit) => (fruit.sliced ? count : count + 1),
         0,
       )
-      if (
+      // 폭탄에 맞은 동안은 아무것도 올려 보내지 않는다. 못 자르는데 쌓이기만
+      // 하면 억울하다. 멈춤이 풀리는 순간부터 다시 시작한다.
+      if (now < engine.stunnedUntil) {
+        engine.lastSpawnAt = engine.stunnedUntil
+      } else if (
         now - engine.lastSpawnAt >= spawnIntervalMs &&
         aliveCount < maxVisible
       ) {
-        spawnFruit(engine, ruleRef.current)
+        // 피버 중에는 폭탄을 내보내지 않는다. 쏟아지는 과일을 정신없이 베는
+        // 구간이라 폭탄을 가려낼 틈이 없고, 애써 만든 콤보가 운으로 끊긴다.
+        if (!fever && Math.random() < CFG.bombSpawnChance) {
+          spawnBomb(engine, now)
+        } else {
+          spawnFruit(engine, ruleRef.current)
+        }
         engine.lastSpawnAt = now
       }
 
@@ -551,21 +504,33 @@ export function useFruitGame(
           : 0,
         cutAngle: fruit.cutAngle,
         gained: fruit.gained,
+        bomb: fruit.bomb,
       }))
 
       let blade: RenderBlade | null = null
-      if (engine.blade) {
-        const trailFrom = now - CFG.trailMs
+      if (engine.tracker.blade) {
         blade = {
-          ...engine.blade,
-          fast: now < engine.fastUntil,
-          trail: engine.tipHistory
-            .filter((point) => point.t >= trailFrom)
-            .map((point) => ({ x: point.x, y: point.y })),
+          ...engine.tracker.blade,
+          fast: isSlicing(engine.tracker, now),
+          trail: bladeTrail(engine.tracker, now),
         }
       }
 
-      drawScene(ctx, fruits, blade)
+      // 피버는 켜고 끌 때 세기를 부드럽게 올렸다 내려 뚝 끊기지 않게 한다.
+      const feverLeft = engine.feverUntil - now
+      const feverIntensity =
+        feverLeft <= 0 ? 0 : Math.min(1, feverLeft / CFG.feverFadeMs)
+      const blastElapsed =
+        engine.blastAt === 0 ? Infinity : now - engine.blastAt
+      const blast =
+        blastElapsed >= CFG.bombBlastMs ? 0 : blastElapsed / CFG.bombBlastMs
+
+      drawScene(ctx, fruits, blade, {
+        fever: feverIntensity,
+        blast,
+        blastAt: engine.blastPos,
+        now,
+      })
     }
 
     const loop = (now: number): void => {
@@ -577,8 +542,14 @@ export function useFruitGame(
       const dtMs = Math.min(rawDtMs, 50)
       const dt = dtMs / 1000
 
-      readHand(engine, now, Math.max(dtMs, 1))
-      const handVisible = engine.blade !== null
+      updateBladeTracker(
+        engine.tracker,
+        handRef.current,
+        now,
+        Math.max(dtMs, 1),
+        ruleRef.current.sliceSpeedThreshold,
+      )
+      const handVisible = engine.tracker.blade !== null
 
       // 카메라 오류: 게임 상태는 유지한 채 정지 (MGAME-30). 복구되면 손 재인식
       // 후 카운트다운으로 재개 (MGAME-31). 수동 일시정지/종료 상태는 건드리지 않음.
@@ -615,12 +586,14 @@ export function useFruitGame(
         case 'playing':
           if (
             !handVisible &&
-            now - engine.lastHandSeenAt > CFG.handLostGraceMs
+            now - engine.tracker.lastHandSeenAt > CFG.handLostGraceMs
           ) {
             // 플레이 손이 사라지면 자동 일시정지 (MGAME-24). 복귀 시 재지정.
             engine.phase = 'interrupted'
             engine.combo = 0
             engine.feverUntil = 0
+            engine.stunnedUntil = 0
+            engine.blastAt = 0
             redesignateRef.current?.()
             break
           }
@@ -629,8 +602,7 @@ export function useFruitGame(
             engine.playElapsedMs >=
             ruleRef.current.plannedDurationSeconds * 1000
           ) {
-            engine.playElapsedMs =
-              ruleRef.current.plannedDurationSeconds * 1000
+            engine.playElapsedMs = ruleRef.current.plannedDurationSeconds * 1000
             engine.phase = 'ended'
           } else {
             step(engine, dt, now)
@@ -664,6 +636,7 @@ export function useFruitGame(
       )
 
       const fever = engine.phase === 'playing' && now < engine.feverUntil
+      const stunned = engine.phase === 'playing' && now < engine.stunnedUntil
 
       // 프레임마다 setState하지 않도록 실제로 바뀐 값이 있을 때만 발행한다.
       // 과일과 칼은 캔버스에 직접 그리므로 여기서 다루지 않는다.
@@ -674,7 +647,8 @@ export function useFruitGame(
         engine.score,
         engine.combo,
         fever,
-        engine.distance,
+        stunned,
+        engine.tracker.distance,
       ].join('|')
 
       if (key !== publishedKey) {
@@ -686,7 +660,8 @@ export function useFruitGame(
           remainingSec,
           combo: engine.combo,
           fever,
-          distance: engine.distance,
+          stunned,
+          distance: engine.tracker.distance,
         })
       }
 

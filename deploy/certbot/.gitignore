@@ -1,0 +1,9 @@
+letsencrypt/**
+!letsencrypt/live/
+!letsencrypt/live/i15a501.p.ssafy.io/
+!letsencrypt/live/i15a501.p.ssafy.io/.gitkeep
+!letsencrypt/archive/
+!letsencrypt/archive/i15a501.p.ssafy.io/
+!letsencrypt/archive/i15a501.p.ssafy.io/.gitkeep
+www/*
+!www/.gitkeep

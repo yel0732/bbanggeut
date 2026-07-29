@@ -13,12 +13,9 @@ import {
   QuitButton,
 } from '@/components/game/PlayOverlays'
 import {
-  getActiveFruitNinjaRule,
   nowAsLocalDateTime,
   saveCompletedGameSession,
 } from '@/api/gameSessions'
-import type { FruitNinjaRule } from '@/api/gameSessions'
-import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { FRUIT_GAME_CONFIG } from '@/features/games/fruit/fruitGameConfig'
 import {
   useFruitGame,
@@ -53,25 +50,8 @@ export function GamePlayPage() {
   const selectedAtRef = useRef(nowAsLocalDateTime())
   const playStartedAtRef = useRef<string | null>(null)
   const clientPlayIdRef = useRef(crypto.randomUUID())
-  const [fruitRule, setFruitRule] = useState<FruitNinjaRule | null>(null)
-  const [ruleError, setRuleError] = useState('')
 
   const game = getGameById(gameId)
-
-  const loadFruitRule = useCallback(() => {
-    setRuleError('')
-    void getActiveFruitNinjaRule()
-      .then(setFruitRule)
-      .catch((error: unknown) => {
-        setRuleError(
-          error instanceof Error
-            ? error.message
-            : '과일 게임 규칙을 불러오지 못했어요.',
-        )
-      })
-  }, [])
-
-  useEffect(loadFruitRule, [loadFruitRule])
 
   const handleEnd = (result: FruitGameResult) => {
     // MGAME-21/22: 정합성 통과한 정상 결과만 결과 화면으로. 잘못되면 폐기.
@@ -159,14 +139,57 @@ export function GamePlayPage() {
     praiseTimerRef.current = setTimeout(() => setPraise(null), 750)
   }, [])
 
+  /**
+   * 폭탄 폭발음.
+   *
+   * 전용 음원이 없어 합성한다. 낮은 사인파를 급히 떨어뜨려 "쿵"을, 화이트
+   * 노이즈를 얹어 "쾅"을 만든다. 칭찬 문구는 즉시 지운다.
+   */
+  const handleBomb = useCallback(() => {
+    setPraise(null)
+    clearTimeout(praiseTimerRef.current)
+
+    const context = new AudioContext()
+    const start = context.currentTime
+
+    const boomGain = context.createGain()
+    boomGain.gain.setValueAtTime(0.5, start)
+    boomGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.6)
+    boomGain.connect(context.destination)
+    const boom = context.createOscillator()
+    boom.type = 'sine'
+    boom.frequency.setValueAtTime(160, start)
+    boom.frequency.exponentialRampToValueAtTime(28, start + 0.5)
+    boom.connect(boomGain)
+    boom.start(start)
+    boom.stop(start + 0.6)
+
+    const noiseLength = Math.floor(context.sampleRate * 0.45)
+    const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate)
+    const channel = noiseBuffer.getChannelData(0)
+    for (let i = 0; i < noiseLength; i++) {
+      channel[i] = (Math.random() * 2 - 1) * (1 - i / noiseLength) ** 2
+    }
+    const noiseGain = context.createGain()
+    noiseGain.gain.setValueAtTime(0.35, start)
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.45)
+    noiseGain.connect(context.destination)
+    const noise = context.createBufferSource()
+    noise.buffer = noiseBuffer
+    noise.connect(noiseGain)
+    noise.start(start)
+
+    window.setTimeout(() => void context.close(), 900)
+  }, [])
+
   const fruitGame = useFruitGame(
     hand.playHandRef,
-    (status === 'granted' || status === 'error') && fruitRule !== null,
+    status === 'granted' || status === 'error',
     handleEnd,
     handleSlice,
+    handleBomb,
     hand.redesignate,
     status === 'error',
-    fruitRule ?? undefined,
   )
 
   useEffect(() => {
@@ -331,16 +354,6 @@ export function GamePlayPage() {
             title={game.label}
           />
         )}
-
-        {ruleError ? (
-          <ParentNoticeDialog
-            compact
-            confirmLabel="다시 시도"
-            message={ruleError}
-            onConfirm={loadFruitRule}
-            title="게임 준비에 문제가 생겼어요"
-          />
-        ) : null}
       </div>
     </div>
   )
@@ -355,7 +368,7 @@ function PlayField({
   handModelReady: boolean
   praise: string | null
 }) {
-  const { phase, distance, countdown, combo, fever } = game
+  const { phase, distance, countdown, combo, fever, stunned } = game
 
   // 카메라 거리 안내 (MGAME 친화적 안내)
   // 거리는 어깨너비로 잰다. 손이 아니라 몸을 움직이라고 안내해야 맞다.
@@ -365,32 +378,16 @@ function PlayField({
 
   return (
     <div className="absolute inset-0 z-10">
-      {/* 피버 타임: 화면 가장자리를 달궈 과일이 쏟아지는 구간임을 알린다. */}
+      {/*
+        피버 테두리. 불길과 불티는 캔버스에서 그리므로(이미 매 프레임 도는 곳),
+        여기서는 CSS 애니메이션 하나만 더 얹어 테두리가 일렁이게 한다. 전체 화면
+        필터를 쓰면 프레임이 떨어진다.
+      */}
       {fever ? (
-        <>
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                'radial-gradient(100% 88% at 50% 50%, rgba(255,240,120,0.08) 35%, rgba(255,146,20,0.58) 100%)',
-              boxShadow:
-                'inset 0 0 50px 14px rgba(255,224,75,.78), inset 0 0 120px 35px rgba(255,82,10,.45)',
-              animation: 'fruit-fever-glow 520ms ease-in-out infinite',
-            }}
-          />
-          <div
-            className="pointer-events-none absolute -inset-[30%] opacity-30"
-            style={{
-              background:
-                'repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,241,130,.7) 0deg 7deg, transparent 7deg 20deg)',
-              animation: 'fruit-fever-rays 5s linear infinite',
-            }}
-          />
-          <div
-            className="pointer-events-none absolute inset-[12px] rounded-[34px] border-[7px] border-[#ffe86c]"
-            style={{ animation: 'fruit-fever-border 520ms ease-in-out infinite' }}
-          />
-        </>
+        <div
+          className="pointer-events-none absolute inset-[12px] rounded-[34px] border-[5px] border-[rgba(255,196,60,.9)]"
+          style={{ animation: 'fruit-fever-border 620ms ease-in-out infinite' }}
+        />
       ) : null}
 
       {/* 과일·칼·트레일 — 매 프레임 바뀌므로 캔버스에 직접 그린다. */}
@@ -400,6 +397,35 @@ function PlayField({
         ref={game.canvasRef}
         width={FRUIT_GAME_CONFIG.canvasWidth}
       />
+
+      {/* 폭탄에 맞음 — 3초 동안 아무것도 못 자른다는 걸 크게 알린다. */}
+      {stunned ? (
+        <div className="pointer-events-none absolute inset-0 z-[15] grid place-items-center bg-[rgba(30,8,4,0.45)]">
+          <div className="text-center">
+            <span
+              className="inline-block text-[92px] leading-none"
+              style={{
+                ...jua,
+                animation: 'fruit-bomb-shake 320ms ease-in-out infinite',
+              }}
+            >
+              💥
+            </span>
+            <p
+              className="mt-1 text-[46px] leading-none text-[#ffd9a0] [text-shadow:0_4px_0_#8c2a06,0_8px_16px_rgba(0,0,0,0.55)]"
+              style={jua}
+            >
+              폭탄이야!
+            </p>
+            <p
+              className="mt-2 text-[26px] leading-none text-white [text-shadow:0_3px_8px_rgba(0,0,0,0.6)]"
+              style={jua}
+            >
+              잠깐 쉬었다 가요
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {fever ? (
         <div className="absolute top-[132px] left-1/2 -translate-x-1/2 text-center">

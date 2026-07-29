@@ -91,9 +91,18 @@ class SessionLeaseHeartbeat:
         }
         key = f"{_SESSION_KEY_PREFIX}{conversation_id}"
         try:
-            await self._redis.set(key, json.dumps(record), ex=self._lease_ttl_seconds)
-        except RedisError:
+            # redis-py의 ex는 int만 받는다 — float(설정 기본 15.0)을 그대로 넘기면
+            # 연결 전에 DataError로 죽어 모든 박동이 실패한다(실 스택에서 발견).
+            # 밀리초 px로 설정의 소수점 정밀도를 보존한다.
+            await self._redis.set(
+                key,
+                json.dumps(record),
+                px=int(round(self._lease_ttl_seconds * 1000)),
+            )
+        except RedisError as error:
+            # extra는 기본 로그 포맷에 보이지 않는다 — 원인 요약은 메시지에 싣는다.
             self._logger.warning(
-                "realtime session heartbeat write failed",
+                "realtime session heartbeat write failed: %s",
+                repr(error),
                 extra={"conversation_id": conversation_id},
             )

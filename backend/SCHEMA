@@ -1,11 +1,11 @@
-DIARY 스키마 기록. 마이그레이션 도구(Flyway 등)는 쓰지 않는다.
+DIARY 스키마 기록. 운영 스키마 변경은 Flyway 마이그레이션으로 적용한다.
 
 - local(H2, MODE=MySQL): ddl-auto=create-drop — Hibernate가 Entity로부터 매번 스키마를 자동 생성한다. 개발 중에는 이 파일을 손으로 맞출 필요가 없다.
-- prod(MySQL): ddl-auto=validate — Hibernate는 스키마를 만들지 않고, 기동 시 "이 DDL이 이미 반영되어 있는지"만 검증한다. 즉 prod에서는 아래 DDL을 배포 전에 MySQL에 직접(수동으로) 적용해 둬야 하며, Entity를 바꿔도 이 파일을 갱신하고 실제 MySQL 스키마도 같이 바꾸지 않으면 앱이 기동하지 않는다.
+- prod(MySQL): Flyway가 db/migration의 SQL을 적용하고 ddl-auto=validate로 Entity와 결과 스키마의 일치 여부를 검증한다.
 
-이 파일은 prod에 실제로 적용해야 하는(또는 이미 적용된) 테이블 구조를 사람이 읽을 수 있게 기록해 두는 참고용 문서다.
-컬럼을 바꾸면 이 파일도 함께 갱신한다. 운영 DB에 DDL을 실제로 적용하는 절차(언제, 누가, 어떤 방식으로)는 아직
-정해지지 않았으며, 배포 작업 자체가 이 Epic의 범위 밖이라 별도 `[INFRA]` Epic에서 다룬다.
+이 파일은 사람이 읽기 위한 참고 문서다. 실행 가능한 기준 스키마는
+src/main/resources/db/migration/V1__initial_schema.sql이며, 이후 변경은 V2 이상으로 누적한다.
+컬럼을 바꾸면 Entity, 이 문서, Flyway 마이그레이션을 함께 갱신한다.
 
 -- External child-domain ownership contract used by report adapters:
 -- child.child_id BIGINT PRIMARY KEY
@@ -113,6 +113,7 @@ CREATE TABLE conversation_session (
     question_count         INT          NOT NULL,
     max_question_count     INT          NOT NULL,
     current_session_epoch  INT          NOT NULL,
+    current_session_epoch_started_at DATETIME(6) NULL,
     started_at             DATETIME(6)  NULL,
     completed_at           DATETIME(6)  NULL,
     termination_reason     VARCHAR(40)  NULL,
@@ -181,6 +182,29 @@ CREATE TABLE conversation_game_session (
 -- Multiple completed games from the same KST day are linked to one GAME topic.
 
 
+-- GAME-00: game -------------------------------------------------------------
+
+CREATE TABLE game (
+    game_id    BIGINT       NOT NULL,
+    game_code  VARCHAR(40)  NOT NULL,
+    game_name  VARCHAR(100) NOT NULL,
+    created_at DATETIME(6)  NOT NULL,
+    updated_at DATETIME(6)  NOT NULL,
+    PRIMARY KEY (game_id),
+    CONSTRAINT uk_game_code UNIQUE (game_code)
+);
+
+INSERT INTO game (
+    game_id,
+    game_code,
+    game_name,
+    created_at,
+    updated_at
+) VALUES
+    (7, 'DOBBLE', '그림 맞추기', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
+    (8, 'FRUIT_NINJA', '과일 자르기', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
+
+
 -- GAME-01: game_session -----------------------------------------------------
 
 CREATE TABLE game_session (
@@ -196,13 +220,74 @@ CREATE TABLE game_session (
     score                 INT          NOT NULL,
     created_at            DATETIME(6)  NOT NULL,
     PRIMARY KEY (game_session_id),
-    CONSTRAINT uk_game_session_client_play_id UNIQUE (client_play_id)
+    CONSTRAINT uk_game_session_client_play_id UNIQUE (client_play_id),
+    CONSTRAINT fk_game_session_game
+        FOREIGN KEY (game_id) REFERENCES game (game_id)
 );
 
 -- game_session_id, client_play_id는 UUID를 MySQL BINARY(16)으로 저장한다.
 -- difficulty_code는 난이도 정책 확정 전까지 NULL을 허용한다.
--- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
+-- child FK는 부모 테이블 정책 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
+
+-- MOTIONTASK05/MOTIONTASK19: Fruit Ninja rule and result tables -------------
+
+CREATE TABLE game_rule_version (
+    rule_version_id          BIGINT         NOT NULL AUTO_INCREMENT,
+    version_code             VARCHAR(40)    NOT NULL,
+    planned_duration_sec     INT            NOT NULL,
+    slice_speed_threshold    DECIMAL(10, 4) NOT NULL,
+    fruit_spawn_interval_ms  INT            NOT NULL,
+    max_visible_fruit        INT            NOT NULL,
+    active                   BOOLEAN        NOT NULL,
+    created_at               DATETIME(6)    NOT NULL,
+    updated_at               DATETIME(6)    NOT NULL,
+    PRIMARY KEY (rule_version_id),
+    CONSTRAINT uk_game_rule_version_code UNIQUE (version_code)
+);
+
+CREATE TABLE fruit_type (
+    fruit_type_id    BIGINT       NOT NULL AUTO_INCREMENT,
+    fruit_code       VARCHAR(40)  NOT NULL,
+    name             VARCHAR(100) NOT NULL,
+    default_size_px  INT          NOT NULL,
+    created_at       DATETIME(6)  NOT NULL,
+    updated_at       DATETIME(6)  NOT NULL,
+    PRIMARY KEY (fruit_type_id),
+    CONSTRAINT uk_fruit_type_code UNIQUE (fruit_code)
+);
+
+CREATE TABLE fruit_score_config (
+    rule_version_id  BIGINT NOT NULL,
+    fruit_type_id    BIGINT NOT NULL,
+    score            INT    NOT NULL,
+    PRIMARY KEY (rule_version_id, fruit_type_id),
+    CONSTRAINT fk_fruit_score_rule
+        FOREIGN KEY (rule_version_id) REFERENCES game_rule_version (rule_version_id),
+    CONSTRAINT fk_fruit_score_type
+        FOREIGN KEY (fruit_type_id) REFERENCES fruit_type (fruit_type_id)
+);
+
+CREATE TABLE fruit_ninja_result (
+    game_session_id     BINARY(16)  NOT NULL,
+    rules_version       VARCHAR(40) NOT NULL,
+    total_fruit_count   INT         NOT NULL,
+    sliced_fruit_count  INT         NOT NULL,
+    created_at          DATETIME(6) NOT NULL,
+    PRIMARY KEY (game_session_id)
+);
+
+CREATE TABLE fruit_ninja_fruit_result (
+    fruit_result_id  BINARY(16)  NOT NULL,
+    game_session_id  BINARY(16)  NOT NULL,
+    fruit_code       VARCHAR(40) NOT NULL,
+    generated_count  INT         NOT NULL,
+    sliced_count     INT         NOT NULL,
+    created_at       DATETIME(6) NOT NULL,
+    PRIMARY KEY (fruit_result_id),
+    CONSTRAINT uk_fruit_ninja_fruit_session_code
+        UNIQUE (game_session_id, fruit_code)
+);
 
 -- CARDTASK-13: card_round ---------------------------------------------------
 
@@ -249,6 +334,7 @@ CREATE TABLE conversation_turn (
     interrupted_at         DATETIME(6)   NULL,
     interruption_reason    VARCHAR(40)   NULL,
     interruption_id        VARCHAR(40)   NULL,
+    version                BIGINT        NOT NULL DEFAULT 0,
     created_at             DATETIME(6)   NOT NULL,
     updated_at             DATETIME(6)   NOT NULL,
     PRIMARY KEY (turn_id),
@@ -264,6 +350,51 @@ CREATE INDEX idx_conversation_turn_interruption_id ON conversation_turn (interru
 -- (conversation_id, turn_id) UNIQUE는 turn_id가 이미 전역 PK라 별도로 걸지 않음.
 -- Entity: backend/src/main/java/com/A501/backend/domain/conversation/entity/ConversationTurn.java
 -- 상태 전이 규칙은 DIARY-1-T03에서 추가한다.
+-- DIARY-3-T26/T27: Redis Stream processing receipts and failures -----------
+
+CREATE TABLE conversation_event (
+    event_id               VARCHAR(80)   NOT NULL,
+    redis_record_id        VARCHAR(80)   NOT NULL,
+    conversation_id        VARCHAR(40)   NOT NULL,
+    realtime_session_id    VARCHAR(80)   NOT NULL,
+    session_epoch          INT           NOT NULL,
+    event_type             VARCHAR(40)   NOT NULL,
+    turn_id                VARCHAR(40)   NULL,
+    occurred_at            DATETIME(6)   NOT NULL,
+    processed_at           DATETIME(6)   NOT NULL,
+    processing_result      VARCHAR(30)   NOT NULL,
+    created_at             DATETIME(6)   NOT NULL,
+    updated_at             DATETIME(6)   NOT NULL,
+    PRIMARY KEY (event_id),
+    CONSTRAINT uk_conversation_event_redis_record UNIQUE (redis_record_id)
+);
+
+CREATE INDEX idx_conversation_event_conversation_epoch
+    ON conversation_event (conversation_id, session_epoch);
+CREATE INDEX idx_conversation_event_turn
+    ON conversation_event (conversation_id, turn_id);
+
+CREATE TABLE conversation_event_failure (
+    conversation_event_failure_id BIGINT        NOT NULL AUTO_INCREMENT,
+    redis_record_id               VARCHAR(80)   NOT NULL,
+    event_id                      VARCHAR(80)   NULL,
+    conversation_id               VARCHAR(40)   NULL,
+    event_type                    VARCHAR(40)   NULL,
+    delivery_count                BIGINT        NOT NULL,
+    failed_at                     DATETIME(6)   NOT NULL,
+    failure_reason                VARCHAR(1000) NOT NULL,
+    created_at                    DATETIME(6)   NOT NULL,
+    updated_at                    DATETIME(6)   NOT NULL,
+    PRIMARY KEY (conversation_event_failure_id),
+    CONSTRAINT uk_conversation_event_failure_record UNIQUE (redis_record_id)
+);
+
+CREATE INDEX idx_conversation_event_failure_record
+    ON conversation_event_failure (redis_record_id);
+
+-- processing_result: APPLIED | IGNORED_STALE
+-- The original event payload/transcript is intentionally not copied into either table.
+
 -- REPORT-01: daily_report ---------------------------------------------------
 
 CREATE TABLE daily_report (
@@ -497,5 +628,5 @@ CREATE INDEX idx_child_diary_child_date
 -- Spring Batch metadata -----------------------------------------------------
 
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
--- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql을 배포 전에 수동 적용해야 한다.
+-- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql 내용을 Flyway V1에 포함한다.
 -- Resource: org/springframework/batch/core/schema-mysql.sql

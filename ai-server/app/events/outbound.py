@@ -67,6 +67,10 @@ class ConversationEventPublisher:
         return self._conversation_id
 
     @property
+    def realtime_session_id(self) -> str:
+        return self._realtime_session_id
+
+    @property
     def session_epoch(self) -> int:
         return self._session_epoch
 

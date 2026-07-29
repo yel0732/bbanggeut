@@ -10,11 +10,21 @@ public record RealtimeTopicSnapshot(
         ConversationTopic type,
         int order,
         int maxQuestionCount,
+        int questionCount,
         List<DialogueGameContextPayload> games,
         DialogueSlotsPayload initialSlots) {
 
     public RealtimeTopicSnapshot {
         games = games == null ? List.of() : List.copyOf(games);
+    }
+
+    public RealtimeTopicSnapshot(
+            ConversationTopic type,
+            int order,
+            int maxQuestionCount,
+            List<DialogueGameContextPayload> games,
+            DialogueSlotsPayload initialSlots) {
+        this(type, order, maxQuestionCount, 0, games, initialSlots);
     }
 
     public static RealtimeTopicSnapshot withoutGames(
@@ -25,6 +35,7 @@ public record RealtimeTopicSnapshot(
                 type,
                 order,
                 maxQuestionCount,
+                0,
                 List.of(),
                 DialogueSlotsPayload.empty());
     }

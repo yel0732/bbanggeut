@@ -61,6 +61,29 @@ class TestWebrtcVoiceActivityDetector:
                 audio_format=AudioFormat(sample_rate=16000, channels=2, sample_width=2)
             )
 
+    def test_rms_floor_rejects_quiet_voice_band_noise(self) -> None:
+        """webrtcvad가 speech로 판정하는 저에너지 톤을 RMS 하한이 걸러낸다.
+
+        진폭 400 톤의 RMS ≈ 283 — 실환경에서 AGC가 증폭한 주변 소음 수준.
+        하한이 없으면 이 프레임이 턴 종료를 영구히 막는다(실측).
+        """
+
+        quiet_noise = _tone(amp=400)
+        assert WebrtcVoiceActivityDetector().is_speech(quiet_noise) is True  # 대조군
+        gated = WebrtcVoiceActivityDetector(min_frame_rms=300)
+        assert gated.is_speech(quiet_noise) is False
+
+    def test_rms_floor_keeps_real_speech_level_audio(self) -> None:
+        gated = WebrtcVoiceActivityDetector(min_frame_rms=300)
+        assert gated.is_speech(_tone(amp=6000)) is True
+
+    def test_zero_rms_floor_disables_the_gate(self) -> None:
+        assert WebrtcVoiceActivityDetector(min_frame_rms=0).is_speech(_tone(amp=400)) is True
+
+    def test_rejects_negative_rms_floor(self) -> None:
+        with pytest.raises(ValueError):
+            WebrtcVoiceActivityDetector(min_frame_rms=-1)
+
 
 class TestVadFramer:
     def _chunk(self, byte_count: int, fill: int = 0) -> PcmAudioChunk:

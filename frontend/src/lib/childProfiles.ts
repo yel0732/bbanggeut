@@ -1,10 +1,31 @@
+import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
+import childTigerAvatarUrl from '@/assets/images/profile/child-avatar-tiger.webp'
+import childRabbitAvatarUrl from '@/assets/images/profile/child-avatar-rabbit.webp'
+
 export type ChildProfile = {
   id: string
   name: string
   photoUrl: string | null
+  profileImageNum?: number
 }
 
 export const MAX_CHILD_PROFILES = 10
+
+export function childPhotoFromImageNum(profileImageNum: number) {
+  if (profileImageNum === 2) return childTigerAvatarUrl
+  if (profileImageNum === 3) return childRabbitAvatarUrl
+  return null
+}
+
+export function childImageNumFromPhoto(
+  photoUrl: string | null,
+  fallback = 1,
+) {
+  if (photoUrl === childAvatarUrl || photoUrl === null) return 1
+  if (photoUrl === childTigerAvatarUrl) return 2
+  if (photoUrl === childRabbitAvatarUrl) return 3
+  return fallback
+}
 
 const STORAGE_KEY = 'bbanggut-child-profiles'
 const ACTIVE_PROFILE_KEY = 'bbanggut-active-child-profile-id'
@@ -41,6 +62,10 @@ function isChildProfile(value: unknown): value is ChildProfile {
   return (
     typeof profile.id === 'string' &&
     typeof profile.name === 'string' &&
-    (profile.photoUrl === null || typeof profile.photoUrl === 'string')
+    (profile.photoUrl === null || typeof profile.photoUrl === 'string') &&
+    (profile.profileImageNum === undefined ||
+      (typeof profile.profileImageNum === 'number' &&
+        Number.isInteger(profile.profileImageNum) &&
+        profile.profileImageNum > 0))
   )
 }

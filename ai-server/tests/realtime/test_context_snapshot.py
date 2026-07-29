@@ -25,6 +25,7 @@ _SNAPSHOT_JSON = {
         "language": "ko-KR",
         "currentTopic": "GAME",
         "totalMaxQuestionCount": 12,
+        "questionCount": 3,
     },
     "recentConversationSummary": "놀이터에서 놀았어 낮잠도 잤어",
     "topics": [
@@ -32,6 +33,7 @@ _SNAPSHOT_JSON = {
             "type": "DAILY",
             "order": 2,
             "maxQuestionCount": 6,
+            "questionCount": 0,
             "games": [],
             "initialSlots": {
                 "event": None,
@@ -46,6 +48,7 @@ _SNAPSHOT_JSON = {
             "type": "GAME",
             "order": 1,
             "maxQuestionCount": 6,
+            "questionCount": 3,
             "games": [
                 {
                     "gameSessionId": "b3b10000-0000-0000-0000-000000000001",
@@ -85,8 +88,10 @@ class TestModel:
 
         assert snapshot.conversation.current_topic is DialogueTopic.GAME
         assert snapshot.conversation.total_max_question_count == 12
+        assert snapshot.conversation.question_count == 3
         assert snapshot.topics[1].games[0].score == 820
         assert snapshot.topics[1].initial_slots.event == "과일 게임"
+        assert snapshot.topics[1].question_count == 3
 
     def test_ordered_topics_sorts_by_order_not_input_position(self) -> None:
         snapshot = ContextSnapshot.model_validate(_SNAPSHOT_JSON)
@@ -178,3 +183,14 @@ async def test_redis_failure_degrades_to_none_instead_of_raising() -> None:
     reader = RedisContextSnapshotReader(_BrokenRedis(), _LOGGER)
 
     assert await reader.read("conv_1") is None
+
+
+def test_last_turn_seq_parses_and_defaults_to_zero() -> None:
+    """§11-A: 재연결 turnSeq 연속성. 구버전 스냅숏(필드 없음)은 0으로 관용."""
+
+    with_field = dict(_SNAPSHOT_JSON)
+    with_field["conversation"] = dict(_SNAPSHOT_JSON["conversation"], lastTurnSeq=7)
+    assert ContextSnapshot.model_validate(with_field).conversation.last_turn_seq == 7
+
+    # 필드가 없는 구버전 스냅숏도 파싱되고 0이 된다(배포 순서 무관).
+    assert ContextSnapshot.model_validate(_SNAPSHOT_JSON).conversation.last_turn_seq == 0

@@ -21,10 +21,17 @@ pipeline {
         stage('Verify master') {
             steps {
                 script {
-                    def deployedBranch = env.BRANCH_NAME
-                            ?: env.gitlabSourceBranch
-                            ?: env.GIT_BRANCH?.replaceFirst('^origin/', '')
-                    if (deployedBranch != 'master') {
+                    def branchRefs = [
+                            env.BRANCH_NAME,
+                            env.gitlabSourceBranch,
+                            env.GIT_BRANCH,
+                            scm.branches?.first()?.name
+                    ].findAll { it }
+                    def isMaster = branchRefs.any {
+                        it == 'master' || it.endsWith('/master')
+                    }
+                    echo "Resolved branch refs: ${branchRefs.join(', ')}"
+                    if (!isMaster) {
                         currentBuild.result = 'NOT_BUILT'
                         error('Deployment pipeline only runs for master.')
                     }

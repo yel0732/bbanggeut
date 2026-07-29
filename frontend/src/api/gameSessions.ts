@@ -1,9 +1,6 @@
 import { authFetch } from '@/api/auth'
+import { resolveBackendChildId } from '@/api/children'
 import { apiUrl } from '@/api/config'
-import {
-  loadActiveChildProfileId,
-  loadChildProfiles,
-} from '@/lib/childProfiles'
 
 export type CompletedGameId = 'fruit' | 'dobble'
 
@@ -102,34 +99,6 @@ export async function saveCompletedGameSession(
     score: number
     createdAt: string
   }>
-}
-
-async function resolveBackendChildId() {
-  const activeProfileId = loadActiveChildProfileId()
-  const numericId = Number(activeProfileId)
-  if (Number.isSafeInteger(numericId) && numericId > 0) return numericId
-
-  const activeProfile = loadChildProfiles().find(
-    (profile) => profile.id === activeProfileId,
-  )
-  if (!activeProfile) {
-    throw new Error('게임 기록을 저장할 아이 정보를 찾지 못했어요.')
-  }
-
-  const response = await authFetch(apiUrl('/api/children'))
-  if (!response.ok) {
-    throw new Error('아이 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')
-  }
-
-  const children = (await response.json()) as {
-    childId: number
-    name: string
-  }[]
-  const matches = children.filter((child) => child.name === activeProfile.name)
-  if (matches.length !== 1) {
-    throw new Error('선택한 아이와 서버의 아이 정보를 연결하지 못했어요.')
-  }
-  return matches[0].childId
 }
 
 export async function getActiveFruitNinjaRule() {

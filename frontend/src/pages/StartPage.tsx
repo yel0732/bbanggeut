@@ -13,6 +13,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import whiteButtonUrl from '@/assets/images/start/light-white-button.webp'
 import popupUrl from '@/assets/images/start/wood-popup.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useFitScale } from '@/hooks/useFitScale'
 import { cn } from '@/lib/utils'
 
 type StartPageLocationState = {
@@ -22,6 +23,7 @@ type StartPageLocationState = {
 export function StartPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, playBgm, toggleBgm } = useBgmPlayer()
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(
     Boolean((location.state as StartPageLocationState | null)?.openLoginModal),
@@ -48,62 +50,66 @@ export function StartPage() {
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)] text-white">
-      <audio
-        aria-label="초록 모험 시작 배경 음악"
-        autoPlay
-        loop
-        preload="auto"
-        ref={audioRef}
-        src={bgmUrl}
-      />
-
-      <img
-        alt=""
-        className="absolute inset-0 z-0 h-full w-full object-cover"
-        decoding="async"
-        fetchPriority="high"
-        src={backgroundUrl}
-      />
-      <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(180deg,rgba(3,16,10,0.02)_0%,rgba(3,16,10,0.34)_100%)]" />
-
-      <div className="absolute top-[clamp(44px,9vh,70px)] right-[clamp(24px,7.5vw,96px)] z-20 flex w-[550px] flex-col items-center">
-        <img
-          alt="빵긋"
-          className="block w-full drop-shadow-[0_10px_18px_rgba(0,0,0,0.28)]"
-          decoding="async"
-          src={logoUrl}
-        />
-      </div>
-
-      <div className="absolute right-30 bottom-12 z-20">
-        <MainStartButton
-          busy={isCheckingSession}
-          imageUrl={greenButtonUrl}
-          label="숲 속 들어가기"
-          onClick={() => {
-            void enterForest()
-          }}
-        />
-      </div>
-
-      <button
-        aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_5px_10px_rgba(0,0,0,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white max-[420px]:h-[68px] max-[420px]:w-[68px]"
-        onClick={toggleBgm}
-        type="button"
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)]">
+      <div
+        ref={canvasRef}
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
+        <audio
+          aria-label="초록 모험 시작 배경 음악"
+          loop
+          preload="auto"
+          ref={audioRef}
+          src={bgmUrl}
+        />
+
         <img
           alt=""
-          className="block h-full w-full object-contain"
+          className="absolute inset-0 z-0 h-full w-full object-cover"
           decoding="async"
-          src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          fetchPriority="high"
+          src={backgroundUrl}
         />
-      </button>
+        <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(180deg,rgba(3,16,10,0.02)_0%,rgba(3,16,10,0.34)_100%)]" />
 
-      {isLoginModalOpen ? (
-        <LoginModal onClose={() => setIsLoginModalOpen(false)} />
-      ) : null}
+        <div className="absolute top-[64px] right-[96px] z-20 flex w-[550px] flex-col items-center">
+          <img
+            alt="빵긋"
+            className="block w-full drop-shadow-[0_10px_18px_rgba(0,0,0,0.28)]"
+            decoding="async"
+            src={logoUrl}
+          />
+        </div>
+
+        <div className="absolute right-[120px] bottom-[48px] z-20">
+          <MainStartButton
+            busy={isCheckingSession}
+            imageUrl={greenButtonUrl}
+            label="숲 속 들어가기"
+            onClick={() => {
+              void enterForest()
+            }}
+          />
+        </div>
+
+        <button
+          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_5px_10px_rgba(0,0,0,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          onClick={toggleBgm}
+          type="button"
+        >
+          <img
+            alt=""
+            className="block h-full w-full object-contain"
+            decoding="async"
+            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          />
+        </button>
+
+        {isLoginModalOpen ? (
+          <LoginModal onClose={() => setIsLoginModalOpen(false)} />
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -117,11 +123,11 @@ function LoginModal({ onClose }: { onClose: () => void }) {
       role="dialog"
     >
       <div
-        className="relative isolate -translate-y-4"
+        className="relative isolate"
         onClick={(event) => event.stopPropagation()}
         style={{
           aspectRatio: '1 / 1',
-          width: 'min(650px, calc(100vw - 32px), calc(100vh - 32px))',
+          width: 650,
         }}
       >
         <img
@@ -217,7 +223,7 @@ function MainStartButton({
 }) {
   return (
     <button
-      className="relative block w-[min(500px,calc(100vw-40px))] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
+      className="relative block w-[500px] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
       disabled={busy}
       onClick={onClick}
       style={

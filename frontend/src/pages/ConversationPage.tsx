@@ -371,14 +371,13 @@ export function ConversationPage() {
   }
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
       <div
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden"
+        className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
         <audio
           aria-label="대화방 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -433,7 +432,7 @@ export function ConversationPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
           onClick={() => {
             void toggleBgm()
           }}
@@ -482,7 +481,7 @@ export function ConversationPage() {
             return (
               <span
                 aria-hidden="true"
-                className={`absolute inset-0 bg-no-repeat [backface-visibility:hidden] [will-change:transform] ${
+                className={`absolute inset-0 bg-no-repeat [will-change:transform] [backface-visibility:hidden] ${
                   frameIndex === activeFrame ? 'opacity-100' : 'opacity-0'
                 }`}
                 key={backgroundPosition}
@@ -577,7 +576,7 @@ export function ConversationPage() {
 
         {stage === 'guide' ? (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(16,35,23,.58)] backdrop-blur-[2px]">
-            <section className="relative -top-[25px] h-[534px] w-[700px] text-center drop-shadow-[0_24px_55px_rgba(0,0,0,.38)]">
+            <section className="relative h-[534px] w-[700px] text-center drop-shadow-[0_24px_55px_rgba(0,0,0,.38)]">
               <img
                 alt=""
                 className="pointer-events-none absolute inset-0 size-full object-fill"

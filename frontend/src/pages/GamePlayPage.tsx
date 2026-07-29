@@ -276,12 +276,12 @@ export function GamePlayPage() {
   const leaveGame = () => navigate('/games')
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio autoPlay loop preload="auto" ref={audioRef} src={fruitBgmUrl} />
+        <audio loop preload="auto" ref={audioRef} src={fruitBgmUrl} />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"

@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.A501.backend.domain.auth.entity.Parent;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.repository.RefreshTokenRepository;
 
@@ -39,6 +40,22 @@ public class AuthPurgeService {
             return List.of();
         }
         return parentRepository.findIdsToPurge(purgeBefore, PageRequest.of(0, limit));
+    }
+
+    /**
+     * 탈퇴(소프트 삭제)된 계정인지 확인한다.
+     *
+     * <p>오케스트레이션 진입점의 안전장치다. 하위 purge service들은 부모 상태를 보지 않고
+     * 넘겨받은 parentId의 데이터를 전부 지우는데(타 도메인이 parent를 조회하면 도메인 침범),
+     * child_id·parent_id에 FK가 없어 활성 계정 ID가 잘못 들어와도 DB가 막지 않는다.
+     */
+    public boolean isWithdrawn(Long parentId) {
+        if (parentId == null) {
+            return false;
+        }
+        return parentRepository.findById(parentId)
+                .map(Parent::isDeleted)
+                .orElse(false);
     }
 
     /**

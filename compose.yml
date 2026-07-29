@@ -70,8 +70,11 @@ services:
       REALTIME_JWKS_URL: http://backend:8080/internal/v1/realtime/jwks
       REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}
       REALTIME_TICKET_AUDIENCE: ${REALTIME_TICKET_AUDIENCE:-ai-realtime}
-      REALTIME_STUN_URLS: ${REALTIME_STUN_URLS:-}
-      REALTIME_ICE_SERVERS: ${REALTIME_ICE_SERVERS:-}
+      # NAT 뒤 배포에서 aiortc가 공인 IP(srflx) 후보를 얻는 경로. 비우면 컨테이너
+      # 내부 IP 후보만 내서 외부 브라우저와 절대 연결되지 않는다.
+      # REALTIME_ICE_SERVERS는 이 서비스가 아니라 backend로 간다 — 브라우저에
+      # 내려주는 값이라 ai-server는 읽지 않는다.
+      REALTIME_STUN_URLS: ${REALTIME_STUN_URLS:-stun:stun.l.google.com:19302}
     depends_on:
       redis:
         condition: service_healthy
@@ -104,6 +107,9 @@ services:
       REDIS_PORT: 6379
       AI_SERVER_BASE_URL: http://ai-server:8000
       REALTIME_SIGNALING_URL: ${REALTIME_SIGNALING_URL:-ws://localhost/realtime/signaling}
+      # 브라우저에 내려줄 ICE 서버. ai-server의 REALTIME_STUN_URLS와 짝 — 양쪽 모두
+      # 있어야 브라우저·서버가 서로 도달 가능한 공인 후보를 낸다.
+      REALTIME_ICE_SERVERS: ${REALTIME_ICE_SERVERS:-stun:stun.l.google.com:19302}
       REALTIME_TICKET_PRIVATE_KEY_PEM: ${REALTIME_TICKET_PRIVATE_KEY_PEM:?REALTIME_TICKET_PRIVATE_KEY_PEM is required}
       REALTIME_TICKET_PUBLIC_KEY_PEM: ${REALTIME_TICKET_PUBLIC_KEY_PEM:?REALTIME_TICKET_PUBLIC_KEY_PEM is required}
       REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}

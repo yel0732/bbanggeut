@@ -41,6 +41,8 @@ rollback() {
 trap rollback INT TERM HUP EXIT
 
 COMPOSE_FILE="$compose_file" ENV_FILE="$env_file" "$script_dir/backup-db.sh"
+docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps redis
+"$script_dir/wait-for-healthy.sh" a501-redis-1 60
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps ai-server
 "$script_dir/wait-for-healthy.sh" a501-ai-server-1 120
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps backend

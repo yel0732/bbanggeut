@@ -13,6 +13,8 @@ export CERTBOT_WEBROOT=${CERTBOT_WEBROOT_HOST:-/srv/a501/deploy/certbot/www}
 export LETSENCRYPT_LIVE_DIR=${LETSENCRYPT_LIVE_DIR_HOST:-/etc/letsencrypt/live/i15a501.p.ssafy.io}
 export LETSENCRYPT_ARCHIVE_DIR=${LETSENCRYPT_ARCHIVE_DIR_HOST:-/etc/letsencrypt/archive/i15a501.p.ssafy.io}
 
+docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps redis
+"$(dirname "$0")/wait-for-healthy.sh" a501-redis-1 60
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps ai-server
 "$(dirname "$0")/wait-for-healthy.sh" a501-ai-server-1 120
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps backend

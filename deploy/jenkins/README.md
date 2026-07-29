@@ -39,7 +39,9 @@ ssh -i .\I15A501T.pem -L 8080:127.0.0.1:8080 ubuntu@i15a501.p.ssafy.io
 ## GitLab 연동
 
 Multibranch Pipeline을 만들고 저장소 credential과 `Jenkinsfile`을 연결한다.
-GitLab webhook은 Push events를 선택하고 master push만 파이프라인에서 배포한다.
+GitLab webhook URL은 `https://i15a501.p.ssafy.io/project/a501-deploy`로 설정하고
+Push events를 선택한다. Nginx는 이 정확한 경로만 Jenkins에 전달하며 Jenkins UI는
+외부에 공개하지 않는다. master push만 파이프라인에서 배포한다.
 Secret token은 GitLab webhook과 Jenkins GitLab 설정에 동일하게 등록한다.
 
 ## Jenkins 데이터 백업

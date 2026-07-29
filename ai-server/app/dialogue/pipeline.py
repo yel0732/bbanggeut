@@ -581,6 +581,7 @@ def fixed_assistant_messages() -> tuple[str, ...]:
         ASK_TO_REPEAT_PROMPT,
         # 연결 직후 오프닝 질문(DAILY 오프닝은 EVENT 단순화 질문과 동일해 위에 포함).
         *(conversation_opening_question(topic) for topic in DialogueTopic),
+        CONVERSATION_CLOSING_MESSAGE,
     ]
     for current in DialogueTopic:
         for following in DialogueTopic:
@@ -797,6 +798,10 @@ def _to_acknowledgement(child_answer: str) -> str:
 
 
 _GAME_OPENING_QUESTION = "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+
+# 대화가 끝날 때 마지막으로 들려주는 고정 인사. 종료 응답 자체는 계약상 메시지를
+# 담지 않으므로(터미널 응답 필드 검증) 세션 계층이 이 문장을 따로 발화한다.
+CONVERSATION_CLOSING_MESSAGE = "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
 
 
 def conversation_opening_question(topic: DialogueTopic) -> str:

@@ -274,7 +274,7 @@ class TestChildTurn:
         assert request.next_topic is None
 
     @pytest.mark.asyncio
-    async def test_terminate_publishes_nothing_and_blocks_further_turns(self) -> None:
+    async def test_terminate_says_goodbye_then_signals_and_blocks_further_turns(self) -> None:
         pipeline = _FakeDialoguePipeline([_terminate_response()])
         manager, state, channel, _, _, sequencer = _build_manager(pipeline)
 
@@ -282,7 +282,17 @@ class TestChildTurn:
         await manager.handle_child_turn(_child_turn(sequencer), _stt_result("또 하고 싶어."))
 
         assert state.terminated is True
-        assert channel.sent == []
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "session.completed",
+        ]
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
+        )
+        # 자막 동기화를 위해 인사 텍스트와 오디오는 같은 responseId를 공유한다.
+        assert channel.sent[0]["responseId"] == channel.sent[1]["responseId"]
+        assert channel.sent[2]["payload"]["reason"] == "MAX_QUESTION_REACHED"
         assert len(pipeline.requests) == 1  # 종료 후 턴은 파이프라인에 닿지 않는다
 
     @pytest.mark.asyncio
@@ -465,15 +475,21 @@ class TestNoSpeechLadder:
 
         assert channel.sent[3]["payload"]["text"] == "괜찮아, 천천히 다시 말해 줄래?"
 
-    def test_fifth_no_speech_terminates_without_publishing(self) -> None:
+    def test_fifth_no_speech_terminates_with_a_goodbye_and_signal(self) -> None:
         manager, state, channel, _, _, _ = _build_manager()
 
         for _ in range(5):
             manager.handle_no_speech()
 
         assert state.terminated is True
-        # 1~4회차는 각각 2개 이벤트, 5회차(종료)는 발행 없음
-        assert len(channel.sent) == 8
+        # 1~4회차는 각각 2개 이벤트, 5회차는 인사 2개 + 종료 신호 1개.
+        assert len(channel.sent) == 11
+        assert [event["type"] for event in channel.sent[-3:]] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "session.completed",
+        ]
+        assert channel.sent[-1]["payload"]["reason"] == "INACTIVITY_TIMEOUT"
 
     def test_recovery_prompt_does_not_consume_the_question_budget(self) -> None:
         """재질문은 질문 수에 세지 않는다(plan §7-E)."""
@@ -952,6 +968,19 @@ class TestStreamPublishing:
         await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
 
         assert sum(1 for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED") == 1
+
+    @pytest.mark.asyncio
+    async def test_goodbye_is_not_streamed_as_a_conversation_turn(self) -> None:
+        """마무리 인사는 자막·음성용이며 대화 기록으로 확정 발행하지 않는다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream(
+            _FakeDialoguePipeline([_terminate_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        types = [call[0] for call in stream.calls]
+        assert types == ["CHILD_TURN_FINALIZED", "SESSION_COMPLETED"]
 
     def test_no_speech_with_all_slots_filled_completes_the_session(self) -> None:
         """물을 목표가 없는 무응답도 종료 이벤트를 발행해 세션을 방치하지 않는다."""

@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from app.dialogue.pipeline import (
+    CONVERSATION_CLOSING_MESSAGE,
     DialoguePipelineError,
     DialogueTurnDecision,
     DialogueTurnPipeline,
@@ -548,10 +549,22 @@ class RealtimeDialogueManager:
         )
 
     def _emit_session_completed(self, reason: str | None) -> None:
+        """대화를 마무리한다 — 인사 발화 → 종료 신호 → 확정 이벤트 순.
+
+        인사는 DataChannel과 TTS로만 내보내고 Stream에는 싣지 않는다. 질문이 아니고
+        슬롯도 바꾸지 않는 정형 문구라 대화 기록에 남길 내용이 아니다.
+        ``session.completed``는 프론트가 종료 UI를 띄우고 연결을 정리하는 신호이며,
+        인사 오디오가 끝나는 시점은 같은 responseId의 ``assistant.audio.completed``로
+        판단할 수 있다.
+        """
+
+        resolved = reason or "COMPLETED"
+        self._publish_assistant_text(CONVERSATION_CLOSING_MESSAGE)
+        self._publisher.publish("session.completed", {"reason": resolved})
         if self._stream is None:
             return
         self._stream.publish_session_completed(
-            reason=reason or "COMPLETED",
+            reason=resolved,
             completed_at=self._clock(),
         )
 

@@ -282,9 +282,24 @@ class ConversationSessionServiceTest {
                 "conv_complete_001",
                 new CompleteConversationRequest("USER_FINISHED"));
 
-        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
+        // 종료 버튼으로 끝낸 대화는 완주가 아니므로 ABORTED로 남는다.
+        assertThat(response.status()).isEqualTo(ConversationStatus.ABORTED);
         assertThat(response.terminationReason())
                 .isEqualTo(TerminationReason.USER_FINISHED);
+    }
+
+    @Test
+    void rejectsClientDeclaredCompletionReason() {
+        ConversationSession active = startedSession("conv_complete_002");
+        when(conversationSessionRepository.findById("conv_complete_002"))
+                .thenReturn(Optional.of(active));
+
+        assertThatThrownBy(() -> service.completeConversation(
+                "conv_complete_002",
+                new CompleteConversationRequest("REQUIRED_SLOTS_FILLED")))
+                .isInstanceOfSatisfying(ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ConversationErrorCode.INVALID_TERMINATION_REASON));
     }
 
     @Test

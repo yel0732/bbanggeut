@@ -30,8 +30,8 @@ export BACKEND_IMAGE="a501-backend:$sha"
 export NGINX_IMAGE="a501-nginx:$sha"
 export NGINX_CONFIG_FILE="$deploy_root/deploy/nginx.conf"
 export CERTBOT_WEBROOT=${CERTBOT_WEBROOT_HOST:-/srv/a501/deploy/certbot/www}
-export LETSENCRYPT_LIVE_DIR=${LETSENCRYPT_LIVE_DIR_HOST:-/srv/a501/deploy/certbot/letsencrypt/live/i15a501.p.ssafy.io}
-export LETSENCRYPT_ARCHIVE_DIR=${LETSENCRYPT_ARCHIVE_DIR_HOST:-/srv/a501/deploy/certbot/letsencrypt/archive/i15a501.p.ssafy.io}
+export LETSENCRYPT_LIVE_DIR=${LETSENCRYPT_LIVE_DIR_HOST:-/etc/letsencrypt/live/i15a501.p.ssafy.io}
+export LETSENCRYPT_ARCHIVE_DIR=${LETSENCRYPT_ARCHIVE_DIR_HOST:-/etc/letsencrypt/archive/i15a501.p.ssafy.io}
 
 rollback() {
     trap - INT TERM HUP EXIT

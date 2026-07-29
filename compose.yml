@@ -71,6 +71,7 @@ services:
       REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}
       REALTIME_TICKET_AUDIENCE: ${REALTIME_TICKET_AUDIENCE:-ai-realtime}
       REALTIME_STUN_URLS: ${REALTIME_STUN_URLS:-}
+      REALTIME_ICE_SERVERS: ${REALTIME_ICE_SERVERS:-}
     depends_on:
       redis:
         condition: service_healthy

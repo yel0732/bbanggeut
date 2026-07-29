@@ -8,6 +8,8 @@ export type LoginResponse = {
   expiresInSeconds: number
 }
 
+export type LoginMethod = 'email' | 'google'
+
 export type SignupResponse = {
   parentId: number
   email: string
@@ -36,6 +38,7 @@ const SESSION_KEYS = [
   'accessTokenExpiresAt',
   'parentId',
   'parentEmail',
+  'loginMethod',
 ] as const
 const REFRESH_BUFFER_MS = 60_000
 /** 인증 요청 응답 대기 한도(ms) */
@@ -92,10 +95,20 @@ export async function signupWithEmail({
   })
 }
 
-export function storeLoginSession(response: LoginResponse, remember: boolean) {
+export function storeLoginSession(
+  response: LoginResponse,
+  remember: boolean,
+  loginMethod: LoginMethod = 'email',
+) {
   clearLoginSession()
   const storage = remember ? window.localStorage : window.sessionStorage
   storeAccessToken(response, storage)
+  storage.setItem('loginMethod', loginMethod)
+}
+
+export function getStoredLoginMethod(): LoginMethod {
+  const storage = getSessionStorage()
+  return storage?.getItem('loginMethod') === 'google' ? 'google' : 'email'
 }
 
 export function markNewSignup(email: string) {

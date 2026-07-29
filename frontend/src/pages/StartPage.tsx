@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { hasPendingNewSignupOnboarding, restoreSession } from '@/api/auth'
@@ -145,15 +145,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
         </p>
 
         <div className="absolute top-[24%] left-[318px] z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
-          <ModalMenuButton
-            color="#6a4a12"
-            fontSize={32}
-            imageUrl={yellowButtonUrl}
-            label="구글로 들어가기"
-            textLeft="34%"
-            textTop="43%"
-            to="/auth/google"
-          />
+          <GoogleLoginButton />
           <ModalMenuButton
             color="#5a4a2a"
             fontSize={32}
@@ -191,6 +183,96 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           />
         </button>
       </div>
+    </div>
+  )
+}
+
+const GOOGLE_SCRIPT_ID = 'google-identity-services'
+const DEFAULT_GOOGLE_CLIENT_ID =
+  '737186420019-trrstol7c5cvf919t15l4o4g866hpp77.apps.googleusercontent.com'
+
+function GoogleLoginButton() {
+  const navigate = useNavigate()
+  const googleButtonRef = useRef<HTMLDivElement>(null)
+  const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    const clientId =
+      import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID
+
+    const renderGoogleButton = () => {
+      if (cancelled || !window.google || !googleButtonRef.current) return
+      window.google.accounts.id.initialize({
+        callback: ({ credential }) => {
+          navigate('/auth/google', { state: { googleCredential: credential } })
+        },
+        client_id: clientId,
+      })
+      googleButtonRef.current.replaceChildren()
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        shape: 'pill',
+        size: 'large',
+        text: 'signin_with',
+        theme: 'outline',
+        width: 400,
+      })
+    }
+
+    const existingScript = document.getElementById(
+      GOOGLE_SCRIPT_ID,
+    ) as HTMLScriptElement | null
+
+    if (window.google) {
+      renderGoogleButton()
+    } else if (existingScript) {
+      existingScript.addEventListener('load', renderGoogleButton, { once: true })
+    } else {
+      const script = document.createElement('script')
+      script.id = GOOGLE_SCRIPT_ID
+      script.async = true
+      script.defer = true
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.addEventListener('load', renderGoogleButton, { once: true })
+      script.addEventListener(
+        'error',
+        () => setLoadError('구글 로그인 화면을 불러오지 못했어요.'),
+        { once: true },
+      )
+      document.head.appendChild(script)
+    }
+
+    return () => {
+      cancelled = true
+      existingScript?.removeEventListener('load', renderGoogleButton)
+    }
+  }, [navigate])
+
+  return (
+    <div className="relative block w-full transition hover:scale-[1.04] active:scale-[0.99]">
+      <img
+        alt=""
+        className="pointer-events-none relative z-0 block w-full select-none"
+        decoding="async"
+        draggable={false}
+        src={yellowButtonUrl}
+      />
+      <span
+        className="pointer-events-none absolute top-[43%] left-[34%] z-10 flex w-fit items-center justify-center text-center text-[32px] leading-none whitespace-nowrap text-[#6a4a12]"
+        style={{ fontFamily: "'Jua', sans-serif" }}
+      >
+        구글로 들어가기
+      </span>
+      <div
+        aria-label="Google 계정으로 로그인"
+        className="absolute top-1/2 left-1/2 z-20 h-[44px] w-[400px] -translate-x-1/2 -translate-y-1/2 scale-x-[1.28] scale-y-[1.7] overflow-hidden opacity-[0.01]"
+        ref={googleButtonRef}
+      />
+      {loadError ? (
+        <p className="absolute right-0 bottom-0 left-0 z-30 text-center text-[14px] text-[#b84b3a]" style={{ fontFamily: "'Jua', sans-serif" }}>
+          {loadError}
+        </p>
+      ) : null}
     </div>
   )
 }

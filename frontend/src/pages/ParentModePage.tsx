@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   changeAccountPassword,
+  getStoredLoginMethod,
   verifyParentPin,
   withdrawAccount,
 } from '@/api/auth'
@@ -167,6 +168,7 @@ export function ParentModePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const isGoogleAccount = getStoredLoginMethod() === 'google'
   const parentVideoRef = useRef<HTMLVideoElement>(null)
   const parentStreamRef = useRef<MediaStream | null>(null)
   const [popup, setPopup] = useState<PopupType>(null)
@@ -555,12 +557,6 @@ export function ParentModePage() {
           )
         })
       return
-      window.setTimeout(() => {
-        setPin('')
-        setPinStep('new')
-        setPinMessage('변경할 새 핀 번호를 입력해 주세요.')
-      }, 180)
-      return
     }
 
     if (pinStep === 'new') {
@@ -587,8 +583,6 @@ export function ParentModePage() {
               : 'PIN 번호를 변경하지 못했어요.',
           )
         })
-      return
-      setPinMessage('핀 번호가 변경되었어요 ✓')
       return
     }
 
@@ -658,11 +652,6 @@ export function ParentModePage() {
           confirm: '',
         })
       })
-    return
-    setCurrentPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
-    setPasswordSuccess('비밀번호 변경 요청을 확인했어요 ✓')
   }
 
   const saveNotification = () => {
@@ -1315,30 +1304,28 @@ export function ParentModePage() {
                   />
                   {[
                     {
-                      description: '내 사진을 추가하거나 기본 이미지로 바꿔요',
                       label: '프로필 사진 관리',
                       view: 'photo' as const,
                     },
                     {
-                      description: '부모 모드에 사용하는 숫자 4자리를 바꿔요',
                       label: '핀 번호 변경',
                       view: 'pin' as const,
                     },
                     {
-                      description: '로그인에 사용하는 비밀번호를 바꿔요',
                       label: '계정 비밀번호 변경',
                       view: 'password' as const,
                     },
                     {
-                      description: '핀 번호를 확인하고 계정을 탈퇴해요',
                       label: '탈퇴하기',
                       view: 'withdraw' as const,
                     },
                   ].map((item) => (
                     <button
-                      className="relative mb-[9px] h-[73px] w-[406px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition first:mt-[46px] hover:scale-103"
+                      className="relative mb-[9px] h-[73px] w-[406px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition first:mt-[46px] hover:scale-103 disabled:cursor-not-allowed disabled:opacity-65 disabled:hover:scale-100"
+                      disabled={item.view === 'password' && isGoogleAccount}
                       key={item.view}
                       onClick={() => {
+                        if (item.view === 'password' && isGoogleAccount) return
                         if (item.view === 'pin') resetPin()
                         if (item.view === 'withdraw') resetWithdrawal()
                         setProfileView(item.view)
@@ -1349,12 +1336,14 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span className="-mt-1.3 block text-[25px] text-[#5f492a]">
+                      <span className={`${item.view === 'password' && isGoogleAccount ? '-mt-1 text-[22px]' : 'text-[25px]'} block text-[#5f492a]`}>
                         {item.label}
                       </span>
-                      <span className="-mt-2 block text-[14px] text-[#82945a]">
-                        {item.description}
-                      </span>
+                      {item.view === 'password' && isGoogleAccount ? (
+                        <span className="-mt-1 block text-[14px] text-[#82945a]">
+                          구글로 로그인한 계정
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>

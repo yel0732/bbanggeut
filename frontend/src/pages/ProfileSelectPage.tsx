@@ -177,7 +177,7 @@ export function ProfileSelectPage() {
     const secondsLeft = Math.ceil((pinLockUntilRef.current - Date.now()) / 1000)
     if (secondsLeft > 0) {
       setPinMessage(
-        `5번 틀렸어요. ${formatPinLockTime(secondsLeft)} 후에 다시 시도할 수 있어요.`,
+        `잠겼어요. ${formatPinLockTime(secondsLeft)} 후 다시 시도하세요.`,
       )
       setIsPinError(true)
     } else {
@@ -197,7 +197,7 @@ export function ProfileSelectPage() {
     setIsPinLocked(true)
     setPin('')
     setIsPinError(true)
-    setPinMessage('5번 틀렸어요. 5분 동안 입력할 수 없어요.')
+    setPinMessage('잠겼어요. 5분 후 다시 시도하세요.')
 
     const lockUntil = Date.now() + PIN_LOCK_SECONDS * 1000
     pinLockUntilRef.current = lockUntil
@@ -212,7 +212,7 @@ export function ProfileSelectPage() {
         setPinMessage('')
       } else {
         setPinMessage(
-          `5번 틀렸어요. ${formatPinLockTime(secondsLeft)} 후에 다시 시도할 수 있어요.`,
+          `잠겼어요. ${formatPinLockTime(secondsLeft)} 후 다시 시도하세요.`,
         )
       }
     }, 1000)

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -36,4 +37,12 @@ public interface ChildRepository extends JpaRepository<Child, Long> {
      */
     @Query("select c.childId from Child c where c.parentId = :parentId")
     List<Long> findAllChildIdsByParentId(@Param("parentId") Long parentId);
+
+    /**
+     * 계정 파기 시 해당 부모의 자녀를 전부 물리 삭제한다.
+     * 조회와 같은 이유로 소프트 삭제 여부를 보지 않는다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from Child c where c.parentId = :parentId")
+    int deleteByParentId(@Param("parentId") Long parentId);
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
   getStoredAccessToken,
@@ -28,6 +28,12 @@ import {
   saveActiveChildProfileId,
   type ChildProfile,
 } from '@/lib/childProfiles'
+import { grantParentAccess, revokeParentAccess } from '@/lib/parentAccess'
+
+type ProfileSelectLocationState = {
+  openParentPin?: boolean
+  parentRedirectTo?: string
+}
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
@@ -63,6 +69,8 @@ const DEMO_CHILD_PROFILES: ChildProfile[] = [
 
 export function ProfileSelectPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const locationState = location.state as ProfileSelectLocationState | null
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const [childProfiles, setChildProfiles] = useState(() => {
@@ -74,7 +82,7 @@ export function ProfileSelectPage() {
   )
   const hasTwoChildRows = childProfiles.length > 5
   const pinTimersRef = useRef<number[]>([])
-  const [showPin, setShowPin] = useState(false)
+  const [showPin, setShowPin] = useState(Boolean(locationState?.openParentPin))
   const [pin, setPin] = useState('')
   const [pinMessage, setPinMessage] = useState('')
   const [isPinError, setIsPinError] = useState(false)
@@ -84,6 +92,10 @@ export function ProfileSelectPage() {
   const [logoutError, setLogoutError] = useState('')
   const lockTimerRef = useRef<number | null>(null)
   const pinLockUntilRef = useRef(0)
+
+  useEffect(() => {
+    revokeParentAccess()
+  }, [])
 
   useEffect(() => {
     if (hasPendingNewSignupOnboarding()) {
@@ -218,10 +230,13 @@ export function ProfileSelectPage() {
     if (next.length === PIN_LENGTH) {
       const confirmTimerId = window.setTimeout(() => {
         void verifyParentPin(next).then(() => {
+          grantParentAccess()
           setIsPinError(false)
           setPinMessage('확인되었습니다 ✓')
           const navigateTimerId = window.setTimeout(() => {
-            navigate('/parent')
+            navigate(locationState?.parentRedirectTo ?? '/parent', {
+              replace: Boolean(locationState?.openParentPin),
+            })
           }, 500)
           pinTimersRef.current.push(navigateTimerId)
           setPinFailCount(0)

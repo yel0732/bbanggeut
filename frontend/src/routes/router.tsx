@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
+import { ParentRouteGuard } from '@/components/auth/ParentRouteGuard'
 import {
   ChildHomePage,
   ChildProfileListPage,
@@ -96,19 +97,24 @@ export const router = createBrowserRouter([
     element: <EmailSignupPage />,
   },
   {
-    path: '/parent',
-    element: <ParentModePage />,
-  },
-  {
     path: '/diaries',
     element: <DiaryListPage />,
   },
   {
-    path: '/reports',
-    element: <ReportListPage />,
-  },
-  {
-    path: '/reports/:reportDate',
-    element: <ReportDetailPage />,
+    element: <ParentRouteGuard />,
+    children: [
+      {
+        path: '/parent',
+        element: <ParentModePage />,
+      },
+      {
+        path: '/reports',
+        element: <ReportListPage />,
+      },
+      {
+        path: '/reports/:reportDate',
+        element: <ReportDetailPage />,
+      },
+    ],
   },
 ])

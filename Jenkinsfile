@@ -22,7 +22,16 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                script {
+                    def scmVars = checkout scm
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                    if (!env.GIT_COMMIT?.trim()) {
+                        error('Git commit SHA could not be resolved after checkout.')
+                    }
+                    echo "Resolved Git commit: ${env.GIT_COMMIT}"
+                }
+            }
         }
 
         stage('Verify master') {

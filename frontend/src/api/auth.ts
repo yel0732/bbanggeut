@@ -311,7 +311,9 @@ export async function changeAccountPassword(
     method: 'PATCH',
   })
   if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as ApiErrorResponse | null
+    const error = (await response
+      .json()
+      .catch(() => null)) as ApiErrorResponse | null
     throw new Error(error?.message ?? '비밀번호를 변경하지 못했어요.')
   }
 }
@@ -401,7 +403,10 @@ async function requestJson<T = unknown>(path: string, init: RequestInit) {
   })
   const contentType = response.headers.get('content-type') ?? ''
   if (!response.ok) {
-    throw await readApiError(response, `요청에 실패했어요. (${response.status})`)
+    throw await readApiError(
+      response,
+      `요청에 실패했어요. (${response.status})`,
+    )
   }
   if (!contentType.includes('application/json')) {
     throw new Error(

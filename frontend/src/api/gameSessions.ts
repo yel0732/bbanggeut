@@ -59,9 +59,7 @@ export type SaveCompletedGameInput = SaveCompletedGameBase &
       }
   )
 
-export async function saveCompletedGameSession(
-  input: SaveCompletedGameInput,
-) {
+export async function saveCompletedGameSession(input: SaveCompletedGameInput) {
   const childId = await resolveBackendChildId()
 
   const response = await authFetch(apiUrl('/api/game-sessions'), {
@@ -85,11 +83,12 @@ export async function saveCompletedGameSession(
   })
 
   if (!response.ok) {
-    const error = (await response
-      .json()
-      .catch(() => null)) as { message?: string } | null
+    const error = (await response.json().catch(() => null)) as {
+      message?: string
+    } | null
     throw new Error(
-      error?.message ?? '게임 기록을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.',
+      error?.message ??
+        '게임 기록을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.',
     )
   }
 

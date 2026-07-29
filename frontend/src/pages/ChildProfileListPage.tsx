@@ -486,7 +486,7 @@ export function ChildProfileListPage() {
                   </button>
                   <div className="relative z-10 mr-[50px] flex -translate-y-0.5 flex-col">
                     <button
-                      className="pt-[3px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat text-[25px] text-[#7a5a1e] transition hover:scale-105"
+                      className="h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#7a5a1e] transition hover:scale-105"
                       onClick={() => openEdit(profile)}
                       style={{
                         ...jua,
@@ -497,7 +497,7 @@ export function ChildProfileListPage() {
                       수정
                     </button>
                     <button
-                      className="pt-[3px] mt-[3px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat text-[25px] text-[#9a4a3e] transition hover:scale-105"
+                      className="mt-[3px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#9a4a3e] transition hover:scale-105"
                       onClick={() => removeProfile(profile)}
                       style={{
                         ...jua,
@@ -735,9 +735,7 @@ export function ChildProfileListPage() {
             }
             messageTone={deletionPinMessage ? 'error' : 'default'}
             onClose={closeProfileRemoval}
-            onPressKey={(key) =>
-              pressDeletionPinKey(key === '←' ? '⌫' : key)
-            }
+            onPressKey={(key) => pressDeletionPinKey(key === '←' ? '⌫' : key)}
             pin={deletionPin}
             pinLength={DELETE_PIN_LENGTH}
             title="부모 확인"

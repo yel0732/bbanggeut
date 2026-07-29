@@ -115,17 +115,20 @@
 }
 
 .dino-character--idle .dino-character__rig {
-  animation: dino-character-breathe var(--dino-bounce-duration) ease-in-out infinite;
+  animation: dino-character-breathe var(--dino-bounce-duration) ease-in-out
+    infinite;
 }
 
 .dino-character--idle .dino-character__arm--left {
-  animation: dino-character-arm-wave var(--dino-arm-duration) ease-in-out infinite;
+  animation: dino-character-arm-wave var(--dino-arm-duration) ease-in-out
+    infinite;
   --dino-arm-start: var(--dino-left-arm-start);
   --dino-arm-end: var(--dino-left-arm-end);
 }
 
 .dino-character--idle .dino-character__arm--right {
-  animation: dino-character-arm-wave var(--dino-arm-duration) ease-in-out infinite;
+  animation: dino-character-arm-wave var(--dino-arm-duration) ease-in-out
+    infinite;
   --dino-arm-start: var(--dino-right-arm-start);
   --dino-arm-end: var(--dino-right-arm-end);
 }

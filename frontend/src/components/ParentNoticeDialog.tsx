@@ -58,7 +58,7 @@ export function ParentNoticeDialog({
         <div className="absolute right-[18%] bottom-[14%] left-[18%] flex justify-center gap-3">
           {onCancel ? (
             <button
-              className="relative pt-[1px] h-[50px] w-[128px] border-0 bg-transparent p-0 text-[23px] text-[#765d36] drop-shadow-[0_5px_7px_rgba(75,48,20,.22)] transition hover:scale-103 active:scale-98"
+              className="relative h-[50px] w-[128px] border-0 bg-transparent p-0 pt-[1px] text-[23px] text-[#765d36] drop-shadow-[0_5px_7px_rgba(75,48,20,.22)] transition hover:scale-103 active:scale-98"
               onClick={onCancel}
               style={jua}
               type="button"
@@ -74,7 +74,7 @@ export function ParentNoticeDialog({
             </button>
           ) : null}
           <button
-            className="relative h-[50px] w-[128px] border- bg-transparent p-0 text-[23px] text-white drop-shadow-[0_5px_7px_rgba(75,48,20,.22)] transition hover:scale-103 active:scale-98"
+            className="border- relative h-[50px] w-[128px] bg-transparent p-0 text-[23px] text-white drop-shadow-[0_5px_7px_rgba(75,48,20,.22)] transition hover:scale-103 active:scale-98"
             onClick={onConfirm}
             style={jua}
             type="button"

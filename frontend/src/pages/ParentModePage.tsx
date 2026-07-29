@@ -1232,7 +1232,7 @@ export function ParentModePage() {
                       </div>
                       <div className="relative z-10 mr-[50px] flex -translate-y-0.5 flex-col">
                         <button
-                          className="-mt-[2px] pt-[3px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat text-[25px] text-[#7a5a1e] transition hover:scale-105"
+                          className="-mt-[2px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#7a5a1e] transition hover:scale-105"
                           onClick={() => editChildProfile(profile)}
                           style={{
                             ...jua,
@@ -1243,7 +1243,7 @@ export function ParentModePage() {
                           수정
                         </button>
                         <button
-                          className="pt-[3px] mt-[2px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat text-[25px] text-[#9a4a3e] transition hover:scale-105"
+                          className="mt-[2px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#9a4a3e] transition hover:scale-105"
                           onClick={() => removeChildProfile(profile)}
                           style={{
                             ...jua,
@@ -1557,7 +1557,9 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span className={`${item.view === 'password' && isGoogleAccount ? '-mt-1 text-[22px]' : 'text-[25px]'} block text-[#5f492a]`}>
+                      <span
+                        className={`${item.view === 'password' && isGoogleAccount ? '-mt-1 text-[22px]' : 'text-[25px]'} block text-[#5f492a]`}
+                      >
                         {item.label}
                       </span>
                       {item.view === 'password' && isGoogleAccount ? (

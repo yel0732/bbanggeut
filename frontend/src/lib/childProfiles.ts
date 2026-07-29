@@ -27,7 +27,8 @@ export function childImageKeyFromPhoto(
   photoUrl: string | null,
   fallback = CHILD_DEFAULT_IMAGE_KEY,
 ) {
-  if (photoUrl === childAvatarUrl || photoUrl === null) return CHILD_DEFAULT_IMAGE_KEY
+  if (photoUrl === childAvatarUrl || photoUrl === null)
+    return CHILD_DEFAULT_IMAGE_KEY
   if (photoUrl === childTigerAvatarUrl) return CHILD_TIGER_IMAGE_KEY
   if (photoUrl === childRabbitAvatarUrl) return CHILD_RABBIT_IMAGE_KEY
   return fallback
@@ -39,10 +40,7 @@ export function childPhotoFromImageNum(profileImageNum: number) {
   return null
 }
 
-export function childImageNumFromPhoto(
-  photoUrl: string | null,
-  fallback = 1,
-) {
+export function childImageNumFromPhoto(photoUrl: string | null, fallback = 1) {
   if (photoUrl === childAvatarUrl || photoUrl === null) return 1
   if (photoUrl === childTigerAvatarUrl) return 2
   if (photoUrl === childRabbitAvatarUrl) return 3

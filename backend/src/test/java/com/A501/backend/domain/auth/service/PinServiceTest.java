@@ -170,9 +170,11 @@ class PinServiceTest {
 
     @Test
     void verifyPin_throwsLockedImmediatelyWhileLockActive() {
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        LocalDateTime now = LocalDateTime.now(kst);
         Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
-        parent.setPin("hashed-pin", LocalDateTime.now());
-        parent.registerPinFailure(LocalDateTime.now(), 1, Duration.ofMinutes(5));
+        parent.setPin("hashed-pin", now);
+        parent.registerPinFailure(now, 1, Duration.ofMinutes(5));
         when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
 
         assertThatThrownBy(() -> pinService.verifyPin(1L, "1234"))

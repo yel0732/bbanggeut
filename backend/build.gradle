@@ -52,3 +52,21 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+/*
+ * 로컬로 앱을 띄울 때의 대화 파이프라인 기본값.
+ *
+ * application.yml의 local 문서에 두지 않는 이유: spring.profiles.default가 local이라
+ * 테스트도 같은 프로필로 돈다. 거기서 켜면 모든 @SpringBootTest가 Redis 컨슈머를
+ * 붙이고, Reconciler가 테스트가 만든 세션을 도중에 정리해 버린다.
+ *
+ * 이 값들이 꺼져 있으면 대화는 멀쩡히 진행되는데 확정 이벤트만 조용히 버려져,
+ * 대화 원문·슬롯이 저장되지 않고 세션이 IN_PROGRESS로 남아 다음 대화가 막힌다.
+ */
+tasks.named('bootRun') {
+	environment 'CONVERSATION_STREAM_ENABLED', 'true'
+	environment 'CONVERSATION_STREAM_RECOVERY_ENABLED', 'true'
+	// 연결이 끊긴 세션을 Lease 만료로 정리한다. 브레이크포인트로 앱을 멈춰 두고
+	// 디버깅할 때는 살아 있는 세션까지 정리될 수 있으니 그때만 false로 둔다.
+	environment 'REALTIME_RECONCILER_ENABLED', 'true'
+}

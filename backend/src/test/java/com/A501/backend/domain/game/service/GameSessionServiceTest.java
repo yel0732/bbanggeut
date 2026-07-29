@@ -17,6 +17,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
 import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.GameSession;
+import com.A501.backend.domain.game.repository.GameRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,6 +27,9 @@ class GameSessionServiceTest {
     private GameSessionRepository gameSessionRepository;
 
     @Mock
+    private GameRepository gameRepository;
+
+    @Mock
     private GameSessionWriter gameSessionWriter;
 
     @Test
@@ -33,7 +37,7 @@ class GameSessionServiceTest {
         GameSession session = createSession(UUID.randomUUID());
         when(gameSessionRepository.findById(session.getGameSessionId())).thenReturn(Optional.of(session));
         GameSessionService service = new GameSessionService(
-                gameSessionRepository, gameSessionWriter);
+                gameSessionRepository, gameRepository, gameSessionWriter);
 
         assertThat(service.existsForChild(session.getGameSessionId(), 15L)).isTrue();
         assertThat(service.existsForChild(session.getGameSessionId(), 99L)).isFalse();
@@ -50,7 +54,7 @@ class GameSessionServiceTest {
         when(gameSessionWriter.saveAndFlush(any(GameSession.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate client_play_id"));
         GameSessionService service = new GameSessionService(
-                gameSessionRepository, gameSessionWriter);
+                gameSessionRepository, gameRepository, gameSessionWriter);
 
         GameSessionResponse response = service.saveCompletedResult(request);
 

@@ -112,6 +112,11 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       REPORT_SCHEDULE_ENABLED: ${REPORT_SCHEDULE_ENABLED:-true}
       REPORT_RECOVERY_ENABLED: ${REPORT_RECOVERY_ENABLED:-true}
+      # 실시간 대화 파이프라인 스위치 — 꺼져 있으면 FastAPI가 발행한 대화 이벤트가
+      # MySQL에 반영되지 않고(일기 생성 불가), 끊긴 세션 정리도 되지 않는다.
+      CONVERSATION_STREAM_ENABLED: ${CONVERSATION_STREAM_ENABLED:-true}
+      CONVERSATION_STREAM_RECOVERY_ENABLED: ${CONVERSATION_STREAM_RECOVERY_ENABLED:-true}
+      REALTIME_RECONCILER_ENABLED: ${REALTIME_RECONCILER_ENABLED:-true}
     depends_on:
       mysql:
         condition: service_healthy

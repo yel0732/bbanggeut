@@ -2,9 +2,7 @@ package com.A501.backend.domain.conversation.service;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -163,9 +161,10 @@ public class ConversationSessionService {
     public CompleteConversationResponse completeConversation(
             String conversationId,
             CompleteConversationRequest request) {
-        TerminationReason reason = parseTerminationReason(request == null ? null : request.reason());
+        // 권한 검증을 먼저 한다 — 접근할 수 없는 대화에 입력 검증 결과를 돌려주지 않는다.
         ConversationSession session = findConversation(conversationId);
         verifyConversationAccess(session);
+        TerminationReason reason = parseTerminationReason(request == null ? null : request.reason());
 
         if (session.getStatus().isTerminal()) {
             return CompleteConversationResponse.from(session);
@@ -181,11 +180,18 @@ public class ConversationSessionService {
     }
 
     private TerminationReason parseTerminationReason(String reason) {
+        TerminationReason parsed;
         try {
-            return TerminationReason.from(reason);
+            parsed = TerminationReason.from(reason);
         } catch (IllegalArgumentException exception) {
             throw new ConversationException(ConversationErrorCode.INVALID_TERMINATION_REASON);
         }
+        // 완주 선언은 마지막 주제를 실제로 끝낸 대화 엔진만 할 수 있다. 클라이언트가
+        // 완주 사유로 종료를 요청해 중도 대화의 원문을 남기는 우회를 막는다.
+        if (parsed.getTargetStatus() == ConversationStatus.COMPLETED) {
+            throw new ConversationException(ConversationErrorCode.INVALID_TERMINATION_REASON);
+        }
+        return parsed;
     }
 
     private Speaker parseSpeaker(String speaker) {
@@ -228,18 +234,15 @@ public class ConversationSessionService {
     }
 
     private List<CompletedGameSessionSummary> findTodayGames(Long childId) {
+        // game_session.completed_at에는 클라이언트가 보낸 KST wall-clock이 offset 변환 없이
+        // 저장된다. 조회 경계도 같은 기준의 naive KST 자정으로 맞춘다(report 도메인의
+        // ReportPeriodCalculator와 동일) — UTC로 변환해 비교하면 KST 15시 이후 완료된
+        // 게임이 그날 대화에서 누락된다.
         LocalDate today = LocalDate.now(utcClock.withZone(KST));
-        LocalDateTime startedAt = today.atStartOfDay(KST)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
-        LocalDateTime endedAt = today.plusDays(1)
-                .atStartOfDay(KST)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
         return gameSessionService.findCompletedSessionsForChild(
                 childId,
-                startedAt,
-                endedAt);
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay());
     }
 
     private ConversationTopicState createTopic(

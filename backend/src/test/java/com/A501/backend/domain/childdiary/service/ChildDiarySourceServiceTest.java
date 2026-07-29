@@ -61,7 +61,10 @@ class ChildDiarySourceServiceTest {
         ConversationSession session = ConversationSession.create(
                 "conversation-1", 15L, ConversationTopic.DAILY, 12);
         session.start(LocalDateTime.of(2026, 7, 27, 9, 0));
-        session.terminate(LocalDateTime.of(2026, 7, 27, 10, 0), TerminationReason.USER_FINISHED);
+        // 일기는 완주(COMPLETED)한 대화에서만 만들어진다.
+        session.terminate(
+                LocalDateTime.of(2026, 7, 27, 10, 0),
+                TerminationReason.REQUIRED_SLOTS_FILLED);
         return session;
     }
 }

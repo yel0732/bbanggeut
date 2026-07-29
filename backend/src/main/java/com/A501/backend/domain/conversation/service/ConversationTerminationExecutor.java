@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.domain.conversation.entity.ConversationSession;
+import com.A501.backend.domain.conversation.entity.ConversationStatus;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
@@ -23,6 +24,7 @@ public class ConversationTerminationExecutor {
 
     private final ConversationSessionRepository conversationSessionRepository;
     private final ConversationTopicStateRepository topicStateRepository;
+    private final ConversationContentPurger conversationContentPurger;
     private final Clock utcClock;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -38,15 +40,28 @@ public class ConversationTerminationExecutor {
                 LocalDateTime.now(utcClock).truncatedTo(ChronoUnit.MICROS);
         try {
             session.terminate(completedAt, reason);
+        } catch (IllegalStateException exception) {
+            throw new ConversationException(ConversationErrorCode.INVALID_SESSION_STATE);
+        }
+        ConversationSession terminated = conversationSessionRepository.saveAndFlush(session);
+
+        // 완주(COMPLETED)한 대화만 원문을 남긴다 — 일기·리포트의 유일한 재료다.
+        // 그 밖의 종료는 사유와 무관하게 대화 내용을 정리한다.
+        if (terminated.getStatus() != ConversationStatus.COMPLETED) {
+            conversationContentPurger.purge(conversationId);
+            return terminated;
+        }
+
+        try {
             topicStateRepository
                     .findByConversationIdAndTopicTypeForUpdate(
                             conversationId,
-                            session.getCurrentTopic())
+                            terminated.getCurrentTopic())
                     .ifPresent(topic -> topic.complete(completedAt, reason));
         } catch (IllegalStateException exception) {
             throw new ConversationException(ConversationErrorCode.INVALID_SESSION_STATE);
         }
 
-        return conversationSessionRepository.saveAndFlush(session);
+        return terminated;
     }
 }

@@ -175,10 +175,32 @@ class ConversationSessionControllerTest {
                         .content("{\"reason\":\"USER_FINISHED\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversationId").value("conv_complete_api"))
-                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                // 종료 버튼으로 끝낸 대화는 완주가 아니다 — ABORTED로 남고 내용은 정리된다.
+                .andExpect(jsonPath("$.status").value("ABORTED"))
                 .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"))
                 .andExpect(jsonPath("$.completedAt")
                         .value("2026-07-22T10:08:00+09:00"));
+    }
+
+    @Test
+    void 클라이언트가_완주_사유로_종료하면_400을_반환한다() throws Exception {
+        ConversationSession session = ConversationSession.create(
+                "conv_complete_guard",
+                15L,
+                null,
+                ContextType.DAILY,
+                ConversationGoal.DIARY,
+                6);
+        session.start();
+        sessionRepository.saveAndFlush(session);
+
+        mockMvc.perform(post(
+                        "/api/v1/conversations/{conversationId}/complete",
+                        session.getConversationId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"REQUIRED_SLOTS_FILLED\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_TERMINATION_REASON"));
     }
 
     @Test
@@ -193,7 +215,7 @@ class ConversationSessionControllerTest {
         session.start(LocalDateTime.of(2026, 7, 22, 1, 0, 10));
         session.terminate(
                 LocalDateTime.of(2026, 7, 22, 1, 8),
-                TerminationReason.USER_FINISHED);
+                TerminationReason.REQUIRED_SLOTS_FILLED);
         sessionRepository.save(session);
 
         mockMvc.perform(get(
@@ -205,7 +227,7 @@ class ConversationSessionControllerTest {
                         .value("2026-07-22T10:00:10+09:00"))
                 .andExpect(jsonPath("$.completedAt")
                         .value("2026-07-22T10:08:00+09:00"))
-                .andExpect(jsonPath("$.terminationReason").value("USER_FINISHED"));
+                .andExpect(jsonPath("$.terminationReason").value("REQUIRED_SLOTS_FILLED"));
     }
 
     @TestConfiguration

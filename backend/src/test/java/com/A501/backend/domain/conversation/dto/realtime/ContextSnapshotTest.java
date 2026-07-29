@@ -169,6 +169,7 @@ class ContextSnapshotTest {
                         List.of(new DialogueGameContextPayload(
                                 UUID.randomUUID(),
                                 1L,
+                                "과일 자르기",
                                 820,
                                 180,
                                 LocalDateTime.of(2026, 7, 27, 10, 0))),

@@ -121,6 +121,27 @@ class ConversationSessionServiceTest {
     }
 
     @Test
+    void carriesGameNameIntoTheGameTopicContext() {
+        // 게임 이름은 AI가 첫 질문에서 게임을 불러주기 위한 컨텍스트다.
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(gameSummary(8L, 10, "과일 자르기")));
+        when(conversationSessionRepository.save(any(ConversationSession.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.create(15L);
+
+        ArgumentCaptor<Collection<ConversationTopicState>> topics =
+                ArgumentCaptor.forClass(Collection.class);
+        verify(topicStateRepository).saveAll(topics.capture());
+        ConversationTopicState gameTopic = topics.getValue().stream()
+                .filter(topic -> topic.getTopicType() == ConversationTopic.GAME)
+                .findFirst()
+                .orElseThrow();
+        assertThat(gameTopic.getContextJson()).contains("\"gameName\":\"과일 자르기\"");
+    }
+
+    @Test
     void createsOneGameTopicForMultipleTodayGamesThenDaily() {
         List<CompletedGameSessionSummary> games = List.of(
                 gameSummary(1L, 10),
@@ -141,7 +162,8 @@ class ConversationSessionServiceTest {
     }
 
     @Test
-    void usesKstTodayConvertedToUtcForGameLookup() {
+    void usesNaiveKstDayBoundariesForGameLookup() {
+        // completed_at은 KST wall-clock으로 저장되므로 조회 경계도 naive KST 자정이어야 한다.
         when(gameSessionService.findCompletedSessionsForChild(
                 eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(List.of());
@@ -155,9 +177,47 @@ class ConversationSessionServiceTest {
         verify(gameSessionService).findCompletedSessionsForChild(
                 eq(15L), startedAt.capture(), endedAt.capture());
         assertThat(startedAt.getValue())
-                .isEqualTo(LocalDateTime.of(2026, 7, 21, 15, 0));
+                .isEqualTo(LocalDateTime.of(2026, 7, 22, 0, 0));
         assertThat(endedAt.getValue())
-                .isEqualTo(LocalDateTime.of(2026, 7, 22, 15, 0));
+                .isEqualTo(LocalDateTime.of(2026, 7, 23, 0, 0));
+    }
+
+    @Test
+    void eveningConversationStillSeesSameKstDayGames() {
+        // KST 21시(= 12:00Z)에 대화를 시작해도 조회 창은 같은 KST 날짜여야 한다.
+        // 과거 UTC 변환 방식에서는 이 시각에 20시(KST) 완료 게임이 누락됐다.
+        ConversationSessionService eveningService = new ConversationSessionService(
+                conversationSessionRepository,
+                conversationTurnRepository,
+                topicStateRepository,
+                conversationGameSessionRepository,
+                gameSessionService,
+                childAccessVerifier,
+                currentMemberProvider,
+                conversationTerminationCoordinator,
+                new ConversationTopicProperties(6, 6),
+                new ObjectMapper(),
+                Clock.fixed(Instant.parse("2026-07-22T12:00:00Z"), ZoneOffset.UTC));
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        eveningService.create(15L);
+
+        ArgumentCaptor<LocalDateTime> startedAt =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> endedAt =
+                ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(gameSessionService).findCompletedSessionsForChild(
+                eq(15L), startedAt.capture(), endedAt.capture());
+        assertThat(startedAt.getValue())
+                .isEqualTo(LocalDateTime.of(2026, 7, 22, 0, 0));
+        assertThat(endedAt.getValue())
+                .isEqualTo(LocalDateTime.of(2026, 7, 23, 0, 0));
+        // 20:00(KST) 완료 게임이 창 안에 들어온다.
+        assertThat(LocalDateTime.of(2026, 7, 22, 20, 0))
+                .isAfterOrEqualTo(startedAt.getValue())
+                .isBefore(endedAt.getValue());
     }
 
     @Test
@@ -243,9 +303,24 @@ class ConversationSessionServiceTest {
                 "conv_complete_001",
                 new CompleteConversationRequest("USER_FINISHED"));
 
-        assertThat(response.status()).isEqualTo(ConversationStatus.COMPLETED);
+        // 종료 버튼으로 끝낸 대화는 완주가 아니므로 ABORTED로 남는다.
+        assertThat(response.status()).isEqualTo(ConversationStatus.ABORTED);
         assertThat(response.terminationReason())
                 .isEqualTo(TerminationReason.USER_FINISHED);
+    }
+
+    @Test
+    void rejectsClientDeclaredCompletionReason() {
+        ConversationSession active = startedSession("conv_complete_002");
+        when(conversationSessionRepository.findById("conv_complete_002"))
+                .thenReturn(Optional.of(active));
+
+        assertThatThrownBy(() -> service.completeConversation(
+                "conv_complete_002",
+                new CompleteConversationRequest("REQUIRED_SLOTS_FILLED")))
+                .isInstanceOfSatisfying(ConversationException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo(ConversationErrorCode.INVALID_TERMINATION_REASON));
     }
 
     @Test
@@ -279,9 +354,14 @@ class ConversationSessionServiceTest {
     }
 
     private CompletedGameSessionSummary gameSummary(Long gameId, int score) {
+        return gameSummary(gameId, score, null);
+    }
+
+    private CompletedGameSessionSummary gameSummary(Long gameId, int score, String gameName) {
         return new CompletedGameSessionSummary(
                 UUID.randomUUID(),
                 gameId,
+                gameName,
                 score,
                 60,
                 LocalDateTime.of(2026, 7, 22, 2, 0));

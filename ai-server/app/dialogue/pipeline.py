@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from enum import StrEnum
 
 from pydantic import (
@@ -64,6 +65,7 @@ from app.dialogue.policy.target import (
     QuestionTarget,
     select_next_question_target,
 )
+from app.dialogue.policy.stop_intent import is_stop_request
 from app.dialogue.policy.termination import (
     ChildTurnSignal,
     DialoguePolicyRequest,
@@ -166,6 +168,13 @@ class DialogueTurnRequest(BaseModel):
             "maxQuestionCount",
         ),
         gt=0,
+    )
+    # 무응답 사다리에서 건너뛰기로 확정된 질문 목표. 목표 추정·다음 질문 선택·
+    # backfill에서 제외해 같은 목표를 다시 묻거나 답변을 오배정하지 않게 한다.
+    # 텍스트 턴(Spring 경유)은 건너뛰기 개념이 없어 빈 값으로 남는다.
+    skipped_targets: frozenset[QuestionTarget] = Field(
+        default_factory=frozenset,
+        alias="skippedTargets",
     )
 
     @field_validator("request_id", "conversation_id", "child_answer")
@@ -306,6 +315,19 @@ class DialogueTurnPipeline:
         self,
         request: DialogueTurnRequest,
     ) -> DialogueTurnResponse:
+        if is_stop_request(request.child_answer):
+            # 아이의 명시적 종료 의사는 모든 정책보다 우선한다(§9). 다음 주제가
+            # 남아 있어도 전환하지 않고 즉시 종료하며, 종료 문구에 슬롯 분석
+            # LLM을 돌리지 않는다. COMPLETED로 종료되므로 그때까지 채운 슬롯으로
+            # 일기 생성이 가능하다.
+            return DialogueTurnResponse(
+                updated_slots=request.current_slots.model_copy(deep=True),
+                decision=DialogueTurnDecision.TERMINATE_SESSION,
+                termination_reason=(
+                    DialogueTerminationReason.CHILD_REQUESTED_STOP
+                ),
+            )
+
         asked_target = _current_unanswered_target(request)
         slot_analysis = analyze_answer_with_retry(
             DiaryAnswerAnalysisRequest(
@@ -360,6 +382,7 @@ class DialogueTurnPipeline:
             updated_slots = _normalize_first_turn_slots(
                 updated_slots,
                 request.child_answer,
+                previous_slots=request.current_slots,
             )
         if (
             relevance_decision is not None
@@ -374,6 +397,11 @@ class DialogueTurnPipeline:
             relevance_decision is not None
             and relevance_decision.answered is False
         ):
+            # 의도된 트레이드오프: 딴 이야기로 판정된 턴의 추출 결과는 통째로 버린다.
+            # 무관한 발화("지금 배가 고파")에서 추출된 값이 일기 슬롯을 오염시키는
+            # 것을 막는 쪽이, 오판 1회로 같은 질문을 한 번 더 묻는 비용(복구 가능)
+            # 보다 낫다. 판정 실패(None)는 이 분기를 타지 않으므로 추출 결과가
+            # 보존된다 — LLM 판정 불능이 슬롯 손실로 이어지지 않는다.
             updated_slots = request.current_slots.model_copy(deep=True)
         else:
             updated_slots = enrich_explicit_people(
@@ -396,6 +424,7 @@ class DialogueTurnPipeline:
                 question_count=request.question_count,
                 max_question_count=request.max_question_count,
                 turn_signal=ChildTurnSignal.ANSWERED,
+                skipped_targets=request.skipped_targets,
             ),
             self._termination_policy,
             DEFAULT_NO_RESPONSE_RECOVERY_POLICY,
@@ -551,6 +580,9 @@ def fixed_assistant_messages() -> tuple[str, ...]:
         *SIMPLIFIED_QUESTION_BY_TARGET.values(),
         *CHOICE_QUESTION_BY_TARGET.values(),
         ASK_TO_REPEAT_PROMPT,
+        # 연결 직후 오프닝 질문(DAILY 오프닝은 EVENT 단순화 질문과 동일해 위에 포함).
+        *(conversation_opening_question(topic) for topic in DialogueTopic),
+        CONVERSATION_CLOSING_MESSAGE,
     ]
     for current in DialogueTopic:
         for following in DialogueTopic:
@@ -571,7 +603,12 @@ def _current_unanswered_target(
 ) -> QuestionTarget | None:
     if request.current_question is None:
         return None
-    return select_next_question_target(request.current_slots)
+    # 직전에 물은 목표를 추정한다. 건너뛴 목표를 제외하지 않으면 skip 이후의
+    # 실제 질문 목표와 어긋나 답변이 엉뚱한 슬롯에 backfill된다.
+    return select_next_question_target(
+        request.current_slots,
+        excluded_targets=request.skipped_targets,
+    )
 
 
 def _resolve_unanswered_target(
@@ -612,15 +649,22 @@ def _backfill_answered_target(
 def _normalize_first_turn_slots(
     slots: DiarySlots,
     child_answer: str,
+    *,
+    previous_slots: DiarySlots,
 ) -> DiarySlots:
+    # 첫 턴 추출이 미래 목표 슬롯(emotionReason·memorableMoment)으로 오분류한 값은
+    # 버리되, 요청에 이미 있던 기존 값은 지우지 않는다. 필드를 빠뜨리고 재구성하면
+    # 채워져 있던 슬롯이 None으로 리셋되어 하류(DB 동기화)까지 지워진다.
     event = slots.event
     if event is None or not event.strip():
         event = child_answer.strip()
-    return DiarySlots(
-        event=event,
-        people=list(slots.people),
-        place=slots.place,
-        emotion=slots.emotion,
+    return slots.model_copy(
+        update={
+            "event": event,
+            "emotion_reason": previous_slots.emotion_reason,
+            "memorable_moment": previous_slots.memorable_moment,
+        },
+        deep=True,
     )
 
 
@@ -754,10 +798,39 @@ def _to_acknowledgement(child_answer: str) -> str:
     return f"{statement}구나."
 
 
+_GAME_OPENING_QUESTION = "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+
+# 대화가 끝날 때 마지막으로 들려주는 고정 인사. 종료 응답 자체는 계약상 메시지를
+# 담지 않으므로(터미널 응답 필드 검증) 세션 계층이 이 문장을 따로 발화한다.
+CONVERSATION_CLOSING_MESSAGE = "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
+
+
+def conversation_opening_question(
+    topic: DialogueTopic,
+    game_names: Sequence[str] = (),
+) -> str:
+    """연결 직후 AI가 먼저 던지는 주제별 고정 첫 질문.
+
+    주제 전환용 ``_topic_opening_question``과 달리 대화의 맨 처음에 쓰므로
+    "이번에는/다른 일도" 같은 전환 표현이 없어야 한다. DAILY는 이미 검증된
+    EVENT 단순화 질문을 재사용한다.
+
+    오늘 한 게임이 하나뿐이면 그 이름을 불러 대화를 연다. 여러 개일 때는 임의로
+    하나를 고르지 않고 "가장 기억나는 게임"을 묻는 기존 질문이 더 자연스럽다.
+    """
+
+    if topic is not DialogueTopic.GAME:
+        return SIMPLIFIED_QUESTION_BY_TARGET[QuestionTarget.EVENT]
+    named = [name.strip() for name in game_names if name and name.strip()]
+    if len(named) == 1:
+        return f"오늘 {named[0]} 했구나! 어떤 점이 제일 재미있었어?"
+    return _GAME_OPENING_QUESTION
+
+
 def _topic_opening_question(topic: DialogueTopic) -> str:
     if topic is DialogueTopic.DAILY:
         return "이번에는 오늘 있었던 다른 일도 이야기해 줄래?"
-    return "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+    return _GAME_OPENING_QUESTION
 
 
 def _topic_transition_message(

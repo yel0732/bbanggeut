@@ -91,6 +91,13 @@ public class AiTurnEventHandler implements ConversationEventHandler {
                         Speaker.AI);
         if (turnSeq > latestTurnSeq) {
             synchronizeProgress(event, session, turnTopic, slotsTopic, payload);
+        } else if (turnTopic != slotsTopic) {
+            // 지연 도착한 일반 턴은 이력만 채우고 진행 상태를 후퇴시키지 않지만(정상),
+            // 전환 이벤트가 지연 도착하면 전환은 유실되고 턴만 저장되는 부분 적용이
+            // 된다. FastAPI 계약상 전환 이후 턴은 전환 처리 전에 적용될 수 없으므로
+            // 이 상황 자체가 계약 위반이다.
+            throw new ConversationEventContractException(
+                    "Stale topic transition event cannot be applied.");
         }
         turnRepository.save(ConversationTurn.createAiGenerating(
                 turnId,
@@ -189,13 +196,24 @@ public class AiTurnEventHandler implements ConversationEventHandler {
             }
             TerminationReason completionReason =
                     parseReason(payload.topicCompletionReason());
-            topicState.complete(occurredAt, completionReason);
             turnTopicState = topicStateRepository
                     .findByConversationIdAndTopicTypeForUpdate(
                             event.conversationId(),
                             turnTopic)
                     .orElseThrow(() -> new ConversationEventContractException(
                             "Next conversation topic state does not exist."));
+            // 전환은 순방향 한 단계만 허용한다. 이미 완료된 토픽으로 되돌아가는 전환을
+            // 허용하면 두 토픽이 모두 COMPLETED인데 세션은 IN_PROGRESS인 복구 불가
+            // 상태가 예외 없이 저장된다.
+            if (turnTopicState.getStatus() == ConversationTopicStatus.COMPLETED) {
+                throw new ConversationEventContractException(
+                        "Topic transition targets an already completed topic.");
+            }
+            if (turnTopicState.getTopicOrder() != topicState.getTopicOrder() + 1) {
+                throw new ConversationEventContractException(
+                        "Topic transition must move to the next topic in order.");
+            }
+            topicState.complete(occurredAt, completionReason);
             if (turnTopicState.getStatus() == ConversationTopicStatus.PENDING) {
                 turnTopicState.start(occurredAt);
             }

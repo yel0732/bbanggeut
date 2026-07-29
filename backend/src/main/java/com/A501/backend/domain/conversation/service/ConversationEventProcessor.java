@@ -59,6 +59,12 @@ public class ConversationEventProcessor {
                 .findByIdForUpdate(event.conversationId())
                 .orElseThrow(() -> new ConversationEventContractException(
                         "Conversation session does not exist."));
+        // 종료된 세션에는 더 이상 이벤트를 반영하지 않는다. 특히 이탈·중단으로 원문을
+        // 정리한 세션에 지연 도착한 확정 턴 이벤트가 턴을 재생성하지 못하게 한다.
+        if (session.getStatus().isTerminal()) {
+            record(delivery.recordId(), event, ConversationEventProcessingResult.IGNORED_STALE);
+            return ConversationEventProcessingOutcome.IGNORED_STALE;
+        }
         int currentEpoch = session.getCurrentSessionEpoch();
         if (event.sessionEpoch() < currentEpoch) {
             if (isConfirmedTurnBeforeCurrentEpoch(event, session)) {

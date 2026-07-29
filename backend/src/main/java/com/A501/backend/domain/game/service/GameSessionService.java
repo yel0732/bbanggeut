@@ -3,8 +3,10 @@ package com.A501.backend.domain.game.service;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveFruitNinjaResultRequest;
 import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.CardRound;
+import com.A501.backend.domain.game.entity.Game;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
@@ -23,6 +26,7 @@ import com.A501.backend.domain.game.metric.CardResultMetrics;
 import com.A501.backend.domain.game.metric.FruitResultCount;
 import com.A501.backend.domain.game.metric.GameMetricType;
 import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
+import com.A501.backend.domain.game.repository.GameRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -33,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class GameSessionService {
 
     private final GameSessionRepository gameSessionRepository;
+    private final GameRepository gameRepository;
     private final GameSessionWriter gameSessionWriter;
 
     public boolean existsForChild(UUID gameSessionId, Long childId) {
@@ -49,14 +54,28 @@ public class GameSessionService {
                 || !startedAt.isBefore(endedAt)) {
             throw new IllegalArgumentException("게임 세션 조회 범위가 올바르지 않습니다.");
         }
-        return gameSessionRepository
+        List<GameSession> sessions = gameSessionRepository
                 .findAllByChildIdAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAsc(
                         childId,
                         startedAt,
-                        endedAt)
-                .stream()
-                .map(CompletedGameSessionSummary::from)
+                        endedAt);
+        Map<Long, String> gameNames = findGameNames(sessions);
+        return sessions.stream()
+                .map(session -> CompletedGameSessionSummary.from(
+                        session,
+                        gameNames.get(session.getGameId())))
                 .toList();
+    }
+
+    private Map<Long, String> findGameNames(List<GameSession> sessions) {
+        Set<Long> gameIds = sessions.stream()
+                .map(GameSession::getGameId)
+                .collect(Collectors.toSet());
+        if (gameIds.isEmpty()) {
+            return Map.of();
+        }
+        return gameRepository.findAllByGameIdIn(gameIds).stream()
+                .collect(Collectors.toMap(Game::getGameId, Game::getGameName));
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

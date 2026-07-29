@@ -31,10 +31,12 @@ class ConversationSessionStateTest {
 
     @Test
     void 종료_사유에_따라_terminal_상태와_생명주기를_함께_기록한다() {
-        assertTermination(TerminationReason.USER_FINISHED, ConversationStatus.COMPLETED);
-        assertTermination(TerminationReason.MAX_QUESTION_REACHED, ConversationStatus.COMPLETED);
-        assertTermination(TerminationReason.CHILD_REQUESTED_STOP, ConversationStatus.COMPLETED);
+        // 마지막 주제까지 마친 두 사유만 COMPLETED다 — 그 밖의 종료는 완주가 아니다.
         assertTermination(TerminationReason.REQUIRED_SLOTS_FILLED, ConversationStatus.COMPLETED);
+        assertTermination(TerminationReason.MAX_QUESTION_REACHED, ConversationStatus.COMPLETED);
+        assertTermination(TerminationReason.USER_FINISHED, ConversationStatus.ABORTED);
+        assertTermination(TerminationReason.USER_ABANDONED, ConversationStatus.ABORTED);
+        assertTermination(TerminationReason.CHILD_REQUESTED_STOP, ConversationStatus.ABORTED);
         assertTermination(TerminationReason.INACTIVITY_TIMEOUT, ConversationStatus.EXPIRED);
         assertTermination(TerminationReason.CONNECTION_LOST, ConversationStatus.ABORTED);
         assertTermination(TerminationReason.PAGE_CLOSED, ConversationStatus.ABORTED);
@@ -58,7 +60,8 @@ class ConversationSessionStateTest {
         ConversationSession completed = createSession("conv_state_005");
         ConversationSession failed = createSession("conv_state_006");
 
-        assertThatThrownBy(() -> completed.terminate(COMPLETED_AT, TerminationReason.USER_FINISHED))
+        assertThatThrownBy(() ->
+                completed.terminate(COMPLETED_AT, TerminationReason.REQUIRED_SLOTS_FILLED))
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> failed.terminate(COMPLETED_AT, TerminationReason.SYSTEM_ERROR))
                 .isInstanceOf(IllegalStateException.class);
@@ -75,12 +78,13 @@ class ConversationSessionStateTest {
         ConversationSession session = startedSession("conv_state_007");
         LocalDateTime firstCompletedAt = COMPLETED_AT;
 
-        session.terminate(firstCompletedAt, TerminationReason.USER_FINISHED);
+        session.terminate(firstCompletedAt, TerminationReason.REQUIRED_SLOTS_FILLED);
         session.terminate(firstCompletedAt.plusMinutes(1), TerminationReason.SYSTEM_ERROR);
 
         assertThat(session.getStatus()).isEqualTo(ConversationStatus.COMPLETED);
         assertThat(session.getCompletedAt()).isEqualTo(firstCompletedAt);
-        assertThat(session.getTerminationReason()).isEqualTo(TerminationReason.USER_FINISHED);
+        assertThat(session.getTerminationReason())
+                .isEqualTo(TerminationReason.REQUIRED_SLOTS_FILLED);
     }
 
     @Test

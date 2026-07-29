@@ -25,6 +25,7 @@ public class ConversationSessionEventHandler implements ConversationEventHandler
 
     private final ConversationEventPayloadReader payloadReader;
     private final ConversationTopicStateRepository topicStateRepository;
+    private final ConversationContentPurger conversationContentPurger;
 
     @Override
     public Set<ConversationStreamEventType> supportedTypes() {
@@ -69,8 +70,15 @@ public class ConversationSessionEventHandler implements ConversationEventHandler
                 payloadReader.toUtc(payload.completedAt(), "payload.completedAt");
         try {
             TerminationReason reason = TerminationReason.from(payload.reason());
-            findCurrentTopicForUpdate(session).complete(completedAt, reason);
-            session.terminate(completedAt, reason);
+            // 완주가 아닌 종료(아이의 그만하기·무응답 타임아웃 등)는 대화 원문을
+            // 남기지 않는다. 정리 대상 주제를 굳이 완료 처리하지 않는다.
+            if (reason.getTargetStatus() == ConversationStatus.COMPLETED) {
+                findCurrentTopicForUpdate(session).complete(completedAt, reason);
+                session.terminate(completedAt, reason);
+            } else {
+                session.terminate(completedAt, reason);
+                conversationContentPurger.purge(session.getConversationId());
+            }
         } catch (IllegalArgumentException exception) {
             throw new ConversationEventContractException(
                     "payload.reason is invalid.",
@@ -86,9 +94,8 @@ public class ConversationSessionEventHandler implements ConversationEventHandler
         }
         LocalDateTime failedAt =
                 payloadReader.toUtc(payload.failedAt(), "payload.failedAt");
-        findCurrentTopicForUpdate(session)
-                .complete(failedAt, TerminationReason.SYSTEM_ERROR);
         session.terminate(failedAt, TerminationReason.SYSTEM_ERROR);
+        conversationContentPurger.purge(session.getConversationId());
     }
 
     private ConversationTopicState findCurrentTopicForUpdate(

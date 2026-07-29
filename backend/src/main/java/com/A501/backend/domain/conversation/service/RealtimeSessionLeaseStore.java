@@ -15,4 +15,7 @@ public interface RealtimeSessionLeaseStore {
     void initialize(String conversationId, RealtimeSessionLeaseRecord record, Duration ttl);
 
     Optional<RealtimeSessionLeaseRecord> find(String conversationId);
+
+    /** 대화가 이탈·중단으로 정리될 때 남아 있는 Lease를 제거한다. */
+    void delete(String conversationId);
 }

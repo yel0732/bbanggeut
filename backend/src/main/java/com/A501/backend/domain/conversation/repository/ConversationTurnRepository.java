@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -64,4 +65,8 @@ public interface ConversationTurnRepository extends JpaRepository<ConversationTu
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select turn from ConversationTurn turn where turn.turnId = :turnId")
     Optional<ConversationTurn> findByIdForUpdate(@Param("turnId") String turnId);
+
+    @Modifying
+    @Query("delete from ConversationTurn turn where turn.conversationId = :conversationId")
+    int deleteByConversationId(@Param("conversationId") String conversationId);
 }

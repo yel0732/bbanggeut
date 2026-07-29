@@ -30,11 +30,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from app.dialogue.pipeline import (
+    CONVERSATION_CLOSING_MESSAGE,
     DialoguePipelineError,
     DialogueTurnDecision,
     DialogueTurnPipeline,
     DialogueTurnRequest,
     DialogueTurnResponse,
+    conversation_opening_question,
 )
 from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
@@ -167,7 +169,7 @@ class RealtimeDialogueManager:
         speak: SpeakCallback | None = None,
         stream_producer: ConversationStreamProducer | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-        low_confidence_threshold: float = 0.67,
+        low_confidence_threshold: float = 0.35,
         low_confidence_reask_limit: int = 1,
     ) -> None:
         self._pipeline = dialogue_pipeline
@@ -217,12 +219,15 @@ class RealtimeDialogueManager:
             return
         state.consecutive_no_responses = 0
         state.known_turn_ids.add(turn.turn_id)
-        self._emit_child_turn_finalized(turn, result)
 
         if self._should_reask_low_confidence(result):
             self._reask_low_confidence(turn)
             return
         state.consecutive_low_confidence_reasks = 0
+        # 확정 발행은 신뢰도 게이트 뒤에서만 한다 — 슬롯 분석에도 쓰지 않기로 한
+        # 저신뢰 전사가 CHILD_TURN_FINALIZED로 남으면 대화 원문(MySQL)이 오인식
+        # 텍스트로 오염된다. 발행되는 턴 = 실제로 대화에 쓰인 턴(§12 확정만 발행).
+        self._emit_child_turn_finalized(turn, result)
 
         topic = state.current_topic
         request = DialogueTurnRequest(
@@ -241,6 +246,7 @@ class RealtimeDialogueManager:
             ),
             question_count=min(topic.question_count, topic.snapshot.max_question_count),
             max_question_count=topic.snapshot.max_question_count,
+            skipped_targets=topic.skipped_targets,
         )
         try:
             response = await self._pipeline.process(request)
@@ -363,6 +369,36 @@ class RealtimeDialogueManager:
         # last_question은 갱신하지 않는다 — 재발화는 원래 질문에 대한 답으로
         # 평가되어야 한다. 질문 수도 세지 않는다(무응답 재질문 §7-E와 동일).
 
+    # --- 대화 오프닝 ----------------------------------------------------------
+
+    def open_conversation(self) -> None:
+        """연결 직후 AI가 첫 질문을 먼저 던진다 — 아이가 먼저 말할 필요가 없다.
+
+        주제 전환 오프닝과 동일하게 첫 질문으로 세며(question_count=1),
+        last_question을 세팅해 아이의 첫 답변이 이 질문에 대한 답으로 평가되게
+        한다. 이미 질문이 나갔거나 진행된 세션(스냅숏 복원)에는 다시 열지 않는다.
+        """
+
+        state = self._state
+        topic = state.current_topic
+        if (
+            state.terminated
+            or state.last_question is not None
+            or topic.question_count > 0
+        ):
+            return
+        question = conversation_opening_question(
+            topic.snapshot.type,
+            [game.game_name for game in topic.snapshot.games if game.game_name],
+        )
+        ai_ref = self._publish_assistant_text(question)
+        if ai_ref is None:
+            return
+        topic.question_count = 1
+        target = select_next_question_target(topic.slots)
+        self._emit_ai_turn_generated(ai_ref, question, question, target, topic)
+        state.remember_question(question)
+
     # --- no-response (ADR-018 연결) -----------------------------------------
 
     def handle_no_speech(self) -> None:
@@ -377,8 +413,14 @@ class RealtimeDialogueManager:
         )
         if current_target is None:
             # 물을 목표가 남지 않았는데 답도 없다 — 종료가 유일한 결정이다.
+            # 종료 이벤트를 발행하지 않으면 Spring 세션이 IN_PROGRESS로 방치되어
+            # reconciler가 lease 만료를 감지할 때까지 유령 세션이 남는다.
             state.terminated = True
             self._logger.info("conversation terminated: no target left on no-response")
+            all_filled = select_next_question_target(topic.slots) is None
+            self._emit_session_completed(
+                "REQUIRED_SLOTS_FILLED" if all_filled else "INACTIVITY_TIMEOUT"
+            )
             return
         decision = evaluate_dialogue_policy(
             DialoguePolicyRequest(
@@ -491,9 +533,26 @@ class RealtimeDialogueManager:
         slots_topic: _TopicState | None = None,
         topic_completion_reason: str | None = None,
     ) -> None:
+        slots_owner = slots_topic or turn_topic
+        # 채워진 슬롯을 DataChannel로도 알린다. 확정 슬롯은 Redis Stream을 거쳐
+        # Spring이 저장하지만, 그 소비자는 로컬에서 꺼져 있을 수 있고 저장까지는
+        # 지연이 있다 — 대화 진행 상황을 지금 화면에 보여주려면 세션이 들고 있는
+        # 값을 그대로 보내는 편이 정확하다.
+        self._publisher.publish(
+            "conversation.slots.updated",
+            {
+                "topicType": slots_owner.snapshot.type.value,
+                "slots": slots_owner.slots.model_dump(mode="json", by_alias=True),
+                "targetSlot": target.value if target is not None else None,
+                "topicQuestionCount": turn_topic.question_count,
+                "topicMaxQuestionCount": turn_topic.snapshot.max_question_count,
+            },
+            turn_id=ref.turn_id,
+            turn_seq=ref.turn_seq,
+            response_id=ref.response_id,
+        )
         if self._stream is None:
             return
-        slots_owner = slots_topic or turn_topic
         self._stream.publish_ai_turn_generated(
             turn_id=ref.turn_id,
             turn_seq=ref.turn_seq,
@@ -510,10 +569,22 @@ class RealtimeDialogueManager:
         )
 
     def _emit_session_completed(self, reason: str | None) -> None:
+        """대화를 마무리한다 — 인사 발화 → 종료 신호 → 확정 이벤트 순.
+
+        인사는 DataChannel과 TTS로만 내보내고 Stream에는 싣지 않는다. 질문이 아니고
+        슬롯도 바꾸지 않는 정형 문구라 대화 기록에 남길 내용이 아니다.
+        ``session.completed``는 프론트가 종료 UI를 띄우고 연결을 정리하는 신호이며,
+        인사 오디오가 끝나는 시점은 같은 responseId의 ``assistant.audio.completed``로
+        판단할 수 있다.
+        """
+
+        resolved = reason or "COMPLETED"
+        self._publish_assistant_text(CONVERSATION_CLOSING_MESSAGE)
+        self._publisher.publish("session.completed", {"reason": resolved})
         if self._stream is None:
             return
         self._stream.publish_session_completed(
-            reason=reason or "COMPLETED",
+            reason=resolved,
             completed_at=self._clock(),
         )
 
@@ -607,7 +678,7 @@ async def create_realtime_dialogue_session(
     speaker: SpeakerHandle | None = None,
     synthesis_service_factory: SynthesisServiceFactory | None = None,
     stream_producer_factory: StreamProducerFactory | None = None,
-    low_confidence_threshold: float = 0.67,
+    low_confidence_threshold: float = 0.35,
     low_confidence_reask_limit: int = 1,
 ) -> RealtimeDialogueSession:
     """Assemble one connection's dialogue session (T11 read-once included).
@@ -667,6 +738,10 @@ async def create_realtime_dialogue_session(
 
     if stream_producer is not None:
         stream_producer.publish_session_started(datetime.now(timezone.utc))
+
+    # 연결이 열린 직후 AI가 먼저 첫 질문을 던진다 — DataChannel은 이 조립이
+    # 실행되는 시점(on_data_channel_received)에 이미 열려 있다.
+    manager.open_conversation()
 
     audio_sink = stt_pipeline_factory(
         publisher,

@@ -76,7 +76,7 @@ class ConversationTerminationCoordinatorTest {
         ConversationSession result = coordinator.terminate(
                 "conv_conflict_002", TerminationReason.USER_FINISHED);
 
-        assertThat(result.getStatus()).isEqualTo(ConversationStatus.COMPLETED);
+        assertThat(result.getStatus()).isEqualTo(ConversationStatus.ABORTED);
         verify(conversationTerminationExecutor, times(2)).terminate(
                 "conv_conflict_002", TerminationReason.USER_FINISHED);
     }

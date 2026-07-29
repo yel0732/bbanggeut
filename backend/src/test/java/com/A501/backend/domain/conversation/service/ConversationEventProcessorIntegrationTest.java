@@ -192,6 +192,40 @@ class ConversationEventProcessorIntegrationTest {
     }
 
     @Test
+    void ignoresLateTurnEventForTerminalSessionSoPurgedContentIsNotRecreated() {
+        // 이탈·중단으로 원문을 정리한 뒤 늦게 도착한 확정 턴 이벤트가 턴을 재생성하면 안 된다.
+        ConversationSession session = sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        session.terminate(
+                LocalDateTime.parse("2026-07-28T01:00:10"),
+                TerminationReason.CONNECTION_LOST);
+        sessionRepository.saveAndFlush(session);
+        ConversationStreamDelivery late = delivery(
+                "6000-0",
+                "evt-late-after-abort-1",
+                "CHILD_TURN_FINALIZED",
+                1,
+                "turn-late-after-abort-1",
+                1,
+                null,
+                """
+                {
+                  "text": "정리 후 늦게 도착한 말",
+                  "sttConfidence": 0.9,
+                  "startedAt": "2026-07-28T01:00:00Z",
+                  "completedAt": "2026-07-28T01:00:03Z"
+                }
+                """);
+
+        assertThat(eventProcessor.process(late))
+                .isEqualTo(ConversationEventProcessingOutcome.IGNORED_STALE);
+        assertThat(turnRepository.findById("turn-late-after-abort-1")).isEmpty();
+        assertThat(eventRepository.findById("evt-late-after-abort-1"))
+                .get()
+                .extracting(event -> event.getProcessingResult())
+                .isEqualTo(ConversationEventProcessingResult.IGNORED_STALE);
+    }
+
+    @Test
     void completesAiTurnEvenWhenCompletedTextDiffersFromGeneratedText() {
         // finding ③: COMPLETED의 정체성은 식별자로 판정한다 — text가 GENERATED와
         // 달라도(향후 TTS가 다른 텍스트를 실을 수 있음) 턴은 정상 완료돼야 한다.
@@ -380,6 +414,124 @@ class ConversationEventProcessorIntegrationTest {
     }
 
     @Test
+    void rejectsBackwardTransitionToCompletedTopic() {
+        // GAME→DAILY 전환을 정상 적용한 뒤, 완료된 GAME으로 되돌아가는 전환은 거부한다.
+        eventProcessor.process(delivery(
+                "7000-0",
+                "evt-forward-switch-1",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-forward-switch-1",
+                2,
+                "resp-forward-switch-1",
+                """
+                {
+                  "text": "이제 오늘 하루 이야기를 해 볼까?",
+                  "questionText": "오늘 하루 이야기를 해 볼래?",
+                  "targetSlot": null,
+                  "topicType": "DAILY",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "과일 게임", "emotion": "즐거움" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
+                }
+                """));
+        ConversationStreamDelivery backward = delivery(
+                "7000-1",
+                "evt-backward-switch-1",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-backward-switch-1",
+                3,
+                "resp-backward-switch-1",
+                """
+                {
+                  "text": "다시 게임 이야기를 해 볼까?",
+                  "questionText": "게임 이야기를 더 해 볼래?",
+                  "targetSlot": null,
+                  "topicType": "GAME",
+                  "slotsTopicType": "DAILY",
+                  "topicSlots": { "event": "산책" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 2,
+                  "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
+                }
+                """);
+
+        assertThatThrownBy(() -> eventProcessor.process(backward))
+                .isInstanceOf(ConversationEventContractException.class)
+                .hasMessageContaining("completed topic");
+
+        ConversationSession session =
+                sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        assertThat(session.getCurrentTopic()).isEqualTo(ConversationTopic.DAILY);
+        assertThat(session.getStatus().isTerminal()).isFalse();
+        assertThat(topicStateRepository
+                        .findByConversationIdAndTopicType(CONVERSATION_ID, ConversationTopic.DAILY)
+                        .orElseThrow()
+                        .getStatus())
+                .isEqualTo(ConversationTopicStatus.IN_PROGRESS);
+        assertThat(turnRepository.findById("turn-backward-switch-1")).isEmpty();
+    }
+
+    @Test
+    void rejectsStaleTransitionEventInsteadOfPartiallyApplyingIt() {
+        // 이미 저장된 AI 턴보다 작은 turnSeq의 전환 이벤트는 턴만 저장되고 전환이
+        // 유실되는 부분 적용 대신 계약 위반으로 거부한다.
+        eventProcessor.process(delivery(
+                "7100-0",
+                "evt-game-turn-seq4",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-game-seq4",
+                4,
+                "resp-game-seq4",
+                """
+                {
+                  "text": "그때 어떤 기분이 들었어?",
+                  "questionText": "그때 어떤 기분이 들었어?",
+                  "targetSlot": "emotion",
+                  "topicType": "GAME",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "과일 게임" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": null
+                }
+                """));
+        ConversationStreamDelivery staleTransition = delivery(
+                "7100-1",
+                "evt-stale-transition-1",
+                "AI_TURN_GENERATED",
+                1,
+                "turn-stale-transition-1",
+                2,
+                "resp-stale-transition-1",
+                """
+                {
+                  "text": "이제 오늘 하루 이야기를 해 볼까?",
+                  "questionText": "오늘 하루 이야기를 해 볼래?",
+                  "targetSlot": null,
+                  "topicType": "DAILY",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "과일 게임" },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
+                }
+                """);
+
+        assertThatThrownBy(() -> eventProcessor.process(staleTransition))
+                .isInstanceOf(ConversationEventContractException.class)
+                .hasMessageContaining("Stale topic transition");
+
+        assertThat(turnRepository.findById("turn-stale-transition-1")).isEmpty();
+        assertThat(sessionRepository.findById(CONVERSATION_ID).orElseThrow().getCurrentTopic())
+                .isEqualTo(ConversationTopic.GAME);
+    }
+
+    @Test
     void rejectsFutureEpochAndLeavesNoProcessingReceipt() {
         ConversationStreamDelivery future = delivery(
                 "4000-0",
@@ -426,7 +578,7 @@ class ConversationEventProcessorIntegrationTest {
                 null,
                 """
                 {
-                  "reason": "USER_FINISHED",
+                  "reason": "REQUIRED_SLOTS_FILLED",
                   "completedAt": "2026-07-28T01:05:00Z"
                 }
                 """);
@@ -448,6 +600,98 @@ class ConversationEventProcessorIntegrationTest {
                         .orElseThrow()
                         .getStatus())
                 .isEqualTo(ConversationTopicStatus.COMPLETED);
+        // 완주한 대화의 원문은 일기·리포트 재료로 남는다.
+        assertThat(topicStateRepository
+                        .findAllByConversationIdOrderByTopicOrderAsc(CONVERSATION_ID))
+                .hasSize(2);
+    }
+
+    @Test
+    void purgesConversationContentWhenTheChildStopsTheConversation() {
+        // 아이가 "그만할래"라고 해서 FastAPI가 종료를 알린 경우 — 완주가 아니므로
+        // 대화 원문을 남기지 않는다. 세션 행만 흔적으로 보존한다.
+        eventProcessor.process(delivery(
+                "5100-0",
+                "evt-child-turn-before-stop",
+                "CHILD_TURN_FINALIZED",
+                1,
+                "turn-before-stop",
+                1,
+                null,
+                """
+                {
+                  "text": "블록 놀이 했어",
+                  "sttConfidence": 0.95,
+                  "startedAt": "2026-07-28T01:00:00Z",
+                  "completedAt": "2026-07-28T01:00:03Z"
+                }
+                """));
+        assertThat(turnRepository.count()).isEqualTo(1);
+
+        assertThat(eventProcessor.process(delivery(
+                "5100-1",
+                "evt-session-stopped-1",
+                "SESSION_COMPLETED",
+                1,
+                null,
+                null,
+                null,
+                """
+                {
+                  "reason": "CHILD_REQUESTED_STOP",
+                  "completedAt": "2026-07-28T01:05:00Z"
+                }
+                """)))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+
+        ConversationSession session =
+                sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo(ConversationStatus.ABORTED);
+        assertThat(session.getTerminationReason())
+                .isEqualTo(TerminationReason.CHILD_REQUESTED_STOP);
+        assertThat(turnRepository.count()).isZero();
+        assertThat(topicStateRepository
+                        .findAllByConversationIdOrderByTopicOrderAsc(CONVERSATION_ID))
+                .isEmpty();
+    }
+
+    @Test
+    void purgesConversationContentWhenTheSessionFails() {
+        eventProcessor.process(delivery(
+                "5200-0",
+                "evt-session-started-before-fail",
+                "SESSION_STARTED",
+                1,
+                null,
+                null,
+                null,
+                """
+                { "connectedAt": "2026-07-28T01:00:00Z" }
+                """));
+
+        assertThat(eventProcessor.process(delivery(
+                "5200-1",
+                "evt-session-failed-1",
+                "SESSION_FAILED",
+                1,
+                null,
+                null,
+                null,
+                """
+                {
+                  "code": "PROVIDER_UNAVAILABLE",
+                  "message": "AI 응답을 생성하지 못했습니다.",
+                  "failedAt": "2026-07-28T01:05:00Z"
+                }
+                """)))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+
+        ConversationSession session =
+                sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo(ConversationStatus.FAILED);
+        assertThat(topicStateRepository
+                        .findAllByConversationIdOrderByTopicOrderAsc(CONVERSATION_ID))
+                .isEmpty();
     }
 
     private void saveConversation(int epochCount) {

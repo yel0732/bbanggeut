@@ -203,8 +203,9 @@ class TestChildTurn:
         assert [event["type"] for event in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
-        created, text_final = channel.sent
+        created, text_final, _slots = channel.sent
         assert created["responseId"] == text_final["responseId"] == "resp_1"
         assert created["turnId"] == text_final["turnId"] == "turn_2"
         assert created["payload"] == {}
@@ -274,7 +275,7 @@ class TestChildTurn:
         assert request.next_topic is None
 
     @pytest.mark.asyncio
-    async def test_terminate_publishes_nothing_and_blocks_further_turns(self) -> None:
+    async def test_terminate_says_goodbye_then_signals_and_blocks_further_turns(self) -> None:
         pipeline = _FakeDialoguePipeline([_terminate_response()])
         manager, state, channel, _, _, sequencer = _build_manager(pipeline)
 
@@ -282,7 +283,17 @@ class TestChildTurn:
         await manager.handle_child_turn(_child_turn(sequencer), _stt_result("또 하고 싶어."))
 
         assert state.terminated is True
-        assert channel.sent == []
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "session.completed",
+        ]
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
+        )
+        # 자막 동기화를 위해 인사 텍스트와 오디오는 같은 responseId를 공유한다.
+        assert channel.sent[0]["responseId"] == channel.sent[1]["responseId"]
+        assert channel.sent[2]["payload"]["reason"] == "MAX_QUESTION_REACHED"
         assert len(pipeline.requests) == 1  # 종료 후 턴은 파이프라인에 닿지 않는다
 
     @pytest.mark.asyncio
@@ -303,8 +314,8 @@ class TestChildTurn:
 
 
 def _low_confidence_result(text: str = "심부란 노랐어.") -> SttResult:
-    # exp(-0.6) ≈ 0.549 < 기본 임계값 0.65 — 오인식 의심 신뢰도.
-    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-0.6)
+    # exp(-1.5) ≈ 0.223 < 기본 임계값 0.35 — 심하게 깨진 전사 수준의 신뢰도.
+    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-1.5)
 
 
 class TestLowConfidenceReask:
@@ -322,6 +333,7 @@ class TestLowConfidenceReask:
             "error",
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
         error = channel.sent[0]
         assert error["payload"]["code"] == "STT_LOW_CONFIDENCE"
@@ -358,7 +370,7 @@ class TestLowConfidenceReask:
         await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
 
         assert len(pipeline.requests) == 1
-        assert pipeline.requests[0].stt_confidence == pytest.approx(0.5488, abs=1e-3)
+        assert pipeline.requests[0].stt_confidence == pytest.approx(0.2231, abs=1e-3)
 
     @pytest.mark.asyncio
     async def test_confident_final_resets_the_reask_counter(self) -> None:
@@ -370,6 +382,30 @@ class TestLowConfidenceReask:
 
         assert len(pipeline.requests) == 1  # 확신 턴만 파이프라인에 들어갔다
         assert state.consecutive_low_confidence_reasks == 1  # 세 번째가 다시 되물음
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("confidence_logprob", [-0.65, -0.51, -0.40])
+    async def test_real_speech_confidence_band_is_not_reasked(
+        self,
+        confidence_logprob: float,
+    ) -> None:
+        """실제 마이크 음성의 정확 전사대(≈0.60~0.67)는 되묻지 않는다.
+
+        회귀: 합성 음성 기준(0.67)으로 보정했을 때 정상 대화가 매 턴 되묻기에
+        걸렸다 — 재발화해도 같은 문장이라 되묻기가 정확도를 높이지 못했다.
+        """
+
+        manager, _, _, pipeline, _, sequencer = _build_manager()
+        result = SttResult(
+            text="오늘 친구랑 모래성을 쌓았어",
+            audio_seconds=2.0,
+            no_speech_prob=0.0,
+            avg_logprob=confidence_logprob,
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), result)
+
+        assert len(pipeline.requests) == 1
 
     @pytest.mark.asyncio
     async def test_missing_confidence_skips_the_gate(self) -> None:
@@ -453,6 +489,7 @@ class TestNoSpeechLadder:
         assert [event["type"] for event in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
         assert "말해 줄래" in channel.sent[1]["payload"]["text"]
         assert state.consecutive_no_responses == 1
@@ -463,17 +500,25 @@ class TestNoSpeechLadder:
         manager.handle_no_speech()
         manager.handle_no_speech()
 
-        assert channel.sent[3]["payload"]["text"] == "괜찮아, 천천히 다시 말해 줄래?"
+        # 회차마다 created·text.final·slots.updated 3개가 나가므로 2회차 텍스트는 5번째.
+        assert channel.sent[4]["payload"]["text"] == "괜찮아, 천천히 다시 말해 줄래?"
 
-    def test_fifth_no_speech_terminates_without_publishing(self) -> None:
+    def test_fifth_no_speech_terminates_with_a_goodbye_and_signal(self) -> None:
         manager, state, channel, _, _, _ = _build_manager()
 
         for _ in range(5):
             manager.handle_no_speech()
 
         assert state.terminated is True
-        # 1~4회차는 각각 2개 이벤트, 5회차(종료)는 발행 없음
-        assert len(channel.sent) == 8
+        # 1~4회차는 각각 3개(created·text.final·slots.updated), 5회차는 인사 2개 +
+        # 종료 신호 1개. 인사는 질문이 아니라 슬롯 이벤트를 동반하지 않는다.
+        assert len(channel.sent) == 15
+        assert [event["type"] for event in channel.sent[-3:]] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "session.completed",
+        ]
+        assert channel.sent[-1]["payload"]["reason"] == "INACTIVITY_TIMEOUT"
 
     def test_recovery_prompt_does_not_consume_the_question_budget(self) -> None:
         """재질문은 질문 수에 세지 않는다(plan §7-E)."""
@@ -495,6 +540,20 @@ class TestNoSpeechLadder:
 
         assert state.consecutive_no_responses == 0
 
+    @pytest.mark.asyncio
+    async def test_skipped_targets_reach_the_answer_pipeline(self) -> None:
+        """건너뛴 목표가 답변 턴의 파이프라인 요청까지 전달된다."""
+
+        pipeline = _FakeDialoguePipeline()
+        manager, state, _, _, _, sequencer = _build_manager(pipeline)
+        state.current_topic.skipped_targets = frozenset({QuestionTarget.EMOTION})
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert pipeline.requests[0].skipped_targets == frozenset(
+            {QuestionTarget.EMOTION}
+        )
+
     def test_no_speech_after_termination_is_ignored(self) -> None:
         manager, state, channel, _, _, _ = _build_manager()
         state.terminated = True
@@ -502,6 +561,143 @@ class TestNoSpeechLadder:
         manager.handle_no_speech()
 
         assert channel.sent == []
+
+
+class TestConversationOpening:
+    """연결 직후 AI가 먼저 첫 질문을 던진다 — 아이가 먼저 말할 필요가 없다."""
+
+    def test_opening_publishes_the_first_question_and_counts_it(self) -> None:
+        manager, state, channel, _, _, _ = _build_manager()
+
+        manager.open_conversation()
+
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "conversation.slots.updated",
+        ]
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+        )
+        # 오프닝 시점의 슬롯 상태가 함께 나가 화면이 처음부터 진행도를 보여준다.
+        slots_event = channel.sent[2]["payload"]
+        assert slots_event["topicType"] == "GAME"
+        assert slots_event["topicQuestionCount"] == 1
+        assert slots_event["slots"]["event"] == "과일 게임"
+        assert state.current_topic.question_count == 1
+        assert state.last_question == channel.sent[1]["payload"]["text"]
+
+    def test_opening_calls_the_game_by_name_when_there_is_one(self) -> None:
+        raw = _TWO_TOPIC_SNAPSHOT.model_dump(mode="json", by_alias=True)
+        raw["topics"][0]["games"][0]["gameName"] = "과일 자르기"
+        manager, _, channel, _, _, _ = _build_manager(
+            snapshot=ContextSnapshot.model_validate(raw)
+        )
+
+        manager.open_conversation()
+
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 과일 자르기 했구나! 어떤 점이 제일 재미있었어?"
+        )
+
+    def test_opening_stays_generic_when_several_games_were_played(self) -> None:
+        raw = _TWO_TOPIC_SNAPSHOT.model_dump(mode="json", by_alias=True)
+        raw["topics"][0]["games"][0]["gameName"] = "과일 자르기"
+        second = dict(raw["topics"][0]["games"][0])
+        second["gameSessionId"] = "b3b10000-0000-0000-0000-000000000002"
+        second["gameId"] = 2
+        second["gameName"] = "그림 맞추기"
+        raw["topics"][0]["games"].append(second)
+        manager, _, channel, _, _, _ = _build_manager(
+            snapshot=ContextSnapshot.model_validate(raw)
+        )
+
+        manager.open_conversation()
+
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+        )
+
+    def test_opening_uses_the_daily_question_without_games(self) -> None:
+        manager, _, channel, _, _, _ = _build_manager(
+            snapshot=default_context_snapshot("conv_daily")
+        )
+
+        manager.open_conversation()
+
+        assert channel.sent[1]["payload"]["text"] == "오늘 있었던 일 하나를 말해 줄래?"
+
+    def test_opening_is_idempotent(self) -> None:
+        manager, state, channel, _, _, _ = _build_manager()
+
+        manager.open_conversation()
+        manager.open_conversation()
+
+        assert len(channel.sent) == 3
+        assert state.current_topic.question_count == 1
+
+    def test_opening_skips_a_session_with_restored_progress(self) -> None:
+        """스냅숏이 진행 중이던 카운트를 복원했으면 다시 열지 않는다."""
+
+        manager, state, channel, _, _, _ = _build_manager()
+        state.current_topic.question_count = 3
+
+        manager.open_conversation()
+
+        assert channel.sent == []
+
+    def test_opening_emits_ai_turn_generated_with_count_one(self) -> None:
+        manager, _, _, stream, _ = _build_manager_with_stream()
+
+        manager.open_conversation()
+
+        ai = next(c for c in stream.calls if c[0] == "AI_TURN_GENERATED")
+        assert ai[9] == 1  # topic_question_count
+        assert ai[5] == "GAME"
+
+    @pytest.mark.asyncio
+    async def test_assembly_opens_the_conversation(self) -> None:
+        channel = FakeDataChannel()
+        publisher = ConversationEventPublisher(
+            channel,
+            conversation_id="conv_open",
+            realtime_session_id="rt_1",
+            session_epoch=1,
+            logger=_LOGGER,
+        )
+
+        def stt_pipeline_factory(
+            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+        ):
+            class _SinkStub:
+                async def aclose(self) -> None: ...
+
+            return _SinkStub()
+
+        async def read_snapshot(conversation_id: str):
+            return _TWO_TOPIC_SNAPSHOT
+
+        session = await create_realtime_dialogue_session(
+            publisher=publisher,
+            conversation_id="conv_open",
+            read_snapshot=read_snapshot,
+            default_snapshot=default_context_snapshot,
+            dialogue_pipeline=_FakeDialoguePipeline(),
+            termination_policy=DialogueTerminationPolicy(
+                required_targets=frozenset(QuestionTarget)
+            ),
+            is_epoch_current=lambda: True,
+            stt_pipeline_factory=stt_pipeline_factory,
+            logger=_LOGGER,
+        )
+
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "conversation.slots.updated",
+        ]
+        assert session.state.last_question is not None
+        await session.aclose()
 
 
 class TestSessionAssembly:
@@ -679,6 +875,7 @@ class TestSpeakWiring:
         assert [e["type"] for e in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
 
 
@@ -818,6 +1015,74 @@ class TestStreamPublishing:
         assert any(c[0] == "SESSION_COMPLETED" for c in stream.calls)
 
     @pytest.mark.asyncio
+    async def test_low_confidence_turn_is_not_streamed(self) -> None:
+        """되묻기로 폐기된 저신뢰 전사는 확정 이벤트로 발행되지 않는다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert not any(c[0] == "CHILD_TURN_FINALIZED" for c in stream.calls)
+        # 되묻기 안내 AI 턴은 정상 발행된다.
+        assert any(c[0] == "AI_TURN_GENERATED" for c in stream.calls)
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_turn_past_the_limit_is_streamed(self) -> None:
+        """되묻기 상한 도달로 대화에 실제 사용된 턴은 발행된다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+        await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
+
+        assert sum(1 for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED") == 1
+
+    @pytest.mark.asyncio
+    async def test_goodbye_is_not_streamed_as_a_conversation_turn(self) -> None:
+        """마무리 인사는 자막·음성용이며 대화 기록으로 확정 발행하지 않는다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream(
+            _FakeDialoguePipeline([_terminate_response()])
+        )
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        types = [call[0] for call in stream.calls]
+        assert types == ["CHILD_TURN_FINALIZED", "SESSION_COMPLETED"]
+
+    def test_no_speech_with_all_slots_filled_completes_the_session(self) -> None:
+        """물을 목표가 없는 무응답도 종료 이벤트를 발행해 세션을 방치하지 않는다."""
+
+        manager, state, _, stream, _ = _build_manager_with_stream()
+        state.current_topic.slots = DiarySlots(
+            event="과일 게임",
+            emotion="즐거움",
+            emotion_reason="이겨서",
+            memorable_moment="마지막 판",
+        )
+
+        manager.handle_no_speech()
+
+        assert ("SESSION_COMPLETED", "REQUIRED_SLOTS_FILLED") in stream.calls
+        assert state.terminated is True
+
+    def test_no_speech_with_all_remaining_targets_skipped_times_out(self) -> None:
+        manager, state, _, stream, _ = _build_manager_with_stream()
+        state.current_topic.slots = DiarySlots(event="과일 게임")
+        state.current_topic.skipped_targets = frozenset(
+            {
+                QuestionTarget.EMOTION,
+                QuestionTarget.EMOTION_REASON,
+                QuestionTarget.MEMORABLE_MOMENT,
+            }
+        )
+
+        manager.handle_no_speech()
+
+        assert ("SESSION_COMPLETED", "INACTIVITY_TIMEOUT") in stream.calls
+        assert state.terminated is True
+
+    @pytest.mark.asyncio
     async def test_emit_ai_turn_completed_forwards_to_stream(self) -> None:
         manager, _, _, stream, _ = _build_manager_with_stream()
         now = datetime(2026, 7, 28, 10, 0, tzinfo=timezone.utc)
@@ -836,4 +1101,8 @@ class TestStreamPublishing:
 
         await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
 
-        assert channel.sent[-1]["type"] == "assistant.text.final"
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "conversation.slots.updated",
+        ]

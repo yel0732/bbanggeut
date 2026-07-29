@@ -36,6 +36,7 @@ class ContextSnapshotContractTest {
                                 List.of(new DialogueGameContextPayload(
                                         UUID.fromString("11111111-1111-1111-1111-111111111111"),
                                         1L,
+                                        "과일 자르기",
                                         820,
                                         180,
                                         LocalDateTime.of(2026, 7, 27, 10, 0))),

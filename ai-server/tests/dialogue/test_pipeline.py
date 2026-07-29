@@ -18,7 +18,10 @@ from app.dialogue.question.fallback import (
     QuestionGenerationSource,
     QuestionGenerationStatus,
 )
-from app.dialogue.policy.termination import DialogueTerminationPolicy
+from app.dialogue.policy.termination import (
+    DialogueTerminationPolicy,
+    DialogueTerminationReason,
+)
 
 
 class FakeClient:
@@ -203,6 +206,60 @@ async def test_first_turn_projects_misclassified_future_slot_to_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_first_turn_preserves_previously_filled_slots() -> None:
+    """직전 질문이 없는 턴이라도 요청에 이미 있던 슬롯 값은 지우지 않는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":"블록 놀이","people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            "그때 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(
+                emotion_reason="친구가 같이 놀아줘서",
+                memorable_moment="블록으로 성 만든 순간",
+            ),
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.updated_slots.event == "블록 놀이"
+    assert result.updated_slots.emotion_reason == "친구가 같이 놀아줘서"
+    assert result.updated_slots.memorable_moment == "블록으로 성 만든 순간"
+
+
+@pytest.mark.asyncio
+async def test_first_turn_still_discards_misclassified_extraction() -> None:
+    """첫 턴 추출이 미래 슬롯으로 오분류한 값은 기존대로 버린다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":"오늘 영화를 봤어"}'
+            ),
+            "그때 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = _request().model_copy(update={"child_answer": "오늘 영화를 봤어"})
+
+    result = await _pipeline(client).process(request)
+
+    assert result.updated_slots.event == "오늘 영화를 봤어"
+    assert result.updated_slots.memorable_moment is None
+
+
+@pytest.mark.asyncio
 async def test_standard_question_does_not_call_response_model() -> None:
     analysis_client = FakeClient(
         [
@@ -267,6 +324,141 @@ async def test_redirects_off_topic_answer_with_brief_acknowledgement() -> None:
     assert relevance_payload["currentQuestion"] == "그때 어떤 기분이었어?"
     assert relevance_payload["childAnswer"] == "그런데 지금은 배가 고파."
     assert client.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stop_request_terminates_without_llm_calls() -> None:
+    """아이의 종료 의사는 슬롯 분석 없이 즉시 CHILD_REQUESTED_STOP으로 종료한다."""
+
+    client = FakeClient([])
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="과일 게임", emotion="신남"),
+            "current_question": "왜 그런 마음이 들었는지 말해 줄래?",
+            "child_answer": "이제 그만할래",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.TERMINATE_SESSION
+    assert result.termination_reason is DialogueTerminationReason.CHILD_REQUESTED_STOP
+    assert result.updated_slots == request.current_slots
+    assert client.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_stop_request_never_switches_to_the_next_topic() -> None:
+    """다음 주제가 남아 있어도 종료 의사를 전환으로 바꾸지 않는다."""
+
+    client = FakeClient([])
+    request = _request().model_copy(
+        update={
+            "current_topic": DialogueTopic.GAME,
+            "next_topic": DialogueTopic.DAILY,
+            "current_question": "게임에서 뭐가 재미있었어?",
+            "child_answer": "그만하고 싶어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.TERMINATE_SESSION
+    assert result.termination_reason is DialogueTerminationReason.CHILD_REQUESTED_STOP
+    assert result.assistant_message is None
+    assert result.assistant_question is None
+
+
+@pytest.mark.asyncio
+async def test_story_mentioning_stop_words_continues_the_dialogue() -> None:
+    """이야기 속에 '그만'이 포함된 발화는 종료로 오탐하지 않는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":"동생과 놀이","people":["동생"],"place":null,'
+                '"emotion":"속상함","emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            '{"answered":true,"childQuestion":false,"bridgeResponse":null}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="동생과 놀이"),
+            "current_question": "그때 어떤 기분이었어?",
+            "child_answer": "동생이 그만하라고 해서 속상했어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.updated_slots.emotion == "속상함"
+
+
+@pytest.mark.asyncio
+async def test_skipped_target_is_excluded_from_backfill_and_next_question() -> None:
+    """건너뛴 목표는 답변 턴에서도 제외된다 — 오배정·재질문 방지."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            '{"answered":true,"childQuestion":false,"bridgeResponse":null}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="과일 게임"),
+            "current_question": "왜 그런 마음이 들었는지 말해 줄래?",
+            "child_answer": "이겨서 기분이 좋았거든",
+            "skipped_targets": frozenset({QuestionTarget.EMOTION}),
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    # backfill은 skip을 반영한 실제 질문 목표(emotionReason)에 들어가야 하며,
+    # skip된 emotion에 오배정되면 안 된다.
+    assert result.updated_slots.emotion_reason == "이겨서 기분이 좋았거든"
+    assert result.updated_slots.emotion is None
+    # 다음 질문도 skip된 emotion을 다시 묻지 않고 남은 목표로 진행한다.
+    assert result.assistant_question == "가장 기억나는 순간을 말해 줄래?"
+
+
+@pytest.mark.asyncio
+async def test_relevance_failure_keeps_extracted_slots_and_moves_on() -> None:
+    """관련성 판정이 실패(None)해도 정상 추출된 슬롯은 폐기되지 않는다."""
+
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":"즐거웠어","emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            RuntimeError("relevance classification unavailable"),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="친구와 공놀이"),
+            "current_question": "그때 어떤 기분이었어?",
+            "child_answer": "정말 즐거웠어!",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.updated_slots.emotion == "즐거웠어"
+    # 추출로 목표 슬롯이 채워졌으므로 같은 질문을 되묻지 않고 다음 목표로 진행한다.
+    assert result.assistant_question == "왜 그런 마음이 들었는지 말해 줄래?"
 
 
 @pytest.mark.asyncio

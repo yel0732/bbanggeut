@@ -43,13 +43,16 @@ class AppSettings:
     stt_max_utterance_seconds: float = 30.0  # whisper 처리 창과 동일, 초과 시 턴 강제 종료
     stt_min_utterance_seconds: float = 0.5  # 미만이면 호출하지 않음(0.4초 → "you" 환각)
     stt_no_speech_prob_threshold: float = 0.6  # 실제 발화 0.00 vs 환각 0.82~0.94
-    # 신뢰도 되묻기(FUNCTIONAL_SPEC §22 STT_LOW_CONFIDENCE). 합성 음성 20건 실측
-    # (6문장 × 목소리·음량·잡음 3조건 + 게이트 E2E 2건): 정확 17건 0.642~0.786,
-    # 오인식 3건 0.627~0.668로
-    # **분포가 겹친다** — 완전 분리는 불가능하다. 0.67은 오인식 3/3을 잡고 정확
-    # 전사 2/17을 되묻는 지점이다. 헛된 되묻기는 상냥한 한 번의 재요청에 그치지만
-    # (reask_limit), 오인식은 부모가 읽는 일기에 남으므로 되묻는 쪽으로 치우친다.
-    stt_low_confidence_threshold: float = 0.67  # 미만이면 확인 질문(0이면 비활성)
+    # 신뢰도 되묻기(FUNCTIONAL_SPEC §22 STT_LOW_CONFIDENCE).
+    # 1차 보정은 합성 음성 20건 기준이었다(정확 17건 0.642~0.786, 오인식 3건
+    # 0.627~0.668 → 0.67). 그러나 실제 마이크 음성은 분포가 통째로 낮아,
+    # 하네스 실측에서 **정확히 인식된 발화가 0.52~0.67**로 나와 정상 대화가
+    # 매 턴 되묻기에 걸렸다(재발화해도 같은 문장이 0.67로 통과 — 되묻기가 정확도를
+    # 높이지 못했다). 실제 음성은 이렇게 낮은 신뢰도에서도 전사가 정확하므로
+    # 관측 하한(0.52)보다 더 아래로 내려 헛된 되묻기를 없앤다.
+    # 환각(무음·톤)은 이 게이트가 아니라 HallucinationGuard가 no_speech_prob
+    # 0.82~0.94로 이미 차단하므로, 여기서는 심하게 깨진 전사만 남기면 된다.
+    stt_low_confidence_threshold: float = 0.35  # 미만이면 확인 질문(0이면 비활성)
     stt_low_confidence_reask_limit: int = 1  # 연속 되묻기 상한(도달 시 낮아도 진행)
     # Turn Detection(W02). 기본값 근거는 jira/plan/DIARY-3-W02.md §5.
     stt_vad_aggressiveness: int = 2  # 3은 저음량 아동 발화를 놓칠 위험(§11-D)
@@ -59,7 +62,11 @@ class AppSettings:
     # 정한다(하네스 테스트에서 250 부근 권장, 참고: 진폭 400 균일잡음 RMS≈231).
     stt_vad_min_frame_rms: int = 0
     stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
-    stt_trailing_silence_seconds: float = 3.0  # 종료 판정 침묵(권고 2.5~3의 상단)
+    # 종료 판정 침묵. 발화가 끝나고 AI가 말하기까지의 체감 지연에서 이 값이 가장 큰
+    # 비중을 차지한다(나머지: STT 호출 + 슬롯·관련성 LLM 병렬 + TTS TTFB 실측 1.89s).
+    # 3.0s는 아이가 문장 중간에 오래 쉬는 경우까지 감안한 상단값이었지만, 매 턴
+    # 3초의 정적이 대화를 끊기게 만든다. 실환경에서 되묻기·끊김이 늘면 올린다.
+    stt_trailing_silence_seconds: float = 1.8
     stt_preroll_ms: int = 300  # 발화 확정 전 보존할 선행 오디오
     stt_no_speech_timeout_seconds: float = 10.0  # 무응답 신호(정책 연결은 W03)
     # Streaming TTS(W04). 기본값 근거는 jira/plan/DIARY-3-W04.md §4.
@@ -346,7 +353,7 @@ class AppSettings:
                 "STT_NO_SPEECH_PROB_THRESHOLD",
             ),
             stt_low_confidence_threshold=_parse_float(
-                values.get("STT_LOW_CONFIDENCE_THRESHOLD", "0.67"),
+                values.get("STT_LOW_CONFIDENCE_THRESHOLD", "0.35"),
                 "STT_LOW_CONFIDENCE_THRESHOLD",
             ),
             stt_low_confidence_reask_limit=_parse_int(
@@ -366,7 +373,7 @@ class AppSettings:
                 "STT_MIN_SPEECH_MS",
             ),
             stt_trailing_silence_seconds=_parse_float(
-                values.get("STT_TRAILING_SILENCE_SECONDS", "3.0"),
+                values.get("STT_TRAILING_SILENCE_SECONDS", "1.8"),
                 "STT_TRAILING_SILENCE_SECONDS",
             ),
             stt_preroll_ms=_parse_int(

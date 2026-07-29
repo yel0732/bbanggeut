@@ -34,6 +34,15 @@ public class RedisRealtimeContextStore implements RealtimeContextStore {
         }
     }
 
+    @Override
+    public void delete(String conversationId) {
+        try {
+            redisTemplate.delete(KEY_PREFIX + conversationId);
+        } catch (DataAccessException exception) {
+            throw new ConversationException(ConversationErrorCode.REDIS_UNAVAILABLE);
+        }
+    }
+
     private String serialize(ContextSnapshot snapshot) {
         try {
             return objectMapper.writeValueAsString(snapshot);

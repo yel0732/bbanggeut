@@ -154,6 +154,34 @@ sudo /srv/a501/deploy/certbot/reload-nginx.sh
 
 비밀값, 개인키, `.pem`, 실제 `.env`는 Git과 Jenkins 로그에 출력하지 않는다.
 
+### S3 프로필 이미지 저장소
+
+운영 환경은 `/srv/a501-secrets/.env`에 다음 값을 둔다. 개인 AWS 계정과 다른
+계정에서 실행되는 EC2라 IAM Role을 연결할 수 없을 때만 전용 IAM 사용자의 Access
+Key를 사용한다.
+
+```text
+STORAGE_PROVIDER=s3
+AWS_REGION=ap-northeast-2
+S3_UPLOAD_BUCKET=private-upload-bucket-name
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+버킷은 퍼블릭 액세스 차단을 모두 활성화하고, IAM 사용자에는 해당 버킷의
+`PutObject`, `GetObject`, `DeleteObject`, `ListBucket`만 허용한다. 실제 키를
+`docker compose config`, `env`, `printenv` 등으로 화면이나 Jenkins 로그에 출력하지
+않는다.
+
+배포 후 Backend 로그에서 자격증명 값이 아닌 접근 성공 문구만 확인한다.
+
+```bash
+docker logs a501-backend-1 2>&1 | grep 'S3 업로드 버킷 접근 확인'
+```
+
+키가 노출됐거나 더 이상 필요하지 않으면 IAM에서 즉시 비활성화·삭제하고 새 키로
+교체한다.
+
 ## 11. 디스크와 이미지 정리
 
 먼저 삭제 없이 사용량만 확인한다.

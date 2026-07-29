@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
+import { isCompletedTerminationReason } from '@/api/conversations'
 import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
 import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
@@ -26,54 +27,13 @@ import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
-
-type ConversationStage = 'guide' | 'conversation' | 'complete'
-type VoiceStatus = 'ready' | 'listening' | 'thinking' | 'speaking' | 'error'
-
-type SpeechRecognitionEventLike = Event & {
-  resultIndex: number
-  results: {
-    [index: number]: {
-      isFinal: boolean
-      0: { transcript: string }
-    }
-    length: number
-  }
-}
-
-type SpeechRecognitionErrorEventLike = Event & {
-  error: string
-}
-
-type SpeechRecognitionLike = {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
-  onend: (() => void) | null
-  start: () => void
-  stop: () => void
-  abort: () => void
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor
-    webkitSpeechRecognition?: SpeechRecognitionConstructor
-  }
-}
+import {
+  type VoiceStatus,
+  useRealtimeConversation,
+} from '@/hooks/useRealtimeConversation'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
-const QUESTIONS = [
-  '안녕! 오늘은 어떤 하루를 보냈어?',
-  '그중에서 가장 기억에 남는 일은 뭐였어?',
-  '그때 누구와 함께 있었어?',
-  '그 일이 있었을 때 어떤 기분이 들었어?',
-  '내일은 어떤 하루를 보내고 싶어?',
-]
+
 const DIARY_LINES = [
   '오늘은 과일 자르기에서 과일을 힘차게 잘랐다.',
   '빵긋이에게 오늘 있었던 재미있는 일도 들려주었다.',
@@ -92,66 +52,62 @@ const DINO_FRAME_POSITIONS = [
 const DINO_FRAME_OFFSETS = [0, 12.7, 49.3, 0, 12.7, 37.5] as const
 
 const STATUS_COPY: Record<VoiceStatus, string> = {
-  ready: '마이크 버튼을 누르고 이야기해 줘',
-  listening: '잘 듣고 있어요',
-  thinking: '이야기를 생각하고 있어요',
+  listening: '이야기해 줘, 듣고 있어',
   speaking: '빵긋이가 이야기하고 있어요',
-  error: '목소리를 듣지 못했어요. 다시 말해 줄래?',
+  thinking: '빵긋이가 생각하고 있어요',
+  waiting: '조금만 기다려 줘',
 }
+
+const TOPIC_LABEL = {
+  DAILY: '오늘 이야기',
+  GAME: '게임 이야기',
+} as const
 
 export function ConversationPage() {
   const navigate = useNavigate()
-  const location = useLocation()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const answerRef = useRef('')
-  const advanceTimerRef = useRef<number | null>(null)
-  const [stage, setStage] = useState<ConversationStage>(() =>
-    (location.state as { skipGuide?: boolean } | null)?.skipGuide
-      ? 'conversation'
-      : 'guide',
-  )
-  const [status, setStatus] = useState<VoiceStatus>('ready')
+  const remoteAudioRef = useRef<HTMLAudioElement>(null)
+  const { finish, start, state, toggleMic } = useRealtimeConversation()
+
+  const isConversing = state.phase === 'active' || state.phase === 'closing'
+  const isEnded = state.phase === 'ended'
+  const isPreparing =
+    state.phase === 'preparing' || state.phase === 'connecting'
+  const showGuide = !isConversing && !isEnded
+  // 완주한 대화만 원문이 남아 일기를 만들 수 있다. 중간에 끝난 대화는 서버가
+  // 내용을 정리하므로 일기 팝업을 띄우지 않는다.
+  const canMakeDiary = isCompletedTerminationReason(state.endedReason)
+
   const conversationBgmVolume =
-    status === 'listening' || status === 'speaking' ? 0.055 : 0.22
+    state.voice === 'listening' || state.voice === 'speaking' ? 0.055 : 0.22
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer({
     volume: conversationBgmVolume,
   })
-  const [questionIndex, setQuestionIndex] = useState(0)
-  const [transcript, setTranscript] = useState('')
+
   const [micLevel, setMicLevel] = useState(0)
   const [dinoFrameStep, setDinoFrameStep] = useState(0)
-  const [guideMessage, setGuideMessage] = useState('')
   const [isDiaryOpen, setIsDiaryOpen] = useState(false)
   const [isDiaryAttached, setIsDiaryAttached] = useState(false)
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false)
-  const [isSpeechSupported] = useState(
-    () =>
-      Boolean(window.SpeechRecognition || window.webkitSpeechRecognition) &&
-      Boolean(navigator.mediaDevices?.getUserMedia),
-  )
 
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.abort()
-    recognitionRef.current = null
-  }, [])
-
-  const stopVoiceResources = useCallback(() => {
-    stopListening()
-    window.speechSynthesis?.cancel()
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    streamRef.current = null
-    if (advanceTimerRef.current !== null) {
-      window.clearTimeout(advanceTimerRef.current)
-      advanceTimerRef.current = null
-    }
-  }, [stopListening])
-
-  useEffect(() => stopVoiceResources, [stopVoiceResources])
+  const isListening = state.voice === 'listening' && state.micEnabled
 
   useEffect(() => {
-    if (status !== 'speaking' && status !== 'listening') {
+    const audio = remoteAudioRef.current
+    if (!audio || !state.remoteStream) return
+
+    audio.srcObject = state.remoteStream
+    // srcObject를 코드로 넣으면 autoPlay 속성만으로는 재생이 시작되지 않는
+    // 브라우저가 있다. 대화 시작 버튼이 사용자 제스처라 대개 통과한다.
+    void audio.play().catch(() => undefined)
+
+    return () => {
+      audio.srcObject = null
+    }
+  }, [state.remoteStream])
+
+  useEffect(() => {
+    if (state.voice !== 'speaking' && state.voice !== 'listening') {
       setDinoFrameStep(0)
       return
     }
@@ -162,10 +118,10 @@ export function ConversationPage() {
     }, 380)
 
     return () => window.clearInterval(frameTimer)
-  }, [status])
+  }, [state.voice])
 
   useEffect(() => {
-    if (status !== 'listening' || !streamRef.current) {
+    if (!isListening || !state.localStream) {
       setMicLevel(0)
       return
     }
@@ -173,7 +129,7 @@ export function ConversationPage() {
     const audioContext = new AudioContext()
     const analyser = audioContext.createAnalyser()
     analyser.fftSize = 64
-    const source = audioContext.createMediaStreamSource(streamRef.current)
+    const source = audioContext.createMediaStreamSource(state.localStream)
     source.connect(analyser)
     const samples = new Uint8Array(analyser.frequencyBinCount)
     let animationFrame = 0
@@ -192,155 +148,7 @@ export function ConversationPage() {
       source.disconnect()
       void audioContext.close()
     }
-  }, [status])
-
-  const speak = useCallback((text: string, onEnd?: () => void) => {
-    if (!('speechSynthesis' in window)) {
-      setStatus('ready')
-      onEnd?.()
-      return
-    }
-
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'ko-KR'
-    utterance.rate = 0.9
-    utterance.pitch = 1.12
-    utterance.volume = 1
-    utterance.onstart = () => setStatus('speaking')
-    utterance.onend = () => {
-      setStatus('ready')
-      onEnd?.()
-    }
-    utterance.onerror = () => {
-      setStatus('ready')
-      onEnd?.()
-    }
-    window.speechSynthesis.speak(utterance)
-  }, [])
-
-  const completeConversation = useCallback(() => {
-    stopListening()
-    setStage('complete')
-    setStatus('speaking')
-    speak('오늘 이야기도 정말 즐거웠어! 다음에 또 이야기하자.')
-  }, [speak, stopListening])
-
-  const acceptAnswer = useCallback(
-    (answer: string) => {
-      if (!answer.trim()) {
-        setStatus('error')
-        return
-      }
-
-      setTranscript(answer.trim())
-      setStatus('thinking')
-      advanceTimerRef.current = window.setTimeout(() => {
-        if (questionIndex >= QUESTIONS.length - 1) {
-          completeConversation()
-          return
-        }
-
-        const nextQuestionIndex = questionIndex + 1
-        setQuestionIndex(nextQuestionIndex)
-        setTranscript('')
-        speak(QUESTIONS[nextQuestionIndex])
-      }, 900)
-    },
-    [completeConversation, questionIndex, speak],
-  )
-
-  const startListening = useCallback(() => {
-    if (stage !== 'conversation' || status === 'thinking') return
-
-    if (status === 'speaking') {
-      window.speechSynthesis.cancel()
-    }
-
-    const Recognition =
-      window.SpeechRecognition ?? window.webkitSpeechRecognition
-    if (!Recognition) {
-      setStatus('error')
-      return
-    }
-
-    stopListening()
-    answerRef.current = ''
-    setTranscript('')
-    const recognition = new Recognition()
-    recognition.lang = 'ko-KR'
-    recognition.continuous = false
-    recognition.interimResults = true
-    recognition.onresult = (event) => {
-      let partial = ''
-      let final = ''
-
-      for (
-        let index = event.resultIndex;
-        index < event.results.length;
-        index++
-      ) {
-        const result = event.results[index]
-        if (result.isFinal) final += result[0].transcript
-        else partial += result[0].transcript
-      }
-
-      if (final) answerRef.current = final
-      setTranscript(final || partial)
-    }
-    recognition.onerror = (event) => {
-      recognitionRef.current = null
-      if (event.error !== 'aborted') setStatus('error')
-    }
-    recognition.onend = () => {
-      recognitionRef.current = null
-      const answer = answerRef.current
-      if (answer) acceptAnswer(answer)
-      else {
-        setStatus((current) => (current === 'listening' ? 'ready' : current))
-      }
-    }
-    recognitionRef.current = recognition
-
-    try {
-      recognition.start()
-      setStatus('listening')
-    } catch {
-      recognitionRef.current = null
-      setStatus('error')
-    }
-  }, [acceptAnswer, stage, status, stopListening])
-
-  const finishListening = () => {
-    recognitionRef.current?.stop()
-  }
-
-  const startConversation = async () => {
-    setGuideMessage('')
-    if (!isSpeechSupported) {
-      setGuideMessage('이 브라우저에서는 음성 대화를 사용할 수 없어요.')
-      return
-    }
-
-    try {
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      })
-      setStage('conversation')
-      setStatus('speaking')
-      speak(QUESTIONS[0])
-    } catch (error) {
-      streamRef.current?.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-      setGuideMessage(
-        '대화를 시작하려면 브라우저에서 마이크 사용을 허용해 주세요.',
-      )
-    }
-  }
+  }, [isListening, state.localStream])
 
   const openDiary = useCallback(() => {
     setIsDiaryOpen(true)
@@ -348,27 +156,34 @@ export function ConversationPage() {
 
   const attachDiary = useCallback(() => {
     if (isDiaryAttached) {
-      stopVoiceResources()
       navigate('/diaries')
       return
     }
     setIsDiaryAttached(true)
-  }, [isDiaryAttached, navigate, stopVoiceResources])
+  }, [isDiaryAttached, navigate])
 
   const leaveConversation = () => {
-    if (stage === 'conversation') {
+    if (isConversing) {
       setIsLeaveConfirmOpen(true)
       return
     }
-    stopVoiceResources()
     navigate('/child')
   }
 
   const confirmLeaveConversation = () => {
     setIsLeaveConfirmOpen(false)
-    stopVoiceResources()
+    finish('USER_FINISHED')
     navigate('/child')
   }
+
+  const guideMessage =
+    state.failure?.message ??
+    (isPreparing
+      ? '빵긋이를 부르고 있어요…'
+      : '빵긋이가 말을 마치면 이야기해 줘.')
+
+  const progressTotal = state.progress?.maxQuestionCount ?? 0
+  const progressCount = state.progress?.questionCount ?? 0
 
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
@@ -383,6 +198,7 @@ export function ConversationPage() {
           ref={audioRef}
           src={conversationBgmUrl}
         />
+        <audio aria-label="빵긋이 목소리" autoPlay ref={remoteAudioRef} />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"
@@ -446,20 +262,23 @@ export function ConversationPage() {
           />
         </button>
 
-        {stage === 'conversation' ? (
+        {isConversing && progressTotal > 0 ? (
           <div
-            aria-label={`대화 진행 ${questionIndex + 1}/${QUESTIONS.length}`}
+            aria-label={`대화 진행 ${progressCount}/${progressTotal}`}
             className="absolute top-[24px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border-2 border-white/75 bg-[#5c7c45]/85 px-5 py-2.5 shadow-lg backdrop-blur-sm"
             style={jua}
           >
             <span className="text-[17px] text-white">
-              이야기 {questionIndex + 1}/{QUESTIONS.length}
+              {state.progress
+                ? TOPIC_LABEL[state.progress.topicType]
+                : '이야기'}{' '}
+              {progressCount}/{progressTotal}
             </span>
             <div className="flex gap-1.5">
-              {QUESTIONS.map((_, index) => (
+              {Array.from({ length: progressTotal }, (_, index) => (
                 <span
                   className={`size-3 rounded-full border-2 border-white/80 ${
-                    index <= questionIndex ? 'bg-[#ffdb63]' : 'bg-white/25'
+                    index < progressCount ? 'bg-[#ffdb63]' : 'bg-white/25'
                   }`}
                   key={index}
                 />
@@ -476,7 +295,7 @@ export function ConversationPage() {
           {DINO_FRAME_POSITIONS.map((backgroundPosition, frameIndex) => {
             const sequenceFrame = DINO_FRAME_SEQUENCE[dinoFrameStep]
             const activeFrame =
-              status === 'listening' ? sequenceFrame + 3 : sequenceFrame
+              state.voice === 'listening' ? sequenceFrame + 3 : sequenceFrame
 
             return (
               <span
@@ -496,7 +315,7 @@ export function ConversationPage() {
           })}
         </div>
 
-        {stage !== 'guide' ? (
+        {!showGuide ? (
           <>
             <div className="absolute bottom-[90px] left-1/2 z-20 w-[710px] -translate-x-1/2">
               <img
@@ -514,67 +333,62 @@ export function ConversationPage() {
                 className="absolute top-[48%] right-[8%] left-[9%] -translate-y-1/2 text-[30px] leading-[1.35] text-[#6a4a1e]"
                 style={jua}
               >
-                {QUESTIONS[questionIndex]}
+                {state.assistantText}
               </p>
-              {transcript ? (
+              {state.childTranscript ? (
                 <p
                   className="absolute right-[8%] bottom-[10%] left-[9%] truncate text-[17px] text-[#8b744f]"
                   style={jua}
                 >
-                  “{transcript}”
+                  “{state.childTranscript}”
                 </p>
               ) : null}
             </div>
 
-            <div className="absolute right-[95px] bottom-[94px] z-30 flex w-[170px] flex-col items-center">
-              <div
-                className={`-mb-0 rounded-full px-3 py-1.5 text-center text-[15px] text-white shadow-md ${
-                  status === 'error' ? 'bg-[#c85f50]' : 'bg-[#527542]/90'
-                }`}
-                role="status"
-                style={jua}
-              >
-                {STATUS_COPY[status]}
-              </div>
-              <button
-                aria-label={
-                  status === 'listening' ? '말하기 마치기' : '마이크 켜기'
-                }
-                className={`relative flex size-[96px] items-center justify-center border-0 bg-transparent p-0 drop-shadow-[0_8px_12px_rgba(0,0,0,.3)] transition hover:scale-105 ${
-                  status === 'thinking' ? 'cursor-wait' : ''
-                }`}
-                disabled={status === 'thinking'}
-                onClick={
-                  status === 'listening' ? finishListening : startListening
-                }
-                type="button"
-              >
-                <img
-                  alt=""
-                  className={`block size-full object-contain ${
-                    status === 'thinking' ? 'opacity-70' : ''
+            {isConversing ? (
+              <div className="absolute right-[95px] bottom-[94px] z-30 flex w-[170px] flex-col items-center">
+                <div
+                  className={`-mb-0 rounded-full px-3 py-1.5 text-center text-[15px] text-white shadow-md ${
+                    state.notice ? 'bg-[#c85f50]' : 'bg-[#527542]/90'
                   }`}
-                  decoding="async"
-                  draggable={false}
-                  src={
-                    status === 'listening' ? micOffButtonUrl : micOnButtonUrl
-                  }
-                />
-                {status === 'thinking' ? (
-                  <span className="absolute size-8 animate-spin rounded-full border-4 border-white/45 border-t-white" />
-                ) : null}
-                {status === 'listening' ? (
-                  <span
-                    className="absolute inset-[-10px] -z-10 rounded-full border-4 border-[#ff9d88]/70"
-                    style={{ transform: `scale(${1 + micLevel * 0.24})` }}
+                  role="status"
+                  style={jua}
+                >
+                  {state.notice ??
+                    (state.micEnabled
+                      ? STATUS_COPY[state.voice]
+                      : '마이크가 꺼져 있어')}
+                </div>
+                <button
+                  aria-label={state.micEnabled ? '마이크 끄기' : '마이크 켜기'}
+                  className="relative flex size-[96px] items-center justify-center border-0 bg-transparent p-0 drop-shadow-[0_8px_12px_rgba(0,0,0,.3)] transition hover:scale-105 disabled:opacity-70"
+                  disabled={state.phase === 'closing'}
+                  onClick={toggleMic}
+                  type="button"
+                >
+                  <img
+                    alt=""
+                    className="block size-full object-contain"
+                    decoding="async"
+                    draggable={false}
+                    src={state.micEnabled ? micOnButtonUrl : micOffButtonUrl}
                   />
-                ) : null}
-              </button>
-            </div>
+                  {state.voice === 'thinking' ? (
+                    <span className="absolute size-8 animate-spin rounded-full border-4 border-white/45 border-t-white" />
+                  ) : null}
+                  {isListening ? (
+                    <span
+                      className="absolute inset-[-10px] -z-10 rounded-full border-4 border-[#ff9d88]/70"
+                      style={{ transform: `scale(${1 + micLevel * 0.24})` }}
+                    />
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
           </>
         ) : null}
 
-        {stage === 'guide' ? (
+        {showGuide ? (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(16,35,23,.58)] backdrop-blur-[2px]">
             <section className="relative h-[534px] w-[700px] text-center drop-shadow-[0_24px_55px_rgba(0,0,0,.38)]">
               <img
@@ -630,8 +444,9 @@ export function ConversationPage() {
                 </p>
               ) : null}
               <button
-                className="absolute top-[76%] left-1/2 flex h-[11%] w-[45%] -translate-x-1/2 items-center justify-center bg-transparent pb-1 text-[26px] text-white transition hover:scale-[1.02]"
-                onClick={() => void startConversation()}
+                className="absolute top-[76%] left-1/2 flex h-[11%] w-[45%] -translate-x-1/2 items-center justify-center bg-transparent pb-1 text-[26px] text-white transition hover:scale-[1.02] disabled:opacity-70"
+                disabled={isPreparing}
+                onClick={() => void start()}
                 style={{
                   ...jua,
                   paintOrder: 'stroke fill',
@@ -639,50 +454,54 @@ export function ConversationPage() {
                 }}
                 type="button"
               >
-                대화 시작하기
+                {state.phase === 'failed'
+                  ? '다시 해볼까?'
+                  : isPreparing
+                    ? '준비하고 있어요'
+                    : '대화 시작하기'}
               </button>
             </section>
           </div>
         ) : null}
 
-        {stage === 'complete' && !isDiaryOpen ? (
+        {isEnded && !isDiaryOpen ? (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(16,35,23,.62)] backdrop-blur-[3px]">
             <section className="relative w-[560px] rounded-[46px] border-[7px] border-[#d6b672] bg-[#fffaf0] px-12 py-10 text-center shadow-[0_24px_55px_rgba(0,0,0,.42)]">
               <div className="absolute inset-[8px] rounded-[32px] border-2 border-[#ead8ab]" />
               <div className="relative">
-                <div className="text-[58px]">🌟</div>
+                <div className="text-[58px]">{canMakeDiary ? '🌟' : '👋'}</div>
                 <p className="mt-1 text-[20px] text-[#86a85e]" style={jua}>
-                  이야기 완성!
+                  {canMakeDiary ? '이야기 완성!' : '다음에 또 만나'}
                 </p>
                 <h2 className="mt-1 text-[34px] text-[#4f6f38]" style={jua}>
                   오늘 이야기도 정말 즐거웠어
                 </h2>
                 <p className="mt-3 text-[18px] text-[#806b45]" style={jua}>
-                  빵긋이가 네 이야기를 소중히 간직할게.
+                  {canMakeDiary
+                    ? '빵긋이가 네 이야기를 소중히 간직할게.'
+                    : '다음에 더 많이 이야기해 줘!'}
                 </p>
                 <div className="mt-7 flex justify-center gap-1">
+                  {canMakeDiary ? (
+                    <button
+                      className="h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-white"
+                      onClick={() => void openDiary()}
+                      style={{
+                        ...jua,
+                        backgroundImage: `url(${completeButtonUrl})`,
+                        paintOrder: 'stroke fill',
+                        WebkitTextStroke: '3px #4a7d1e',
+                      }}
+                      type="button"
+                    >
+                      오늘의 일기 보기
+                    </button>
+                  ) : null}
                   <button
-                    className="h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-white"
-                    onClick={() => {
-                      stopVoiceResources()
-                      void openDiary()
-                    }}
-                    style={{
-                      ...jua,
-                      backgroundImage: `url(${completeButtonUrl})`,
-                      paintOrder: 'stroke fill',
-                      WebkitTextStroke: '3px #4a7d1e',
-                    }}
-                    type="button"
-                  >
-                    오늘의 일기 보기
-                  </button>
-                  <button
-                    className="-ml-4 h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#6a5431]"
-                    onClick={() => {
-                      stopVoiceResources()
-                      navigate('/child')
-                    }}
+                    className={`h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#6a5431] ${
+                      canMakeDiary ? '-ml-4' : ''
+                    }`}
+                    onClick={() => navigate('/child')}
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
@@ -769,10 +588,7 @@ export function ConversationPage() {
                   </button>
                   <button
                     className="translate-x-2.4 relative mt-0 block w-[345px] -translate-y-[5px] transition hover:scale-105 active:scale-[.98]"
-                    onClick={() => {
-                      stopVoiceResources()
-                      navigate('/child')
-                    }}
+                    onClick={() => navigate('/child')}
                     type="button"
                   >
                     <img

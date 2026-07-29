@@ -23,14 +23,13 @@ export function GameEntryPage() {
   const [hoveredGameId, setHoveredGameId] = useState<string>()
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -152,9 +151,7 @@ export function GameEntryPage() {
           </div>
         </div>
 
-        <div
-          className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2"
-        >
+        <div className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2">
           <DinoCharacter
             className="absolute bottom-0 left-1/2 -translate-x-1/2"
             size={320}
@@ -163,7 +160,7 @@ export function GameEntryPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}

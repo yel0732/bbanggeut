@@ -18,6 +18,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useFitScale } from '@/hooks/useFitScale'
 
 type GoogleCredentialResponse = { credential: string }
 type GoogleButtonConfig = {
@@ -37,7 +38,10 @@ declare global {
             callback: (response: GoogleCredentialResponse) => void
             client_id: string
           }) => void
-          renderButton: (element: HTMLElement, config: GoogleButtonConfig) => void
+          renderButton: (
+            element: HTMLElement,
+            config: GoogleButtonConfig,
+          ) => void
         }
       }
     }
@@ -49,7 +53,7 @@ type Stage = 'signin' | 'birthdate' | 'complete' | 'link'
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const boardSize = {
   aspectRatio: '1 / 1',
-  width: 'min(460px, calc(100vw - 32px), calc(100vh - 32px))',
+  width: 460,
 } as const
 const MIN_SIGNUP_AGE = 19
 const GOOGLE_SCRIPT_ID = 'google-identity-services'
@@ -83,6 +87,7 @@ function ageOf(birth: string) {
 
 export function GoogleBirthdatePage() {
   const navigate = useNavigate()
+  const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<Stage>('signin')
@@ -168,7 +173,9 @@ export function GoogleBirthdatePage() {
     if (window.google) {
       renderGoogleButton()
     } else if (existingScript) {
-      existingScript.addEventListener('load', renderGoogleButton, { once: true })
+      existingScript.addEventListener('load', renderGoogleButton, {
+        once: true,
+      })
     } else {
       const script = document.createElement('script')
       script.id = GOOGLE_SCRIPT_ID
@@ -240,110 +247,160 @@ export function GoogleBirthdatePage() {
   }
 
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)] p-4 text-white">
-      <audio autoPlay loop preload="auto" ref={audioRef} src={bgmUrl} />
-      <img alt="" className="absolute inset-0 size-full object-cover" src={backgroundUrl} />
-      <div className="pointer-events-none absolute inset-0 z-10 bg-[rgba(10,26,15,.4)]" />
-
-      <Link
-        aria-label="뒤로"
-        className="absolute top-[25px] left-[25px] z-30 block size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
-        to="/"
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)]">
+      <div
+        ref={canvasRef}
+        className="relative flex h-[720px] w-[1280px] items-center justify-center overflow-hidden text-white"
       >
+        <audio loop preload="auto" ref={audioRef} src={bgmUrl} />
         <img
           alt=""
-          className="block size-full object-contain"
-          decoding="async"
-          draggable={false}
-          src={leftButtonUrl}
+          className="absolute inset-0 size-full object-cover"
+          src={backgroundUrl}
         />
-      </Link>
-      <button
-        aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-        className="absolute bottom-[25px] left-[25px] z-40 size-[62px] bg-transparent p-0 transition hover:scale-105"
-        onClick={() => void toggleBgm()}
-        type="button"
-      >
-        <img alt="" className="size-full object-contain" src={isBgmPlaying ? musicOnUrl : musicOffUrl} />
-      </button>
+        <div className="pointer-events-none absolute inset-0 z-10 bg-[rgba(10,26,15,.4)]" />
 
-      <main className="relative z-20" style={boardSize}>
-        <img alt="" className="pointer-events-none absolute inset-0 size-full object-contain" src={signupCompleteFrameUrl} />
-        <img alt="빵긋" className="absolute top-[12%] left-1/2 w-[46%] -translate-x-1/2" src={logoUrl} />
+        <Link
+          aria-label="뒤로"
+          className="absolute top-[25px] left-[25px] z-30 block size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+          to="/"
+        >
+          <img
+            alt=""
+            className="block size-full object-contain"
+            decoding="async"
+            draggable={false}
+            src={leftButtonUrl}
+          />
+        </Link>
+        <button
+          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] bg-transparent p-0 transition hover:scale-105"
+          onClick={() => void toggleBgm()}
+          type="button"
+        >
+          <img
+            alt=""
+            className="size-full object-contain"
+            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          />
+        </button>
 
-        <h1 className="absolute top-[34%] right-0 left-0 text-center text-[24px] text-[#5a7d3a]" style={jua}>
-          {stage === 'signin'
-            ? '구글로 들어가기'
-            : stage === 'birthdate'
-              ? '생년월일을 알려주세요'
-              : stage === 'complete'
-                ? '회원가입 완료!'
-                : '기존 계정과 연결하기'}
-        </h1>
+        <main className="relative z-20" style={boardSize}>
+          <img
+            alt=""
+            className="pointer-events-none absolute inset-0 size-full object-contain"
+            src={signupCompleteFrameUrl}
+          />
+          <img
+            alt="빵긋"
+            className="absolute top-[12%] left-1/2 w-[46%] -translate-x-1/2"
+            src={logoUrl}
+          />
 
-        {stage === 'signin' ? (
-          <div className="absolute top-[49%] right-0 left-0 flex flex-col items-center gap-4">
-            <div ref={googleButtonRef} />
-            {isBusy ? <p className="text-[#6f8a5e]" style={jua}>확인하고 있어요...</p> : null}
-          </div>
-        ) : null}
+          <h1
+            className="absolute top-[34%] right-0 left-0 text-center text-[24px] text-[#5a7d3a]"
+            style={jua}
+          >
+            {stage === 'signin'
+              ? '구글로 들어가기'
+              : stage === 'birthdate'
+                ? '생년월일을 알려주세요'
+                : stage === 'complete'
+                  ? '회원가입 완료!'
+                  : '기존 계정과 연결하기'}
+          </h1>
 
-        {stage === 'birthdate' ? (
-          <>
-            <p className="absolute top-[43%] right-0 left-0 text-center text-[14px] text-[#8a7a55]" style={jua}>
-              {email || '구글 계정'}
-            </p>
-            <div className="absolute top-[52%] left-[18.5%] z-20 h-[9%] w-[63%] rounded-2xl border-2 border-[#e4c98a] bg-[#fdf6e0]">
-              <BirthDatePicker maxDate={maxBirthDate} onChange={setBirth} value={birth} />
+          {stage === 'signin' ? (
+            <div className="absolute top-[49%] right-0 left-0 flex flex-col items-center gap-4">
+              <div ref={googleButtonRef} />
+              {isBusy ? (
+                <p className="text-[#6f8a5e]" style={jua}>
+                  확인하고 있어요...
+                </p>
+              ) : null}
             </div>
-            <ActionButton disabled={isBusy} label={isBusy ? '가입 중...' : '가입 완료'} onClick={() => void completeSignup()} />
-          </>
-        ) : null}
+          ) : null}
 
-        {stage === 'complete' ? (
-          <>
+          {stage === 'birthdate' ? (
+            <>
+              <p
+                className="absolute top-[43%] right-0 left-0 text-center text-[14px] text-[#8a7a55]"
+                style={jua}
+              >
+                {email || '구글 계정'}
+              </p>
+              <div className="absolute top-[52%] left-[18.5%] z-20 h-[9%] w-[63%] rounded-2xl border-2 border-[#e4c98a] bg-[#fdf6e0]">
+                <BirthDatePicker
+                  maxDate={maxBirthDate}
+                  onChange={setBirth}
+                  value={birth}
+                />
+              </div>
+              <ActionButton
+                disabled={isBusy}
+                label={isBusy ? '가입 중...' : '가입 완료'}
+                onClick={() => void completeSignup()}
+              />
+            </>
+          ) : null}
+
+          {stage === 'complete' ? (
+            <>
+              <p
+                className="absolute top-[45%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
+                style={jua}
+              >
+                구글 회원가입이 완료되었어요!
+                <br />
+                아래 버튼을 눌러 로그인해 주세요.
+              </p>
+              <ActionButton
+                disabled={false}
+                label="로그인하기"
+                onClick={() => {
+                  setError('')
+                  setStage('signin')
+                }}
+              />
+            </>
+          ) : null}
+
+          {stage === 'link' ? (
+            <>
+              <p
+                className="absolute top-[43%] right-[14%] left-[14%] text-center text-[14px] text-[#8a7a55]"
+                style={jua}
+              >
+                같은 이메일의 계정이 있어요. 기존 비밀번호를 입력해 주세요.
+              </p>
+              <input
+                className="absolute top-[54%] left-[18.5%] h-[9%] w-[63%] rounded-2xl border-2 border-[#e4c98a] bg-[#fdf6e0] px-4 text-[#5a4a2a] outline-none"
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="기존 계정 비밀번호"
+                style={jua}
+                type="password"
+                value={password}
+              />
+              <ActionButton
+                disabled={isBusy}
+                label={isBusy ? '연결 중...' : '계정 연결'}
+                onClick={() => void completeLink()}
+              />
+            </>
+          ) : null}
+
+          {error ? (
             <p
-              className="absolute top-[45%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
+              className="absolute top-[66%] right-[12%] left-[12%] text-center text-[14px] text-[#b75245]"
+              role="alert"
               style={jua}
             >
-              구글 회원가입이 완료되었어요!
-              <br />
-              아래 버튼을 눌러 로그인해 주세요.
+              {error}
             </p>
-            <ActionButton
-              disabled={false}
-              label="로그인하기"
-              onClick={() => {
-                setError('')
-                setStage('signin')
-              }}
-            />
-          </>
-        ) : null}
-
-        {stage === 'link' ? (
-          <>
-            <p className="absolute top-[43%] right-[14%] left-[14%] text-center text-[14px] text-[#8a7a55]" style={jua}>
-              같은 이메일의 계정이 있어요. 기존 비밀번호를 입력해 주세요.
-            </p>
-            <input
-              className="absolute top-[54%] left-[18.5%] h-[9%] w-[63%] rounded-2xl border-2 border-[#e4c98a] bg-[#fdf6e0] px-4 text-[#5a4a2a] outline-none"
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="기존 계정 비밀번호"
-              style={jua}
-              type="password"
-              value={password}
-            />
-            <ActionButton disabled={isBusy} label={isBusy ? '연결 중...' : '계정 연결'} onClick={() => void completeLink()} />
-          </>
-        ) : null}
-
-        {error ? (
-          <p className="absolute top-[66%] right-[12%] left-[12%] text-center text-[14px] text-[#b75245]" role="alert" style={jua}>
-            {error}
-          </p>
-        ) : null}
-      </main>
+          ) : null}
+        </main>
+      </div>
     </div>
   )
 }

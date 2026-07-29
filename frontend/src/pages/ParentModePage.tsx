@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { changeAccountPassword, verifyParentPin, withdrawAccount } from '@/api/auth'
+import {
+  changeAccountPassword,
+  verifyParentPin,
+  withdrawAccount,
+} from '@/api/auth'
 
 import {
   getChildReports,
@@ -57,12 +61,7 @@ import {
 } from '@/lib/childProfiles'
 
 type PopupType =
-  | 'children'
-  | 'child-create'
-  | 'child-edit'
-  | 'profile'
-  | 'notification'
-  | null
+  'children' | 'child-create' | 'child-edit' | 'profile' | 'notification' | null
 type ProfileView = 'menu' | 'photo' | 'pin' | 'password' | 'withdraw'
 type PinStep = 'current' | 'new' | 'confirm'
 type PasswordErrors = {
@@ -70,9 +69,7 @@ type PasswordErrors = {
   next: string
   confirm: string
 }
-type NoticeDialog =
-  | { kind: 'delete'; profile: ChildProfile }
-  | null
+type NoticeDialog = { kind: 'delete'; profile: ChildProfile } | null
 
 type NotificationSettings = {
   enabled: boolean
@@ -195,7 +192,8 @@ export function ParentModePage() {
   const pinLockUntilRef = useRef(0)
   const [withdrawPin, setWithdrawPin] = useState('')
   const [firstWithdrawPin, setFirstWithdrawPin] = useState('')
-  const [withdrawMessage, setWithdrawMessage] = useState('핀 번호를 입력해 주세요.')
+  const [withdrawMessage, setWithdrawMessage] =
+    useState('핀 번호를 입력해 주세요.')
   const [isVerifyingWithdrawal, setIsVerifyingWithdrawal] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -434,9 +432,7 @@ export function ParentModePage() {
     setVerifiedCurrentPin('')
     setNewPin('')
     setPinStep('current')
-    const secondsLeft = Math.ceil(
-      (pinLockUntilRef.current - Date.now()) / 1000,
-    )
+    const secondsLeft = Math.ceil((pinLockUntilRef.current - Date.now()) / 1000)
     setPinMessage(
       secondsLeft > 0
         ? `PIN 입력이 잠겼습니다.\n${formatPinLockTime(secondsLeft)} 후 다시 시도해 주세요.`
@@ -554,7 +550,9 @@ export function ParentModePage() {
             startPinLock()
             return
           }
-          setPinMessage(`PIN 번호가 틀렸습니다. (${nextFailCount}/${MAX_PIN_FAILS})`)
+          setPinMessage(
+            `PIN 번호가 틀렸습니다. (${nextFailCount}/${MAX_PIN_FAILS})`,
+          )
         })
       return
       window.setTimeout(() => {
@@ -583,7 +581,11 @@ export function ParentModePage() {
           setVerifiedCurrentPin('')
           setNewPin('')
           setPinStep('current')
-          setPinMessage(error instanceof Error ? error.message : 'PIN 번호를 변경하지 못했어요.')
+          setPinMessage(
+            error instanceof Error
+              ? error.message
+              : 'PIN 번호를 변경하지 못했어요.',
+          )
         })
       return
       setPinMessage('핀 번호가 변경되었어요 ✓')
@@ -602,7 +604,8 @@ export function ParentModePage() {
     if (
       popup !== 'profile' ||
       (profileView !== 'pin' && profileView !== 'withdraw')
-    ) return
+    )
+      return
 
     const handlePinKeyboard = (event: KeyboardEvent) => {
       if (/^\d$/.test(event.key)) {
@@ -647,7 +650,10 @@ export function ParentModePage() {
       })
       .catch((error: unknown) => {
         setPasswordErrors({
-          current: error instanceof Error ? error.message : '현재 비밀번호를 확인해 주세요.',
+          current:
+            error instanceof Error
+              ? error.message
+              : '현재 비밀번호를 확인해 주세요.',
           next: '',
           confirm: '',
         })
@@ -719,7 +725,9 @@ export function ParentModePage() {
       .catch((error: unknown) => {
         setChildDeletionPin('')
         setChildDeletionMessage(
-          error instanceof Error ? error.message : '프로필을 삭제하지 못했어요.',
+          error instanceof Error
+            ? error.message
+            : '프로필을 삭제하지 못했어요.',
         )
       })
       .finally(() => setIsDeletingChildProfile(false))
@@ -754,7 +762,8 @@ export function ParentModePage() {
     }
 
     window.addEventListener('keydown', handleChildDeletionPinKeyboard)
-    return () => window.removeEventListener('keydown', handleChildDeletionPinKeyboard)
+    return () =>
+      window.removeEventListener('keydown', handleChildDeletionPinKeyboard)
   })
 
   const childPageCount = Math.max(1, Math.ceil(profiles.length / 3))
@@ -765,14 +774,13 @@ export function ParentModePage() {
   )
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
       <div
-        className="relative h-[720px] w-[1280px] shrink-0 origin-top overflow-hidden"
+        className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
         ref={canvasRef}
       >
         <audio
           aria-label="부모 모드 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -799,7 +807,7 @@ export function ParentModePage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[24px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
           onClick={() => void toggleBgm()}
           type="button"
         >
@@ -828,7 +836,10 @@ export function ParentModePage() {
                 className="absolute top-0.5 right-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-[#ef694f] px-1 text-[12px] leading-none text-white shadow"
                 style={jua}
               >
-                {Math.min(99, reportArrivals.filter((item) => !item.read).length)}
+                {Math.min(
+                  99,
+                  reportArrivals.filter((item) => !item.read).length,
+                )}
               </span>
             ) : null}
           </button>
@@ -974,7 +985,7 @@ export function ParentModePage() {
           >
             <section
               aria-label="아이 프로필 목록"
-              className="relative -top-[40px] h-[672px] w-[640px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
+              className="relative h-[672px] w-[640px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -1114,33 +1125,33 @@ export function ParentModePage() {
                 </button>
                 {getVisiblePageIndices(currentChildPage, childPageCount).map(
                   (index) => (
-                  <button
-                    aria-current={
-                      index === currentChildPage ? 'page' : undefined
-                    }
-                    className={`relative size-[54px] bg-transparent p-0 transition hover:scale-105 ${
-                      index === currentChildPage ? '' : 'opacity-50'
-                    }`}
-                    key={index}
-                    onClick={() => setChildListPage(index)}
-                    type="button"
-                  >
-                    <img
-                      alt=""
-                      className="absolute inset-0 size-full object-contain"
-                      src={pagerPageUrl}
-                    />
-                    <span
-                      className="absolute inset-0 flex items-center justify-center text-[24px] text-white"
-                      style={{
-                        ...jua,
-                        paintOrder: 'stroke fill',
-                        WebkitTextStroke: '2px #3f7d1e',
-                      }}
+                    <button
+                      aria-current={
+                        index === currentChildPage ? 'page' : undefined
+                      }
+                      className={`relative size-[54px] bg-transparent p-0 transition hover:scale-105 ${
+                        index === currentChildPage ? '' : 'opacity-50'
+                      }`}
+                      key={index}
+                      onClick={() => setChildListPage(index)}
+                      type="button"
                     >
-                      {index + 1}
-                    </span>
-                  </button>
+                      <img
+                        alt=""
+                        className="absolute inset-0 size-full object-contain"
+                        src={pagerPageUrl}
+                      />
+                      <span
+                        className="absolute inset-0 flex items-center justify-center text-[24px] text-white"
+                        style={{
+                          ...jua,
+                          paintOrder: 'stroke fill',
+                          WebkitTextStroke: '2px #3f7d1e',
+                        }}
+                      >
+                        {index + 1}
+                      </span>
+                    </button>
                   ),
                 )}
                 <button
@@ -1243,7 +1254,7 @@ export function ParentModePage() {
           >
             <section
               aria-label="내 프로필 관리"
-              className="relative -mt-20 h-[660px] w-[520px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
+              className="relative h-[660px] w-[520px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -1396,7 +1407,10 @@ export function ParentModePage() {
 
               {profileView === 'pin' ? (
                 <div className="absolute top-[21%] right-[18%] left-[18%] text-center">
-                  <p className="h-14 whitespace-pre-line text-[20px] leading-7 text-[#8a7a55]" style={jua}>
+                  <p
+                    className="h-14 text-[20px] leading-7 whitespace-pre-line text-[#8a7a55]"
+                    style={jua}
+                  >
                     {pinMessage}
                   </p>
                   <div className="mt-0 flex justify-center gap-1">
@@ -1449,10 +1463,13 @@ export function ParentModePage() {
 
               {profileView === 'withdraw' ? (
                 <div className="absolute top-[23%] right-[18%] left-[18%] text-center">
-                  <p className="h-12 text-[19px] leading-6 text-[#a34f3d]" style={jua}>
+                  <p
+                    className="h-12 text-[19px] leading-6 text-[#a34f3d]"
+                    style={jua}
+                  >
                     {withdrawMessage}
                   </p>
-                  <div className="-mt-3 flex justify-center -gap-0">
+                  <div className="-gap-0 -mt-3 flex justify-center">
                     {Array.from({ length: 4 }, (_, index) => (
                       <img
                         alt=""
@@ -1604,7 +1621,7 @@ export function ParentModePage() {
           >
             <section
               aria-label="보고서 알림 설정"
-              className="relative -mt-16 h-[640px] w-[540px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
+              className="relative h-[640px] w-[540px] [animation:parent-popup-in_.3s_cubic-bezier(.2,1.3,.5,1)_both]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -1756,7 +1773,7 @@ export function ParentModePage() {
             role="dialog"
           >
             <div
-              className="relative -top-[30px] h-[560px] w-[440px]"
+              className="relative h-[560px] w-[440px]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -1765,20 +1782,33 @@ export function ParentModePage() {
                 src={pinPanelUrl}
               />
               <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
-                <h2 className="text-center text-[30px] text-[#3a7d2c]" style={jua}>
+                <h2
+                  className="text-center text-[30px] text-[#3a7d2c]"
+                  style={jua}
+                >
                   부모 확인
                 </h2>
-                <p className="mt-1.5 text-center text-[17px] text-[#8a7a5a]" style={jua}>
+                <p
+                  className="mt-1.5 text-center text-[17px] text-[#8a7a5a]"
+                  style={jua}
+                >
                   삭제하려면 PIN 번호 4자리를 입력하세요
                 </p>
                 <div className="mt-5 mb-1.5 flex justify-center gap-4">
                   {Array.from({ length: 4 }).map((_, index) => {
                     const isFilled = index < childDeletionPin.length
                     return (
-                      <span className="flex size-[30px] items-center justify-center" key={index}>
+                      <span
+                        className="flex size-[30px] items-center justify-center"
+                        key={index}
+                      >
                         <img
                           alt=""
-                          className={isFilled ? 'size-[56px] max-w-none object-contain' : 'size-[30px] object-contain'}
+                          className={
+                            isFilled
+                              ? 'size-[56px] max-w-none object-contain'
+                              : 'size-[30px] object-contain'
+                          }
                           src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
                         />
                       </span>

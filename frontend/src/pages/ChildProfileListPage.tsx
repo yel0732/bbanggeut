@@ -46,7 +46,20 @@ import {
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PAGE_SIZE = 3
 const DELETE_PIN_LENGTH = 4
-const DELETE_PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫']
+const DELETE_PIN_KEYS = [
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '',
+  '0',
+  '⌫',
+]
 
 export function ChildProfileListPage() {
   const navigate = useNavigate()
@@ -54,7 +67,9 @@ export function ChildProfileListPage() {
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const editVideoRef = useRef<HTMLVideoElement>(null)
   const editStreamRef = useRef<MediaStream | null>(null)
-  const deletionPinKeyHandlerRef = useRef<(key: string) => void>(() => undefined)
+  const deletionPinKeyHandlerRef = useRef<(key: string) => void>(
+    () => undefined,
+  )
   const [profiles, setProfiles] = useState(loadChildProfiles)
   const [page, setPage] = useState(0)
   const [editingProfile, setEditingProfile] = useState<ChildProfile | null>(
@@ -156,7 +171,9 @@ export function ChildProfileListPage() {
     setDeletionPinMessage('')
     void deleteBackendChildProfile(childId, pin)
       .then(() => {
-        updateProfiles(profiles.filter(({ id }) => id !== profilePendingDeletion.id))
+        updateProfiles(
+          profiles.filter(({ id }) => id !== profilePendingDeletion.id),
+        )
         setProfilePendingDeletion(null)
         setIsDeletionPinOpen(false)
         setDeletionPin('')
@@ -164,7 +181,9 @@ export function ChildProfileListPage() {
       .catch((error: unknown) => {
         setDeletionPin('')
         setDeletionPinMessage(
-          error instanceof Error ? error.message : '프로필을 삭제하지 못했어요.',
+          error instanceof Error
+            ? error.message
+            : '프로필을 삭제하지 못했어요.',
         )
       })
       .finally(() => setIsDeletingProfile(false))
@@ -290,20 +309,21 @@ export function ChildProfileListPage() {
       })
       .catch((error: unknown) => {
         setEditingNameMessage(
-          error instanceof Error ? error.message : '프로필을 수정하지 못했어요.',
+          error instanceof Error
+            ? error.message
+            : '프로필을 수정하지 못했어요.',
         )
       })
   }
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[#0e1a12]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[#0e1a12]">
       <div
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden"
+        className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -330,7 +350,7 @@ export function ChildProfileListPage() {
         </Link>
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105"
           onClick={() => void toggleBgm()}
           type="button"
         >
@@ -641,7 +661,7 @@ export function ChildProfileListPage() {
             role="dialog"
           >
             <div
-              className="relative -top-[30px] h-[560px] w-[440px]"
+              className="relative h-[560px] w-[440px]"
               onClick={(event) => event.stopPropagation()}
             >
               <img
@@ -650,20 +670,33 @@ export function ChildProfileListPage() {
                 src={pinPanelUrl}
               />
               <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
-                <h2 className="text-center text-[30px] text-[#3a7d2c]" style={jua}>
+                <h2
+                  className="text-center text-[30px] text-[#3a7d2c]"
+                  style={jua}
+                >
                   부모 확인
                 </h2>
-                <p className="mt-1.5 text-center text-[17px] text-[#8a7a5a]" style={jua}>
+                <p
+                  className="mt-1.5 text-center text-[17px] text-[#8a7a5a]"
+                  style={jua}
+                >
                   삭제하려면 PIN 번호 4자리를 입력하세요
                 </p>
                 <div className="mt-5 mb-1.5 flex justify-center gap-4">
                   {Array.from({ length: DELETE_PIN_LENGTH }).map((_, index) => {
                     const isFilled = index < deletionPin.length
                     return (
-                      <span className="flex size-[30px] items-center justify-center" key={index}>
+                      <span
+                        className="flex size-[30px] items-center justify-center"
+                        key={index}
+                      >
                         <img
                           alt=""
-                          className={isFilled ? 'size-[56px] max-w-none object-contain' : 'size-[30px] object-contain'}
+                          className={
+                            isFilled
+                              ? 'size-[56px] max-w-none object-contain'
+                              : 'size-[30px] object-contain'
+                          }
                           src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
                         />
                       </span>
@@ -674,7 +707,9 @@ export function ChildProfileListPage() {
                   className="h-[22px] text-center text-[16px] text-[#d1483a]"
                   style={jua}
                 >
-                  {isDeletingProfile ? '확인하고 있어요...' : deletionPinMessage || '.'}
+                  {isDeletingProfile
+                    ? '확인하고 있어요...'
+                    : deletionPinMessage || '.'}
                 </div>
                 <div className="mt-6 grid grid-cols-3 gap-2.5">
                   {DELETE_PIN_KEYS.map((key, index) =>

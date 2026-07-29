@@ -27,14 +27,13 @@ export function ChildHomePage() {
   const [isCaveHovered, setIsCaveHovered] = useState(false)
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -71,19 +70,17 @@ export function ChildHomePage() {
           onMouseLeave={() => setIsGateHovered(false)}
           type="button"
         >
-          <div
-            className="absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite]"
-          >
+          <div className="absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite]">
             <img
               alt="문"
-              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] ${isGateHovered ? 'opacity-0' : 'opacity-100'}`}
+              className={`absolute inset-0 h-full w-full [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] object-contain transition-opacity duration-300 ease-in-out ${isGateHovered ? 'opacity-0' : 'opacity-100'}`}
               decoding="async"
               src={playNoHoverUrl}
             />
             <img
               alt=""
               aria-hidden="true"
-              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] ${isGateHovered ? 'opacity-100' : 'opacity-0'}`}
+              className={`absolute inset-0 h-full w-full [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] object-contain transition-opacity duration-300 ease-in-out ${isGateHovered ? 'opacity-100' : 'opacity-0'}`}
               decoding="async"
               src={playHoverUrl}
             />
@@ -117,19 +114,17 @@ export function ChildHomePage() {
           type="button"
         >
           <div className="absolute top-[5px] right-[-10px] bottom-[-13px] left-[-10px]">
-            <div
-              className="absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite]"
-            >
+            <div className="absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite]">
               <img
                 alt="동굴 집"
-                className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] ${isCaveHovered ? 'opacity-0' : 'opacity-100'}`}
+                className={`absolute inset-0 h-full w-full [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] object-contain transition-opacity duration-300 ease-in-out ${isCaveHovered ? 'opacity-0' : 'opacity-100'}`}
                 decoding="async"
                 src={caveUrl}
               />
               <img
                 alt=""
                 aria-hidden="true"
-                className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-in-out [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] ${isCaveHovered ? 'opacity-100' : 'opacity-0'}`}
+                className={`absolute inset-0 h-full w-full [animation:child-home-edge-glow_2.6s_ease-in-out_infinite] object-contain transition-opacity duration-300 ease-in-out ${isCaveHovered ? 'opacity-100' : 'opacity-0'}`}
                 decoding="async"
                 src={hoverCaveUrl}
               />
@@ -172,9 +167,7 @@ export function ChildHomePage() {
             </span>
           </div>
 
-          <div
-            className="absolute top-[30px] left-[8px] h-[320px] w-[320px]"
-          >
+          <div className="absolute top-[30px] left-[8px] h-[320px] w-[320px]">
             <DinoCharacter
               className="absolute bottom-0 left-1/2 -translate-x-1/2"
               size={320}
@@ -184,7 +177,7 @@ export function ChildHomePage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}

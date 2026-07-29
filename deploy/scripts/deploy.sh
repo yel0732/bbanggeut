@@ -3,7 +3,7 @@ set -eu
 
 sha=$1
 source_root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-deploy_root=${DEPLOY_ROOT:-/srv/a501}
+deploy_root=${DEPLOY_ROOT:-/srv/a501-deploy-state/runtime}
 compose_file=${COMPOSE_FILE:-$deploy_root/compose.yml}
 env_file=${ENV_FILE:-/srv/a501-secrets/.env}
 state_dir=${DEPLOY_STATE_DIR:-/srv/a501-deploy-state}
@@ -28,6 +28,10 @@ printf "AI_SERVER_IMAGE='%s'\nBACKEND_IMAGE='%s'\nNGINX_IMAGE='%s'\n" \
 export AI_SERVER_IMAGE="a501-ai-server:$sha"
 export BACKEND_IMAGE="a501-backend:$sha"
 export NGINX_IMAGE="a501-nginx:$sha"
+export NGINX_CONFIG_FILE="$deploy_root/deploy/nginx.conf"
+export CERTBOT_WEBROOT=${CERTBOT_WEBROOT_HOST:-/srv/a501/deploy/certbot/www}
+export LETSENCRYPT_LIVE_DIR=${LETSENCRYPT_LIVE_DIR_HOST:-/srv/a501/deploy/certbot/letsencrypt/live/i15a501.p.ssafy.io}
+export LETSENCRYPT_ARCHIVE_DIR=${LETSENCRYPT_ARCHIVE_DIR_HOST:-/srv/a501/deploy/certbot/letsencrypt/archive/i15a501.p.ssafy.io}
 
 rollback() {
     trap - INT TERM HUP EXIT

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-deploy_root=${DEPLOY_ROOT:-/srv/a501}
+deploy_root=${DEPLOY_ROOT:-/srv/a501-deploy-state/runtime}
 compose_file=${COMPOSE_FILE:-$deploy_root/compose.yml}
 env_file=${ENV_FILE:-/srv/a501-secrets/.env}
 backup_dir=${DB_BACKUP_DIR:-/srv/a501-backups/mysql}

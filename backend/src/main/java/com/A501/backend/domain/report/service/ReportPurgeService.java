@@ -12,6 +12,7 @@ import com.A501.backend.domain.report.repository.ReportGenerationAttemptReposito
 import com.A501.backend.domain.report.repository.ReportManualRegenerationRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationFailureRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
+import com.A501.backend.domain.report.repository.ReportNotificationPreferenceRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,15 +26,17 @@ public class ReportPurgeService {
     private final ReportGenerationAttemptRepository reportGenerationAttemptRepository;
     private final ReportNotificationFailureRepository reportNotificationFailureRepository;
     private final ReportNotificationRepository reportNotificationRepository;
+    private final ReportNotificationPreferenceRepository reportNotificationPreferenceRepository;
     private final ReportManualRegenerationRepository reportManualRegenerationRepository;
 
     @Transactional
     public void purgeByParentIdAndChildIds(Long parentId, List<Long> childIds) {
-        if (childIds == null || childIds.isEmpty()) {
-            return;
-        }
         if (parentId == null || parentId < 1) {
             throw new IllegalArgumentException("Parent ID must be positive.");
+        }
+        reportNotificationPreferenceRepository.deleteByParentId(parentId);
+        if (childIds == null || childIds.isEmpty()) {
+            return;
         }
 
         List<Long> reportIds = dailyReportRepository.findIdsByChildIds(childIds);

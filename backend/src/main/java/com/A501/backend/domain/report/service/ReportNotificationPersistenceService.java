@@ -1,5 +1,6 @@
 package com.A501.backend.domain.report.service;
 
+import java.time.LocalDateTime;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -9,33 +10,42 @@ import org.springframework.transaction.annotation.Transactional;
 import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.entity.ReportNotification;
+import com.A501.backend.domain.report.entity.ReportNotificationPreference;
 import com.A501.backend.domain.report.entity.ReportNotificationType;
 import com.A501.backend.domain.report.event.ReportNotificationCreatedEvent;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort.ReportNotificationRecipient;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
+import com.A501.backend.domain.report.repository.ReportNotificationPreferenceRepository;
+import com.A501.backend.domain.report.service.ReportNotificationScheduleCalculator.DeliveryPlan;
 
 @Service
 public class ReportNotificationPersistenceService {
 
     private final DailyReportRepository dailyReportRepository;
     private final ReportNotificationRepository notificationRepository;
+    private final ReportNotificationPreferenceRepository preferenceRepository;
     private final ObjectProvider<ReportNotificationRecipientPort>
             recipientPortProvider;
     private final ApplicationEventPublisher eventPublisher;
+    private final ReportNotificationScheduleCalculator scheduleCalculator;
 
     public ReportNotificationPersistenceService(
             DailyReportRepository dailyReportRepository,
             ReportNotificationRepository notificationRepository,
+            ReportNotificationPreferenceRepository preferenceRepository,
             ObjectProvider<ReportNotificationRecipientPort>
                     recipientPortProvider,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            ReportNotificationScheduleCalculator scheduleCalculator
     ) {
         this.dailyReportRepository = dailyReportRepository;
         this.notificationRepository = notificationRepository;
+        this.preferenceRepository = preferenceRepository;
         this.recipientPortProvider = recipientPortProvider;
         this.eventPublisher = eventPublisher;
+        this.scheduleCalculator = scheduleCalculator;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -62,14 +72,24 @@ public class ReportNotificationPersistenceService {
         ReportNotificationRecipient recipient =
                 recipientPort.findRecipient(report.getChildId());
 
-        ReportNotification saved = notificationRepository.saveAndFlush(
+        DeliveryPlan deliveryPlan = deliveryPlan(recipient.parentId());
+        ReportNotification saved = notificationRepository.save(
                 ReportNotification.create(
                         recipient.parentId(),
                         report.getId(),
                         report.getChildId(),
                         report.getReportDate(),
                         notificationType,
-                        messageOf(notificationType, recipient.childName())));
+                        messageOf(notificationType, recipient.childName()),
+                        deliveryPlan.scheduledAt()));
+
+        if (!deliveryPlan.deliverNow()) {
+            notificationRepository.flush();
+            return;
+        }
+
+        saved.markDelivered(scheduleCalculator.now());
+        notificationRepository.flush();
 
         // 저장 트랜잭션(REQUIRES_NEW) 커밋 이후에만 SSE 전송이 일어나도록
         // AFTER_COMMIT 리스너용 이벤트만 발행한다. 실제 전송은 리스너가 맡는다.
@@ -79,6 +99,11 @@ public class ReportNotificationPersistenceService {
                 saved.getNotificationType(),
                 saved.getReportDate(),
                 saved.getMessage()));
+    }
+
+    private DeliveryPlan deliveryPlan(Long parentId) {
+        return scheduleCalculator.calculate(
+                preferenceRepository.findByParentId(parentId));
     }
 
     private void validateTerminalStatus(

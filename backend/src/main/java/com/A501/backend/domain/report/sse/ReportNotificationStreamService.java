@@ -118,7 +118,7 @@ public class ReportNotificationStreamService {
             return;
         }
         for (ReportNotification notification : notificationRepository
-                .findByParentIdAndIdGreaterThanOrderByIdAsc(
+                .findByParentIdAndDeliveredAtIsNotNullAndIdGreaterThanOrderByIdAsc(
                         parentId,
                         lastEventId)) {
             boolean sent = managed.send(toEvent(

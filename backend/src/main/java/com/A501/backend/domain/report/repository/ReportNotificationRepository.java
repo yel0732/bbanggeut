@@ -2,6 +2,7 @@ package com.A501.backend.domain.report.repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.time.LocalDateTime;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -20,9 +21,14 @@ public interface ReportNotificationRepository
             Long reportId,
             ReportNotificationType notificationType);
 
-    List<ReportNotification> findByParentIdAndIdGreaterThanOrderByIdAsc(
+    List<ReportNotification> findByParentIdAndDeliveredAtIsNotNullAndIdGreaterThanOrderByIdAsc(
             Long parentId,
             Long id);
+
+    List<ReportNotification> findTop100ByDeliveredAtIsNullAndScheduledAtLessThanEqualOrderByScheduledAtAsc(
+            LocalDateTime now);
+
+    List<ReportNotification> findByParentIdAndDeliveredAtIsNull(Long parentId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

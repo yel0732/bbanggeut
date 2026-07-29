@@ -3,18 +3,24 @@ package com.A501.backend.domain.report.controller;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.report.exception.ReportApiErrorCode;
+import com.A501.backend.domain.report.dto.request.ReportNotificationPreferenceRequest;
+import com.A501.backend.domain.report.dto.response.ReportNotificationPreferenceResponse;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
+import com.A501.backend.domain.report.service.ReportNotificationPreferenceService;
 import com.A501.backend.domain.report.sse.ReportNotificationStreamService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @Tag(name = "Report Notifications")
@@ -26,6 +32,26 @@ public class ReportNotificationController {
     private final ReportNotificationStreamService streamService;
     private final ObjectProvider<ReportCurrentParentProvider>
             currentParentProvider;
+    private final ReportNotificationPreferenceService preferenceService;
+
+    @Operation(summary = "Get report notification preference")
+    @GetMapping("/preferences")
+    public ReportNotificationPreferenceResponse preference() {
+        return preferenceService.getOrCreate(
+                requiredParentProvider().getCurrentParentId());
+    }
+
+    @Operation(summary = "Update report notification preference")
+    @PutMapping("/preferences")
+    public ReportNotificationPreferenceResponse updatePreference(
+            @Valid @RequestBody ReportNotificationPreferenceRequest request
+    ) {
+        return preferenceService.update(
+                requiredParentProvider().getCurrentParentId(),
+                request.enabled(),
+                request.time(),
+                request.timezone());
+    }
 
     @Operation(summary = "Stream report notifications over SSE")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

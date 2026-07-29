@@ -91,6 +91,12 @@ export type ReportNotificationEvent = {
   childName: string
 }
 
+export type ReportNotificationPreference = {
+  enabled: boolean
+  time: string
+  timezone: string
+}
+
 type ReportApiErrorBody = {
   code?: string
   message?: string
@@ -139,7 +145,7 @@ export const PARENT_MODE_API_CAPABILITIES = {
   parentPhotoUpdate: false,
   parentPinUpdate: false,
   parentPasswordUpdate: false,
-  reportNotificationPreferenceUpdate: false,
+  reportNotificationPreferenceUpdate: true,
 } as const
 
 export function isBackendChildId(id: string) {
@@ -202,6 +208,28 @@ export async function regenerateChildReport(
   )
   await requireReportResponse(response)
   return (await response.json()) as ReportRegenerationResponse
+}
+
+export async function getReportNotificationPreference(
+  signal?: AbortSignal,
+) {
+  const response = await reportFetch(apiUrl('/api/notifications/preferences'), {
+    signal,
+  })
+  await requireReportResponse(response)
+  return (await response.json()) as ReportNotificationPreference
+}
+
+export async function updateReportNotificationPreference(
+  preference: ReportNotificationPreference,
+) {
+  const response = await reportFetch(apiUrl('/api/notifications/preferences'), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preference),
+  })
+  await requireReportResponse(response)
+  return (await response.json()) as ReportNotificationPreference
 }
 
 export async function subscribeToReportNotifications(

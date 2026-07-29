@@ -80,6 +80,20 @@ conversation:
       enabled: ${REALTIME_RECONCILER_ENABLED:false}
       interval: ${REALTIME_RECONCILER_INTERVAL:PT10S}
 
+account:
+  purge:
+    # 탈퇴 계정의 실제 데이터 파기(hard delete) 스케줄러. 기본 false — 운영에서만 켠다.
+    # 켜면 되돌릴 수 없는 물리 삭제가 주기적으로 돈다.
+    enabled: ${ACCOUNT_PURGE_ENABLED:false}
+    cron: ${ACCOUNT_PURGE_CRON:0 */5 * * * *}
+    zone: Asia/Seoul
+    # 탈퇴 후 이 기간이 지나야 파기한다. 0 = 즉시 파기(현재 정책 — 같은 이메일 재가입을
+    # 곧바로 허용하기 위함). 유예를 두면 그 기간 동안 이메일 unique 제약이 살아 있어
+    # 재가입이 막힌다. TBD: 실사용자 데이터 유입 전 재검토(예: 30d).
+    grace-period: ${ACCOUNT_PURGE_GRACE_PERIOD:0d}
+    # 한 번의 스케줄 실행에서 처리할 계정 수 상한.
+    batch-size: ${ACCOUNT_PURGE_BATCH_SIZE:50}
+
 child-diary:
   ai:
     base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}

@@ -17,7 +17,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import com.A501.backend.domain.game.service.GameChildAccessVerifier;
 import com.A501.backend.domain.game.metric.CardResultStatus;
 import com.A501.backend.domain.game.metric.CognitiveGrade;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
@@ -26,6 +28,9 @@ import com.A501.backend.domain.game.repository.GameSessionRepository;
 @SpringBootTest
 @AutoConfigureMockMvc
 class DobbleGameSessionControllerTest {
+
+    @MockitoBean
+    private GameChildAccessVerifier childAccessVerifier;
 
     @Autowired
     private MockMvc mockMvc;

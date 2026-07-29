@@ -22,8 +22,10 @@ public class FruitNinjaRuleService {
 
     private final MovementGameRuleVersionRepository ruleVersionRepository;
     private final FruitScoreConfigRepository fruitScoreConfigRepository;
+    private final GameCurrentMemberProvider currentMemberProvider;
 
     public FruitNinjaRuleResponse getActiveRule() {
+        currentMemberProvider.getCurrentMemberId();
         List<MovementGameRuleVersion> activeRules =
                 ruleVersionRepository.findAllByActiveTrueOrderByCreatedAtDesc();
 

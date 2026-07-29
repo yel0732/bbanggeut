@@ -39,6 +39,8 @@ public class GameSessionService {
     private final GameSessionRepository gameSessionRepository;
     private final GameRepository gameRepository;
     private final GameSessionWriter gameSessionWriter;
+    private final GameCurrentMemberProvider currentMemberProvider;
+    private final GameChildAccessVerifier childAccessVerifier;
 
     public boolean existsForChild(UUID gameSessionId, Long childId) {
         return gameSessionRepository.findById(gameSessionId)
@@ -80,6 +82,8 @@ public class GameSessionService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public GameSessionResponse saveCompletedResult(SaveGameResultRequest request) {
+        Long parentId = currentMemberProvider.getCurrentMemberId();
+        childAccessVerifier.verifyAccess(parentId, request.childId());
         validateTimeline(request);
 
         return gameSessionRepository.findByClientPlayId(request.clientPlayId())

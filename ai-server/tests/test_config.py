@@ -67,12 +67,12 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.stt_max_utterance_seconds == 30.0
     assert settings.stt_min_utterance_seconds == 0.5
     assert settings.stt_no_speech_prob_threshold == 0.6
-    assert settings.stt_low_confidence_threshold == 0.45
+    assert settings.stt_low_confidence_threshold == 0.35
     assert settings.stt_low_confidence_reask_limit == 1
     assert settings.stt_vad_aggressiveness == 2
     assert settings.stt_vad_min_frame_rms == 0
     assert settings.stt_min_speech_ms == 250
-    assert settings.stt_trailing_silence_seconds == 3.0
+    assert settings.stt_trailing_silence_seconds == 1.8
     assert settings.stt_preroll_ms == 300
     assert settings.stt_no_speech_timeout_seconds == 10.0
     assert settings.tts_model == "gpt-4o-mini-tts"

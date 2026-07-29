@@ -169,7 +169,7 @@ class RealtimeDialogueManager:
         speak: SpeakCallback | None = None,
         stream_producer: ConversationStreamProducer | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-        low_confidence_threshold: float = 0.45,
+        low_confidence_threshold: float = 0.35,
         low_confidence_reask_limit: int = 1,
     ) -> None:
         self._pipeline = dialogue_pipeline
@@ -533,9 +533,26 @@ class RealtimeDialogueManager:
         slots_topic: _TopicState | None = None,
         topic_completion_reason: str | None = None,
     ) -> None:
+        slots_owner = slots_topic or turn_topic
+        # 채워진 슬롯을 DataChannel로도 알린다. 확정 슬롯은 Redis Stream을 거쳐
+        # Spring이 저장하지만, 그 소비자는 로컬에서 꺼져 있을 수 있고 저장까지는
+        # 지연이 있다 — 대화 진행 상황을 지금 화면에 보여주려면 세션이 들고 있는
+        # 값을 그대로 보내는 편이 정확하다.
+        self._publisher.publish(
+            "conversation.slots.updated",
+            {
+                "topicType": slots_owner.snapshot.type.value,
+                "slots": slots_owner.slots.model_dump(mode="json", by_alias=True),
+                "targetSlot": target.value if target is not None else None,
+                "topicQuestionCount": turn_topic.question_count,
+                "topicMaxQuestionCount": turn_topic.snapshot.max_question_count,
+            },
+            turn_id=ref.turn_id,
+            turn_seq=ref.turn_seq,
+            response_id=ref.response_id,
+        )
         if self._stream is None:
             return
-        slots_owner = slots_topic or turn_topic
         self._stream.publish_ai_turn_generated(
             turn_id=ref.turn_id,
             turn_seq=ref.turn_seq,
@@ -661,7 +678,7 @@ async def create_realtime_dialogue_session(
     speaker: SpeakerHandle | None = None,
     synthesis_service_factory: SynthesisServiceFactory | None = None,
     stream_producer_factory: StreamProducerFactory | None = None,
-    low_confidence_threshold: float = 0.45,
+    low_confidence_threshold: float = 0.35,
     low_confidence_reask_limit: int = 1,
 ) -> RealtimeDialogueSession:
     """Assemble one connection's dialogue session (T11 read-once included).

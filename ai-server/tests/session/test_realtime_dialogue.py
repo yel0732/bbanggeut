@@ -203,8 +203,9 @@ class TestChildTurn:
         assert [event["type"] for event in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
-        created, text_final = channel.sent
+        created, text_final, _slots = channel.sent
         assert created["responseId"] == text_final["responseId"] == "resp_1"
         assert created["turnId"] == text_final["turnId"] == "turn_2"
         assert created["payload"] == {}
@@ -313,8 +314,8 @@ class TestChildTurn:
 
 
 def _low_confidence_result(text: str = "심부란 노랐어.") -> SttResult:
-    # exp(-1.0) ≈ 0.368 < 기본 임계값 0.45 — 심하게 깨진 전사 수준의 신뢰도.
-    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-1.0)
+    # exp(-1.5) ≈ 0.223 < 기본 임계값 0.35 — 심하게 깨진 전사 수준의 신뢰도.
+    return SttResult(text=text, audio_seconds=2.0, no_speech_prob=0.0, avg_logprob=-1.5)
 
 
 class TestLowConfidenceReask:
@@ -332,6 +333,7 @@ class TestLowConfidenceReask:
             "error",
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
         error = channel.sent[0]
         assert error["payload"]["code"] == "STT_LOW_CONFIDENCE"
@@ -368,7 +370,7 @@ class TestLowConfidenceReask:
         await manager.handle_child_turn(_child_turn(sequencer), _low_confidence_result())
 
         assert len(pipeline.requests) == 1
-        assert pipeline.requests[0].stt_confidence == pytest.approx(0.3679, abs=1e-3)
+        assert pipeline.requests[0].stt_confidence == pytest.approx(0.2231, abs=1e-3)
 
     @pytest.mark.asyncio
     async def test_confident_final_resets_the_reask_counter(self) -> None:
@@ -382,7 +384,7 @@ class TestLowConfidenceReask:
         assert state.consecutive_low_confidence_reasks == 1  # 세 번째가 다시 되물음
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("confidence_logprob", [-0.51, -0.42, -0.40])
+    @pytest.mark.parametrize("confidence_logprob", [-0.65, -0.51, -0.40])
     async def test_real_speech_confidence_band_is_not_reasked(
         self,
         confidence_logprob: float,
@@ -487,6 +489,7 @@ class TestNoSpeechLadder:
         assert [event["type"] for event in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
         assert "말해 줄래" in channel.sent[1]["payload"]["text"]
         assert state.consecutive_no_responses == 1
@@ -497,7 +500,8 @@ class TestNoSpeechLadder:
         manager.handle_no_speech()
         manager.handle_no_speech()
 
-        assert channel.sent[3]["payload"]["text"] == "괜찮아, 천천히 다시 말해 줄래?"
+        # 회차마다 created·text.final·slots.updated 3개가 나가므로 2회차 텍스트는 5번째.
+        assert channel.sent[4]["payload"]["text"] == "괜찮아, 천천히 다시 말해 줄래?"
 
     def test_fifth_no_speech_terminates_with_a_goodbye_and_signal(self) -> None:
         manager, state, channel, _, _, _ = _build_manager()
@@ -506,8 +510,9 @@ class TestNoSpeechLadder:
             manager.handle_no_speech()
 
         assert state.terminated is True
-        # 1~4회차는 각각 2개 이벤트, 5회차는 인사 2개 + 종료 신호 1개.
-        assert len(channel.sent) == 11
+        # 1~4회차는 각각 3개(created·text.final·slots.updated), 5회차는 인사 2개 +
+        # 종료 신호 1개. 인사는 질문이 아니라 슬롯 이벤트를 동반하지 않는다.
+        assert len(channel.sent) == 15
         assert [event["type"] for event in channel.sent[-3:]] == [
             "assistant.response.created",
             "assistant.text.final",
@@ -569,10 +574,16 @@ class TestConversationOpening:
         assert [event["type"] for event in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
         assert channel.sent[1]["payload"]["text"] == (
             "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
         )
+        # 오프닝 시점의 슬롯 상태가 함께 나가 화면이 처음부터 진행도를 보여준다.
+        slots_event = channel.sent[2]["payload"]
+        assert slots_event["topicType"] == "GAME"
+        assert slots_event["topicQuestionCount"] == 1
+        assert slots_event["slots"]["event"] == "과일 게임"
         assert state.current_topic.question_count == 1
         assert state.last_question == channel.sent[1]["payload"]["text"]
 
@@ -622,7 +633,7 @@ class TestConversationOpening:
         manager.open_conversation()
         manager.open_conversation()
 
-        assert len(channel.sent) == 2
+        assert len(channel.sent) == 3
         assert state.current_topic.question_count == 1
 
     def test_opening_skips_a_session_with_restored_progress(self) -> None:
@@ -683,6 +694,7 @@ class TestConversationOpening:
         assert [event["type"] for event in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
         assert session.state.last_question is not None
         await session.aclose()
@@ -863,6 +875,7 @@ class TestSpeakWiring:
         assert [e["type"] for e in channel.sent] == [
             "assistant.response.created",
             "assistant.text.final",
+            "conversation.slots.updated",
         ]
 
 
@@ -1088,4 +1101,8 @@ class TestStreamPublishing:
 
         await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
 
-        assert channel.sent[-1]["type"] == "assistant.text.final"
+        assert [event["type"] for event in channel.sent] == [
+            "assistant.response.created",
+            "assistant.text.final",
+            "conversation.slots.updated",
+        ]

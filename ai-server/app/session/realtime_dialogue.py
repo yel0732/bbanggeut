@@ -387,7 +387,10 @@ class RealtimeDialogueManager:
             or topic.question_count > 0
         ):
             return
-        question = conversation_opening_question(topic.snapshot.type)
+        question = conversation_opening_question(
+            topic.snapshot.type,
+            [game.game_name for game in topic.snapshot.games if game.game_name],
+        )
         ai_ref = self._publish_assistant_text(question)
         if ai_ref is None:
             return

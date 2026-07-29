@@ -121,6 +121,27 @@ class ConversationSessionServiceTest {
     }
 
     @Test
+    void carriesGameNameIntoTheGameTopicContext() {
+        // 게임 이름은 AI가 첫 질문에서 게임을 불러주기 위한 컨텍스트다.
+        when(gameSessionService.findCompletedSessionsForChild(
+                eq(15L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(gameSummary(8L, 10, "과일 자르기")));
+        when(conversationSessionRepository.save(any(ConversationSession.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.create(15L);
+
+        ArgumentCaptor<Collection<ConversationTopicState>> topics =
+                ArgumentCaptor.forClass(Collection.class);
+        verify(topicStateRepository).saveAll(topics.capture());
+        ConversationTopicState gameTopic = topics.getValue().stream()
+                .filter(topic -> topic.getTopicType() == ConversationTopic.GAME)
+                .findFirst()
+                .orElseThrow();
+        assertThat(gameTopic.getContextJson()).contains("\"gameName\":\"과일 자르기\"");
+    }
+
+    @Test
     void createsOneGameTopicForMultipleTodayGamesThenDaily() {
         List<CompletedGameSessionSummary> games = List.of(
                 gameSummary(1L, 10),
@@ -333,9 +354,14 @@ class ConversationSessionServiceTest {
     }
 
     private CompletedGameSessionSummary gameSummary(Long gameId, int score) {
+        return gameSummary(gameId, score, null);
+    }
+
+    private CompletedGameSessionSummary gameSummary(Long gameId, int score, String gameName) {
         return new CompletedGameSessionSummary(
                 UUID.randomUUID(),
                 gameId,
+                gameName,
                 score,
                 60,
                 LocalDateTime.of(2026, 7, 22, 2, 0));

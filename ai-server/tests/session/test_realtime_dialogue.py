@@ -552,6 +552,37 @@ class TestConversationOpening:
         assert state.current_topic.question_count == 1
         assert state.last_question == channel.sent[1]["payload"]["text"]
 
+    def test_opening_calls_the_game_by_name_when_there_is_one(self) -> None:
+        raw = _TWO_TOPIC_SNAPSHOT.model_dump(mode="json", by_alias=True)
+        raw["topics"][0]["games"][0]["gameName"] = "과일 자르기"
+        manager, _, channel, _, _, _ = _build_manager(
+            snapshot=ContextSnapshot.model_validate(raw)
+        )
+
+        manager.open_conversation()
+
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 과일 자르기 했구나! 어떤 점이 제일 재미있었어?"
+        )
+
+    def test_opening_stays_generic_when_several_games_were_played(self) -> None:
+        raw = _TWO_TOPIC_SNAPSHOT.model_dump(mode="json", by_alias=True)
+        raw["topics"][0]["games"][0]["gameName"] = "과일 자르기"
+        second = dict(raw["topics"][0]["games"][0])
+        second["gameSessionId"] = "b3b10000-0000-0000-0000-000000000002"
+        second["gameId"] = 2
+        second["gameName"] = "그림 맞추기"
+        raw["topics"][0]["games"].append(second)
+        manager, _, channel, _, _, _ = _build_manager(
+            snapshot=ContextSnapshot.model_validate(raw)
+        )
+
+        manager.open_conversation()
+
+        assert channel.sent[1]["payload"]["text"] == (
+            "오늘 했던 게임 중 가장 기억나는 게임은 무엇이었어?"
+        )
+
     def test_opening_uses_the_daily_question_without_games(self) -> None:
         manager, _, channel, _, _, _ = _build_manager(
             snapshot=default_context_snapshot("conv_daily")

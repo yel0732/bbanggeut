@@ -79,6 +79,8 @@ class GameSessionContext(BaseModel):
 
     game_session_id: UUID = Field(alias="gameSessionId")
     game_id: int = Field(alias="gameId")
+    # 카탈로그에 없는 게임이면 Spring이 null을 보낸다 — 이름 없이도 대화는 진행된다.
+    game_name: str | None = Field(default=None, alias="gameName")
     score: int
     play_duration_seconds: int = Field(alias="playDurationSeconds", ge=0)
     completed_at: datetime = Field(alias="completedAt")

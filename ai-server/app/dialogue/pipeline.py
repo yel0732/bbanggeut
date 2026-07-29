@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from enum import StrEnum
 
 from pydantic import (
@@ -804,17 +805,26 @@ _GAME_OPENING_QUESTION = "오늘 했던 게임 중 가장 기억나는 게임은
 CONVERSATION_CLOSING_MESSAGE = "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
 
 
-def conversation_opening_question(topic: DialogueTopic) -> str:
+def conversation_opening_question(
+    topic: DialogueTopic,
+    game_names: Sequence[str] = (),
+) -> str:
     """연결 직후 AI가 먼저 던지는 주제별 고정 첫 질문.
 
     주제 전환용 ``_topic_opening_question``과 달리 대화의 맨 처음에 쓰므로
     "이번에는/다른 일도" 같은 전환 표현이 없어야 한다. DAILY는 이미 검증된
     EVENT 단순화 질문을 재사용한다.
+
+    오늘 한 게임이 하나뿐이면 그 이름을 불러 대화를 연다. 여러 개일 때는 임의로
+    하나를 고르지 않고 "가장 기억나는 게임"을 묻는 기존 질문이 더 자연스럽다.
     """
 
-    if topic is DialogueTopic.GAME:
-        return _GAME_OPENING_QUESTION
-    return SIMPLIFIED_QUESTION_BY_TARGET[QuestionTarget.EVENT]
+    if topic is not DialogueTopic.GAME:
+        return SIMPLIFIED_QUESTION_BY_TARGET[QuestionTarget.EVENT]
+    named = [name.strip() for name in game_names if name and name.strip()]
+    if len(named) == 1:
+        return f"오늘 {named[0]} 했구나! 어떤 점이 제일 재미있었어?"
+    return _GAME_OPENING_QUESTION
 
 
 def _topic_opening_question(topic: DialogueTopic) -> str:

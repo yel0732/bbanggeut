@@ -116,7 +116,7 @@ export function EmailLoginPage() {
         </button>
 
         <form
-          className="relative z-20"
+          className="relative z-20 -translate-y-3"
           onSubmit={(event) => void handleSubmit(event)}
           style={boardSize}
         >

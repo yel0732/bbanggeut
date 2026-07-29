@@ -294,7 +294,7 @@ export function GamePlayPage() {
         {status === 'granted' ? (
           <video
             autoPlay
-            className="pointer-events-none absolute right-[30px] bottom-[100px] z-[6] h-[150px] w-[200px] scale-x-[-1] rounded-2xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
+            className="pointer-events-none absolute right-[25px] bottom-[25px] z-[6] h-[150px] w-[200px] scale-x-[-1] rounded-2xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
             muted
             playsInline
             ref={videoRef}

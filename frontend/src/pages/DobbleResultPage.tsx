@@ -59,23 +59,23 @@ export function DobbleResultPage() {
         />
         <div className="absolute inset-0 bg-[rgba(10,26,12,0.42)]" />
 
-        <div className="absolute inset-0 flex -translate-y-8 flex-col items-center justify-center gap-6">
+        <div className="absolute inset-0 flex -translate-y-1 flex-col items-center justify-center gap-6">
           <p
-            className="text-[40px] leading-none text-white [text-shadow:0_3px_0_#3f7d1e,0_6px_10px_rgba(0,0,0,0.4)]"
+            className="text-[50px] leading-none text-white [text-shadow:0_3px_0_#3f7d1e,0_6px_10px_rgba(0,0,0,0.4)]"
             style={jua}
           >
             눈썰미가 정말 좋아요!
           </p>
 
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-3">
             <span
-              className="text-[28px] leading-none text-[#d8ffb0]"
+              className="text-[30px] leading-none text-[#d8ffb0]"
               style={jua}
             >
               내 점수
             </span>
             <span
-              className="text-[140px] leading-none text-[#ffe27a] [text-shadow:0_6px_0_#8a5a1a,0_12px_20px_rgba(0,0,0,0.5)]"
+              className="text-[160px] leading-none text-[#ffe27a] [text-shadow:0_6px_0_#8a5a1a,0_12px_20px_rgba(0,0,0,0.5)]"
               style={jua}
             >
               {result.score}
@@ -83,13 +83,13 @@ export function DobbleResultPage() {
           </div>
 
           <p
-            className="rounded-full bg-[rgba(14,30,15,0.5)] px-8 py-3 text-[30px] leading-none text-white"
+            className="rounded-full bg-[rgba(14,30,15,0.5)] px-8 py-4 text-[33px] leading-none text-white"
             style={jua}
           >
             같은 그림을 {result.matchedCount}개나 찾았어요!
           </p>
 
-          <div className="mt-4 flex items-center gap-6">
+          <div className="mt-8 flex items-center gap-6">
             <ResultButton
               label="다시하기"
               onClick={() => navigate('/games/dobble/play', { replace: true })}

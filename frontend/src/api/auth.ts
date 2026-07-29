@@ -29,8 +29,45 @@ export type GoogleAuthResponse = {
   linkToken: string | null
 }
 
-type ApiErrorResponse = {
+export type ApiErrorResponse = {
+  status?: number
+  error?: string
   message?: string
+  retryAfterSeconds?: number
+  remainingAttempts?: number
+}
+
+export class ApiError extends Error {
+  status: number
+  code?: string
+  retryAfterSeconds?: number
+  remainingAttempts?: number
+
+  constructor(
+    message: string,
+    {
+      code,
+      remainingAttempts,
+      retryAfterSeconds,
+      status,
+    }: {
+      status: number
+      code?: string
+      retryAfterSeconds?: number
+      remainingAttempts?: number
+    },
+  ) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    this.retryAfterSeconds = retryAfterSeconds
+    this.remainingAttempts = remainingAttempts
+  }
+}
+
+type AuthFetchInit = RequestInit & {
+  skipUnauthorizedRetry?: boolean
 }
 
 const SESSION_KEYS = [
@@ -159,15 +196,18 @@ export async function restoreSession() {
 
 export async function authFetch(
   input: RequestInfo | URL,
-  init: RequestInit = {},
+  init: AuthFetchInit = {},
 ) {
+  const { skipUnauthorizedRetry = false, ...requestInit } = init
   const accessToken = await ensureAccessToken()
-  const firstResponse = await fetchWithToken(input, init, accessToken)
-  if (firstResponse.status !== 401) return firstResponse
+  const firstResponse = await fetchWithToken(input, requestInit, accessToken)
+  if (firstResponse.status !== 401 || skipUnauthorizedRetry) {
+    return firstResponse
+  }
 
   const refreshedToken = await refreshAccessToken()
   if (!refreshedToken) return firstResponse
-  return fetchWithToken(input, init, refreshedToken)
+  return fetchWithToken(input, requestInit, refreshedToken)
 }
 
 export async function googleAuthenticate(idToken: string) {
@@ -230,12 +270,10 @@ export async function verifyParentPin(pin: string) {
     body: JSON.stringify({ pin }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
+    skipUnauthorizedRetry: true,
   })
   if (!response.ok) {
-    const error = (await response
-      .json()
-      .catch(() => null)) as ApiErrorResponse | null
-    throw new Error(error?.message ?? '핀 번호가 올바르지 않아요.')
+    throw await readApiError(response, '핀 번호가 올바르지 않아요.')
   }
 }
 
@@ -245,13 +283,12 @@ export async function withdrawAccount(pin: string) {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     method: 'DELETE',
+    skipUnauthorizedRetry: true,
   })
   if (!response.ok) {
-    const error = (await response
-      .json()
-      .catch(() => null)) as ApiErrorResponse | null
-    throw new Error(
-      error?.message ?? '회원 탈퇴에 실패했어요. 잠시 후 다시 시도해 주세요.',
+    throw await readApiError(
+      response,
+      '회원 탈퇴에 실패했어요. 잠시 후 다시 시도해 주세요.',
     )
   }
   clearLoginSession()
@@ -364,10 +401,7 @@ async function requestJson<T = unknown>(path: string, init: RequestInit) {
   })
   const contentType = response.headers.get('content-type') ?? ''
   if (!response.ok) {
-    const error = contentType.includes('application/json')
-      ? ((await response.json().catch(() => null)) as ApiErrorResponse | null)
-      : null
-    throw new Error(error?.message ?? `요청에 실패했어요. (${response.status})`)
+    throw await readApiError(response, `요청에 실패했어요. (${response.status})`)
   }
   if (!contentType.includes('application/json')) {
     throw new Error(
@@ -375,4 +409,33 @@ async function requestJson<T = unknown>(path: string, init: RequestInit) {
     )
   }
   return (await response.json()) as T
+}
+
+export async function readApiError(response: Response, fallback: string) {
+  const contentType = response.headers.get('content-type') ?? ''
+  const error = contentType.includes('application/json')
+    ? ((await response.json().catch(() => null)) as ApiErrorResponse | null)
+    : null
+
+  return new ApiError(error?.message ?? fallback, {
+    code: error?.error,
+    remainingAttempts: error?.remainingAttempts,
+    retryAfterSeconds: error?.retryAfterSeconds,
+    status: error?.status ?? response.status,
+  })
+}
+
+export function isPinLockedError(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    (error.status === 423 || error.code === 'PIN_LOCKED')
+  )
+}
+
+export function isPinMismatchError(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    (error.code === 'PIN_MISMATCH' ||
+      (error.status === 401 && typeof error.remainingAttempts === 'number'))
+  )
 }

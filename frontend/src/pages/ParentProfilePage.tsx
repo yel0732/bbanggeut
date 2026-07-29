@@ -5,6 +5,8 @@ import { completeNewSignupOnboarding, getStoredAccessToken } from '@/api/auth'
 import {
   createChildProfile as createBackendChildProfile,
   setParentPin,
+  uploadChildProfileImage,
+  uploadParentProfileImage,
 } from '@/api/profiles'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
@@ -27,16 +29,26 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
-  childImageNumFromPhoto,
+  childImageKeyFromPhoto,
+  childPhotoFromImageKey,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
   saveChildProfiles,
+  type ChildProfile,
 } from '@/lib/childProfiles'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
 const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
 const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
+
+function isDataImageUrl(value: string | null): value is string {
+  return typeof value === 'string' && value.startsWith('data:image/')
+}
+
+async function dataImageUrlToBlob(dataUrl: string) {
+  return await fetch(dataUrl).then((response) => response.blob())
+}
 
 function loadOnboardingPinDraft() {
   try {
@@ -222,7 +234,7 @@ export function ParentProfilePage() {
           300,
           300,
         )
-        setPhotoUrl(canvas.toDataURL('image/webp', 0.9))
+        setPhotoUrl(canvas.toDataURL('image/png'))
       }
     }
     stopParentCamera()
@@ -281,7 +293,7 @@ export function ParentProfilePage() {
           300,
           300,
         )
-        setChildPhotoUrl(canvas.toDataURL('image/webp', 0.9))
+        setChildPhotoUrl(canvas.toDataURL('image/png'))
       }
     }
     stopCamera()
@@ -323,30 +335,40 @@ export function ParentProfilePage() {
       setChildFormMessage('같은 이름의 아이 프로필이 이미 있어요.')
       return
     }
-    const localProfile = {
+    const localProfile: ChildProfile = {
       id:
         typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random()}`,
       name,
       photoUrl: childPhotoUrl,
-      profileImageNum: childImageNumFromPhoto(childPhotoUrl),
+      profileImageKey: childImageKeyFromPhoto(childPhotoUrl),
+      profileImageUrl: null,
     }
 
     try {
       if (getStoredAccessToken()) {
         const created = await createBackendChildProfile(
           name,
-          localProfile.profileImageNum,
+          localProfile.profileImageKey,
         )
-        localProfile.id = String(created.childId)
-        localProfile.profileImageNum = created.profileImageNum
+        const saved = isDataImageUrl(childPhotoUrl)
+          ? await uploadChildProfileImage(
+              created.childId,
+              await dataImageUrlToBlob(childPhotoUrl),
+            )
+          : created
+        localProfile.id = String(saved.childId)
+        localProfile.profileImageKey = saved.profileImageKey
+        localProfile.profileImageUrl = saved.profileImageUrl
+        localProfile.photoUrl =
+          saved.profileImageUrl ?? childPhotoFromImageKey(saved.profileImageKey)
       }
     } catch (error) {
       setChildFormMessage(
         error instanceof Error
           ? error.message
-          : '?꾩씠 ?꾨줈?꾩쓣 留뚮뱾吏 紐삵뻽?댁슂.',
+          : '아이 프로필을 만들지 못했어요.',
       )
       return
     }
@@ -366,12 +388,15 @@ export function ParentProfilePage() {
       if (getStoredAccessToken() && firstPin && !isPinSaved) {
         await setParentPin(firstPin)
       }
+      if (getStoredAccessToken() && isDataImageUrl(photoUrl)) {
+        await uploadParentProfileImage(await dataImageUrlToBlob(photoUrl))
+      }
     } catch (error) {
       setIsPinError(true)
       setPinMessage(
         error instanceof Error
           ? error.message
-          : '? 踰덊샇瑜???ν븯吏 紐삵뻽?댁슂.',
+          : 'PIN 번호를 저장하지 못했어요.',
       )
       return
     }
@@ -412,7 +437,7 @@ export function ParentProfilePage() {
 
         <Link
           aria-label="뒤로"
-          className="absolute top-[25px] left-[25px] z-30 block size-[58px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105"
+          className="absolute top-[25px] left-[25px] z-30 block size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,0.28)] transition hover:scale-105"
           to="/"
         >
           <img
@@ -435,7 +460,7 @@ export function ParentProfilePage() {
           />
         </button>
 
-        <main className="absolute top-[-40px] left-1/2 z-10 h-[720px] w-[710px] -translate-x-1/2">
+        <main className="absolute top-[-10px] left-1/2 z-10 h-[720px] w-[710px] -translate-x-1/2">
           <img
             alt=""
             className="pointer-events-none absolute inset-0 size-full"
@@ -564,7 +589,7 @@ export function ParentProfilePage() {
         </main>
 
         <button
-          className="absolute right-[25px] bottom-[85px] z-40 h-[86px] w-[245px] bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white active:translate-y-0.5"
+          className="absolute right-[25px] bottom-[25px] z-40 h-[86px] w-[245px] bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white active:translate-y-0.5"
           onClick={() => void finish()}
           style={{
             ...jua,

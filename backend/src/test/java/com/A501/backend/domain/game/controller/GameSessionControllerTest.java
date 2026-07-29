@@ -16,6 +16,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.A501.backend.domain.child.entity.Child;
+import com.A501.backend.domain.child.repository.ChildRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 @SpringBootTest
@@ -28,9 +30,17 @@ class GameSessionControllerTest {
     @Autowired
     private GameSessionRepository gameSessionRepository;
 
+    @Autowired
+    private ChildRepository childRepository;
+
+    private Long childId;
+
     @BeforeEach
     void setUp() {
         gameSessionRepository.deleteAll();
+        childRepository.deleteAll();
+        childId = childRepository.saveAndFlush(
+                Child.create(1L, "테스터", "profile-presets/child-avatar")).getChildId();
     }
 
     @Test
@@ -39,7 +49,7 @@ class GameSessionControllerTest {
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validRequest(clientPlayId)))
+                        .content(validRequest(clientPlayId, childId)))
                 .andExpect(status().isCreated())
                 .andExpect(header().exists("Location"))
                 .andExpect(jsonPath("$.gameSessionId").isNotEmpty())
@@ -55,11 +65,11 @@ class GameSessionControllerTest {
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validRequest(clientPlayId)))
+                        .content(validRequest(clientPlayId, childId)))
                 .andExpect(status().isCreated());
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(validRequest(clientPlayId)))
+                        .content(validRequest(clientPlayId, childId)))
                 .andExpect(status().isCreated());
 
         assertThat(gameSessionRepository.count()).isEqualTo(1);
@@ -69,7 +79,7 @@ class GameSessionControllerTest {
     void 완료_시각이_시작_시각보다_빠르면_저장하지_않는다() throws Exception {
         String request = """
                 {
-                  "childId": 15,
+                  "childId": %d,
                   "gameId": 7,
                   "clientPlayId": "%s",
                   "difficultyCode": "EASY",
@@ -79,7 +89,7 @@ class GameSessionControllerTest {
                   "playDurationSeconds": 90,
                   "score": 1200
                 }
-                """.formatted(UUID.randomUUID());
+                """.formatted(childId, UUID.randomUUID());
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -94,7 +104,7 @@ class GameSessionControllerTest {
     void 점수가_누락되면_저장하지_않는다() throws Exception {
         String request = """
                 {
-                  "childId": 15,
+                  "childId": %d,
                   "gameId": 7,
                   "clientPlayId": "%s",
                   "selectedAt": "2026-07-23T10:00:00",
@@ -102,7 +112,7 @@ class GameSessionControllerTest {
                   "completedAt": "2026-07-23T10:01:40",
                   "playDurationSeconds": 90
                 }
-                """.formatted(UUID.randomUUID());
+                """.formatted(childId, UUID.randomUUID());
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,10 +123,10 @@ class GameSessionControllerTest {
         assertThat(gameSessionRepository.count()).isZero();
     }
 
-    private String validRequest(UUID clientPlayId) {
+    private String validRequest(UUID clientPlayId, Long requestChildId) {
         return """
                 {
-                  "childId": 15,
+                  "childId": %d,
                   "gameId": 7,
                   "clientPlayId": "%s",
                   "difficultyCode": "EASY",
@@ -126,6 +136,6 @@ class GameSessionControllerTest {
                   "playDurationSeconds": 90,
                   "score": 1200
                 }
-                """.formatted(clientPlayId);
+                """.formatted(requestChildId, clientPlayId);
     }
 }

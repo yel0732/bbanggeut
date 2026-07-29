@@ -11,6 +11,14 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum GameErrorCode implements ErrorCode {
 
+    UNAUTHORIZED(
+            HttpStatus.UNAUTHORIZED,
+            "UNAUTHORIZED",
+            "인증이 필요합니다."),
+    CHILD_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "CHILD_NOT_FOUND",
+            "아이 프로필을 찾을 수 없습니다."),
     ACTIVE_FRUIT_NINJA_RULE_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "ACTIVE_FRUIT_NINJA_RULE_NOT_FOUND",

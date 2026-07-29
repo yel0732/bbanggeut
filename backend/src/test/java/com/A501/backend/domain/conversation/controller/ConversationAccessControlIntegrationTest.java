@@ -25,7 +25,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -38,7 +37,6 @@ import com.A501.backend.domain.conversation.repository.ConversationGameSessionRe
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
-import com.A501.backend.domain.conversation.service.JdbcConversationChildAdapter;
 import com.A501.backend.domain.conversation.service.RealtimeContextStore;
 import com.A501.backend.domain.conversation.service.RealtimeSessionLeaseStore;
 import com.A501.backend.domain.conversation.service.RealtimeTicketStore;
@@ -227,10 +225,7 @@ class ConversationAccessControlIntegrationTest {
             return new SecurityCurrentMemberProvider();
         }
 
-        @Bean
-        @Primary
-        JdbcConversationChildAdapter jdbcConversationChildAdapter(JdbcTemplate jdbcTemplate) {
-            return new JdbcConversationChildAdapter(jdbcTemplate);
-        }
+        // 아이 소유권 검증은 이제 모든 프로필에서 child 테이블을 읽으므로 따로
+        // 끼워 넣지 않는다. 보호자 판별만 local mock 대신 운영 구현으로 바꾼다.
     }
 }

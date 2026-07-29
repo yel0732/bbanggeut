@@ -22,6 +22,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
+import com.A501.backend.domain.child.entity.Child;
+import com.A501.backend.domain.child.repository.ChildRepository;
 import com.A501.backend.domain.conversation.dto.request.CompleteConversationRequest;
 import com.A501.backend.domain.conversation.dto.response.CompleteConversationResponse;
 import com.A501.backend.domain.conversation.entity.ContextType;
@@ -41,6 +43,9 @@ class ConversationTerminationConcurrencyTest {
     @Autowired
     private ConversationSessionRepository conversationSessionRepository;
 
+    @Autowired
+    private ChildRepository childRepository;
+
     @MockitoSpyBean
     private ConversationTerminationExecutor conversationTerminationExecutor;
 
@@ -49,8 +54,14 @@ class ConversationTerminationConcurrencyTest {
     @BeforeEach
     void setUp() {
         conversationSessionRepository.deleteAll();
+        // 소유권 검증이 child 테이블을 읽으므로 실제 아이를 심는다. 보호자 ID는
+        // 인증 없이 도는 이 테스트에서 local 기본 보호자(app.local.mock-principal-id)와
+        // 맞춘다.
+        Long childId = childRepository
+                .saveAndFlush(Child.create(1L, "테스터", 1))
+                .getChildId();
         ConversationSession session = ConversationSession.create(
-                CONVERSATION_ID, 15L, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
+                CONVERSATION_ID, childId, null, ContextType.DAILY, ConversationGoal.DIARY, 6);
         session.start();
         conversationSessionRepository.saveAndFlush(session);
         executorService = Executors.newFixedThreadPool(2);

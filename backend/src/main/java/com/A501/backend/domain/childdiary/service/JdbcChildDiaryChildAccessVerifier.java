@@ -2,7 +2,6 @@ package com.A501.backend.domain.childdiary.service;
 
 import java.util.List;
 
-import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +12,6 @@ import com.A501.backend.domain.childdiary.port.ChildDiaryChildAccessVerifier;
 import lombok.RequiredArgsConstructor;
 
 @Component
-@Profile("!local")
 @RequiredArgsConstructor
 public class JdbcChildDiaryChildAccessVerifier implements ChildDiaryChildAccessVerifier {
     private final JdbcTemplate jdbcTemplate;

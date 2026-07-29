@@ -1,6 +1,8 @@
 package com.A501.backend.domain.conversation.controller;
 
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,6 +34,8 @@ import com.A501.backend.domain.conversation.repository.ConversationSessionReposi
 import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import com.A501.backend.domain.conversation.service.ChildAccessVerifier;
+import com.A501.backend.domain.conversation.dto.realtime.RealtimeChildContext;
+import com.A501.backend.domain.conversation.service.RealtimeChildProfileProvider;
 import com.A501.backend.domain.conversation.service.RealtimeContextStore;
 import com.A501.backend.domain.conversation.service.RealtimeSessionLeaseStore;
 import com.A501.backend.domain.conversation.service.RealtimeTicketStore;
@@ -68,12 +72,19 @@ class RealtimeSessionControllerTest {
     @MockitoBean
     private RealtimeSessionLeaseStore realtimeSessionLeaseStore;
 
+    // 아이 프로필은 child 테이블에서 읽는다. 이 테스트는 대화 세션 행만 심으므로
+    // 실물을 쓰면 CHILD_NOT_FOUND가 난다 — 발급 경로만 보기 위해 가명으로 대체한다.
+    @MockitoBean
+    private RealtimeChildProfileProvider realtimeChildProfileProvider;
+
     @BeforeEach
     void setUp() {
         turnRepository.deleteAll();
         gameLinkRepository.deleteAll();
         topicRepository.deleteAll();
         sessionRepository.deleteAll();
+        when(realtimeChildProfileProvider.getProfile(anyLong()))
+                .thenReturn(new RealtimeChildContext("아이"));
     }
 
     @Test

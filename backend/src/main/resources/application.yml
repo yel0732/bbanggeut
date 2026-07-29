@@ -130,9 +130,9 @@ app:
   cookie:
     secure: false
   local:
+    # 아이 소유권과 이름은 local에서도 child 테이블에서 읽는다. 인증 없이 열리는
+    # /harness 도구만 보호자를 특정할 수 없어 이 ID로 대신한다.
     mock-principal-id: 1
-    mock-child-id: 15
-    mock-child-owner-id: 1
 
 logging:
   level:

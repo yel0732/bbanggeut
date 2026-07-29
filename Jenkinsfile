@@ -21,7 +21,9 @@ pipeline {
         stage('Verify master') {
             steps {
                 script {
-                    def deployedBranch = env.BRANCH_NAME ?: env.gitlabSourceBranch
+                    def deployedBranch = env.BRANCH_NAME
+                            ?: env.gitlabSourceBranch
+                            ?: env.GIT_BRANCH?.replaceFirst('^origin/', '')
                     if (deployedBranch != 'master') {
                         currentBuild.result = 'NOT_BUILT'
                         error('Deployment pipeline only runs for master.')

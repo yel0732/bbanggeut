@@ -22,8 +22,16 @@ services:
       - /srv/a501-secrets:/srv/a501-secrets:ro
       - /srv/a501-backups:/srv/a501-backups
       - /srv/a501-deploy-state:/srv/a501-deploy-state
+    networks:
+      - default
+      - app_edge
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  app_edge:
+    external: true
+    name: a501_edge

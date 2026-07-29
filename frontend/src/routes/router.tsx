@@ -34,14 +34,6 @@ export const router = createBrowserRouter([
     element: <ProfileSelectPage />,
   },
   {
-    path: '/profiles/new',
-    element: <ParentProfilePage />,
-  },
-  {
-    path: '/profiles/children',
-    element: <ChildProfileListPage />,
-  },
-  {
     path: '/child',
     element: <ChildHomePage />,
   },
@@ -99,6 +91,19 @@ export const router = createBrowserRouter([
   {
     path: '/diaries',
     element: <DiaryListPage />,
+  },
+  {
+    element: <ParentRouteGuard allowOnboarding />,
+    children: [
+      {
+        path: '/profiles/new',
+        element: <ParentProfilePage />,
+      },
+      {
+        path: '/profiles/children',
+        element: <ChildProfileListPage />,
+      },
+    ],
   },
   {
     element: <ParentRouteGuard />,

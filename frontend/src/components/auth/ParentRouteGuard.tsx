@@ -1,11 +1,19 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
+import { hasPendingNewSignupOnboarding } from '@/api/auth'
 import { hasParentAccess } from '@/lib/parentAccess'
 
-export function ParentRouteGuard() {
+export function ParentRouteGuard({
+  allowOnboarding = false,
+}: {
+  allowOnboarding?: boolean
+}) {
   const location = useLocation()
+  const canEnter =
+    hasParentAccess() ||
+    (allowOnboarding && hasPendingNewSignupOnboarding())
 
-  if (!hasParentAccess()) {
+  if (!canEnter) {
     return (
       <Navigate
         replace

@@ -6,7 +6,7 @@ import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
 import signupCompleteButtonUrl from '@/assets/images/auth/btn-go-login.webp'
 import signupCompleteFrameUrl from '@/assets/images/auth/signup-complete-frame.webp'
 import signupCompleteStarUrl from '@/assets/images/auth/signup-complete-star.webp'
-import signupBoardUrl from '@/assets/images/auth/signup-board.webp'
+import signupBoardUrl from '@/assets/images/auth/signup-board-v2.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
@@ -22,8 +22,9 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const boardSize = {
-  aspectRatio: '512 / 682',
-  width: 512,
+  aspectRatio: '835 / 1064',
+  width:
+    'min(580px, calc(100vw - 32px), calc((100vh - 32px) * 835 / 1064))',
 } as const
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 const PASSWORD_PATTERN =
@@ -77,6 +78,7 @@ export function EmailSignupPage() {
   const [emailChecked, setEmailChecked] = useState(false)
   const [emailAvailable, setEmailAvailable] = useState(false)
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [birth, setBirth] = useState('')
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
@@ -87,9 +89,16 @@ export function EmailSignupPage() {
 
   const emailValid = EMAIL_PATTERN.test(email)
   const passwordValid = PASSWORD_PATTERN.test(password)
+  const passwordConfirmed =
+    passwordConfirm.length > 0 && passwordConfirm === password
   const age = useMemo(() => ageOf(birth), [birth])
   const ageValid = age !== null && age >= MIN_SIGNUP_AGE
-  const canSubmit = emailChecked && emailAvailable && passwordValid && ageValid
+  const canSubmit =
+    emailChecked &&
+    emailAvailable &&
+    passwordValid &&
+    passwordConfirmed &&
+    ageValid
 
   const checkEmail = async () => {
     if (!emailValid) {
@@ -125,6 +134,10 @@ export function EmailSignupPage() {
       window.alert('비밀번호는 8자 이상이어야 해요.')
       return
     }
+    if (!passwordConfirmed) {
+      window.alert('비밀번호 확인이 일치하지 않아요.')
+      return
+    }
     if (!ageValid) {
       window.alert('만 19세 이상만 가입할 수 있어요.')
       return
@@ -156,9 +169,15 @@ export function EmailSignupPage() {
     : ''
   const passwordMessage = password
     ? passwordValid
-      ? '안전한 비밀번호예요!'
-      : '8자 이상 입력해요.'
+      ? '사용할 수 있는 비밀번호예요!'
+      : passwordValidationMessage(password)
+    : '영문·숫자·특수문자를 포함해 8~16자로 입력해 주세요.'
+  const passwordConfirmMessage = passwordConfirm
+    ? passwordConfirmed
+      ? '비밀번호가 일치해요!'
+      : '비밀번호가 일치하지 않아요.'
     : ''
+  const birthMessage = birth && !ageValid ? '만 19세 이상만 가입할 수 있어요.' : ''
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)]">
       <div
@@ -212,166 +231,197 @@ export function EmailSignupPage() {
           />
         </button>
 
-        <div className="relative z-20" style={boardSize}>
-          <img
-            alt=""
-            className="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
-            decoding="async"
-            src={signupBoardUrl}
-          />
+      <div className="relative z-20 -translate-y-1" style={boardSize}>
+        <img
+          alt=""
+          className="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
+          decoding="async"
+          src={signupBoardUrl}
+        />
 
-          <img
-            alt="빵긋"
-            className="pointer-events-none absolute top-[14%] left-1/2 z-20 w-[43%] -translate-x-1/2 drop-shadow-[0_5px_10px_rgba(0,0,0,0.18)]"
-            decoding="async"
-            src={logoUrl}
-          />
-          <span
-            className="pointer-events-none absolute top-[27%] left-1/2 z-20 -translate-x-1/2 text-[20px] whitespace-nowrap text-[#5a7d3a]"
-            style={jua}
-          >
-            이메일로 등록하기
-          </span>
-
-          <input
-            className="auth-transparent-input absolute top-[36%] left-[17.5%] z-20 h-[7%] w-[44%] appearance-none border-none bg-transparent px-[3%] text-[18px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
-            onChange={(event) => {
-              setEmail(event.target.value)
-              setEmailChecked(false)
-              setEmailAvailable(false)
-            }}
-            placeholder="이메일"
-            style={jua}
-            type="email"
-            value={email}
-          />
-          <button
-            className="absolute top-[36%] left-[65%] z-20 h-[7%] w-[19%] rounded-full border-none text-[15px] text-white"
-            disabled={isCheckingEmail || isSubmitting}
-            onClick={() => void checkEmail()}
-            style={{
-              ...jua,
-              paintOrder: 'stroke fill',
-              WebkitTextStroke: '2.5px #4a7d1e',
-            }}
-            type="button"
-          >
-            중복확인
-          </button>
-          <div
-            className="absolute top-[44%] left-[17.5%] z-20 text-[13px]"
+        <img
+          alt="빵긋"
+          className="pointer-events-none absolute top-[12%] left-1/2 z-20 w-[39%] -translate-x-1/2 drop-shadow-[0_5px_10px_rgba(0,0,0,0.18)]"
+          decoding="async"
+          src={logoUrl}
+        />
+        <span
+          className="pointer-events-none absolute top-[22%] left-1/2 z-20 -translate-x-1/2 text-[clamp(18px,4.5vw,24px)] whitespace-nowrap text-[#5a7d3a]"
+          style={jua}
+        >
+          이메일로 들어가기
+        </span>
+        <input
+          className="auth-transparent-input absolute top-[29.7%] left-[17%] z-20 h-[8.5%] w-[46.8%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+          onChange={(event) => {
+            setEmail(event.target.value)
+            setEmailChecked(false)
+            setEmailAvailable(false)
+          }}
+          placeholder="이메일"
+          style={jua}
+          type="email"
+          value={email}
+        />
+        <button
+          className="absolute top-[29.7%] left-[65%] z-20 h-[8.5%] w-[19.4%] rounded-full border-none bg-transparent text-[clamp(11px,3vw,22px)] text-white"
+          disabled={isCheckingEmail || isSubmitting}
+          onClick={() => void checkEmail()}
+          style={{
+            ...jua,
+            paintOrder: 'stroke fill',
+            WebkitTextStroke: '2.5px #4a7d1e',
+          }}
+          type="button"
+        >
+          중복확인
+        </button>
+        {emailMessage ? (
+          <p
+            className="absolute top-[38.9%] left-[17%] z-20 w-[67.6%] px-1 text-[clamp(9px,2.4vw,14px)] leading-none"
             style={{ ...jua, color: emailAvailable ? '#3a7d2c' : '#c7563a' }}
           >
             {emailMessage}
-          </div>
-
-          <input
-            className="auth-transparent-input absolute top-[50.5%] left-[17.5%] z-20 h-[7%] w-[56%] appearance-none border-none bg-transparent px-[3%] text-[18px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="비밀번호 (8자 이상)"
-            style={jua}
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-          />
-          <button
-            aria-label="비밀번호 보기"
-            className="absolute top-[50.5%] right-[18%] z-20 h-[7%] w-[10%] border-none bg-none text-[15px] leading-none text-[#6f8a5e]"
-            onClick={() => setShowPassword((value) => !value)}
-            type="button"
-          >
-            {showPassword ? '숨김' : '보기'}
-          </button>
-          <div
-            className="absolute top-[58%] left-[17.5%] z-20 text-[13px]"
-            style={{ ...jua, color: passwordValid ? '#3a7d2c' : '#c7563a' }}
-          >
-            {passwordValid
-              ? ''
-              : passwordMessage && passwordValidationMessage(password)}
-          </div>
-
-          <div
-            className="absolute top-[65%] left-[17.5%] z-20 h-[7%] w-[66.5%] overflow-hidden rounded-full pr-2"
-            style={jua}
-          >
-            <BirthDatePicker
-              maxDate={maxBirthDate}
-              onChange={setBirth}
-              value={birth}
-            />
-          </div>
-
-          <button
-            className="absolute top-[75.5%] left-[17%] z-20 h-[9%] w-[66%] rounded-full border-none text-[27px] text-white transition active:translate-y-0.5"
-            disabled={!canSubmit || isSubmitting}
-            onClick={() => void submit()}
+          </p>
+        ) : null}
+        <input
+          className="auth-transparent-input absolute top-[41.9%] left-[17%] z-20 h-[8.5%] w-[57.5%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="비밀번호 (8~16자)"
+          style={jua}
+          type={showPassword ? 'text' : 'password'}
+          value={password}
+        />
+        <button
+          aria-label="비밀번호 보기"
+          className="absolute top-[41.9%] right-[15.8%] z-20 h-[8.5%] w-[10%] border-none bg-none text-[clamp(11px,3vw,15px)] leading-none text-[#6f8a5e]"
+          onClick={() => setShowPassword((value) => !value)}
+          type="button"
+        >
+          {showPassword ? '숨김' : '보기'}
+        </button>
+        {passwordMessage ? (
+          <p
+            className="absolute top-[51.2%] left-[17%] z-20 w-[67.6%] px-1 text-[clamp(9px,2.4vw,14px)] leading-none"
             style={{
               ...jua,
-              cursor: canSubmit ? 'pointer' : 'not-allowed',
-              opacity: canSubmit ? 1 : 0.55,
-              paintOrder: 'stroke fill',
-              WebkitTextStroke: '4px #4a7d1e',
+              color: !password
+                ? '#7d8e5f'
+                : passwordValid
+                  ? '#3a7d2c'
+                  : '#c7563a',
             }}
-            type="button"
           >
-            가입하기
-          </button>
-          {requestError ? (
-            <p
-              className="absolute top-[85%] left-[17%] z-20 w-[66%] text-center text-[13px] text-[#c7563a]"
-              style={jua}
-            >
-              {requestError}
-            </p>
-          ) : null}
+            {passwordMessage}
+          </p>
+        ) : null}
+        <input
+          className="auth-transparent-input absolute top-[54.3%] left-[17%] z-20 h-[8.5%] w-[68%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+          onChange={(event) => setPasswordConfirm(event.target.value)}
+          placeholder="비밀번호 확인"
+          style={jua}
+          type={showPassword ? 'text' : 'password'}
+          value={passwordConfirm}
+        />
+        {passwordConfirmMessage ? (
+          <p
+            className="absolute top-[63.3%] left-[17%] z-20 w-[67.6%] px-1 text-[clamp(9px,2.4vw,14px)] leading-none"
+            style={{
+              ...jua,
+              color: passwordConfirmed ? '#3a7d2c' : '#c7563a',
+            }}
+          >
+            {passwordConfirmMessage}
+          </p>
+        ) : null}
+
+        <div
+          className="absolute top-[66.2%] left-[15.8%] z-20 h-[8.6%] w-[68%] overflow-hidden rounded-full pr-2"
+          style={jua}
+        >
+          <BirthDatePicker
+            maxDate={maxBirthDate}
+            onChange={setBirth}
+            value={birth}
+          />
         </div>
-        {isSignupComplete ? (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(10,26,15,.55)]">
-            <section className="relative aspect-square w-[460px]">
-              <img
-                alt=""
-                className="pointer-events-none absolute inset-0 size-full object-contain"
-                src={signupCompleteFrameUrl}
-              />
-              <img
-                alt=""
-                className="pointer-events-none absolute top-[10%] left-[238px] w-[25%] -translate-x-1/2 object-contain"
-                src={signupCompleteStarUrl}
-              />
-              <h2
-                className="absolute top-[35%] right-0 left-0 text-center text-[28px] text-[#5a7d3a]"
-                style={jua}
-              >
-                회원가입 완료!
-              </h2>
-              <p
-                className="absolute top-[47%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
-                style={jua}
-              >
-                회원가입이 완료되었어요!
-                <br />
-                아래 버튼을 눌러 로그인해 주세요.
-              </p>
-              <button
-                className="absolute top-[69%] left-1/2 flex h-[20%] w-[62%] -translate-x-1/2 items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill]"
-                onClick={() =>
-                  navigate('/auth/login', {
-                    replace: true,
-                    state: { email: email.trim().toLowerCase() },
-                  })
-                }
-                style={{
-                  ...jua,
-                  backgroundImage: `url(${signupCompleteButtonUrl})`,
-                }}
-                type="button"
-              >
-                로그인하기
-              </button>
-            </section>
-          </div>
+        {birthMessage ? (
+          <p
+            className="absolute top-[75.1%] left-[16.2%] z-20 w-[67.6%] px-1 text-[clamp(9px,2.4vw,11px)] leading-none text-[#c7563a]"
+            style={jua}
+          >
+            {birthMessage}
+          </p>
+        ) : null}
+
+        <button
+          className="absolute top-[77.8%] left-[17.1%] z-20 h-[10.9%] w-[64.3%] rounded-full border-none bg-transparent text-[clamp(20px,6vw,27px)] text-white transition active:translate-y-0.5"
+          disabled={!canSubmit || isSubmitting}
+          onClick={() => void submit()}
+          style={{
+            ...jua,
+            cursor: canSubmit ? 'pointer' : 'not-allowed',
+            opacity: canSubmit ? 1 : 0.55,
+            paintOrder: 'stroke fill',
+            WebkitTextStroke: '4px #4a7d1e',
+          }}
+          type="button"
+        >
+          가입하기
+        </button>
+        {requestError ? (
+          <p
+            className="absolute top-[89%] left-[16%] z-20 w-[68%] text-center text-[clamp(11px,2.8vw,13px)] text-[#c7563a]"
+            style={jua}
+          >
+            {requestError}
+          </p>
         ) : null}
       </div>
+      {isSignupComplete ? (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(10,26,15,.55)]">
+          <section className="relative aspect-square w-[min(460px,calc(100vw-32px),calc(100vh-32px))]">
+            <img
+              alt=""
+              className="pointer-events-none absolute inset-0 size-full object-contain"
+              src={signupCompleteFrameUrl}
+            />
+            <img
+              alt=""
+              className="pointer-events-none absolute top-[10%] left-[238px] w-[25%] -translate-x-1/2 object-contain"
+              src={signupCompleteStarUrl}
+            />
+            <h2
+              className="absolute top-[35%] right-0 left-0 text-center text-[28px] text-[#5a7d3a]"
+              style={jua}
+            >
+              회원가입 완료!
+            </h2>
+            <p
+              className="absolute top-[47%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
+              style={jua}
+            >
+              회원가입이 완료되었어요!
+              <br />
+              아래 버튼을 눌러 로그인해 주세요.
+            </p>
+            <button
+              className="absolute top-[69%] left-1/2 flex h-[20%] w-[62%] -translate-x-1/2 items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-white [-webkit-text-stroke:3px_#4a7d1e] [paint-order:stroke_fill]"
+              onClick={() =>
+                navigate('/auth/login', {
+                  replace: true,
+                  state: { email: email.trim().toLowerCase() },
+                })
+              }
+              style={{ ...jua, backgroundImage: `url(${signupCompleteButtonUrl})` }}
+              type="button"
+            >
+              로그인하기
+            </button>
+          </section>
+        </div>
+      ) : null}
     </div>
+  </div>
   )
 }

@@ -230,6 +230,7 @@ export function GameGuidePage() {
                 speech={step.speech}
               />
             }
+            bodyOverflowVisible={step.kind === 'intro'}
             footer={
               <StepFooter
                 cameraUsable={cameraUsable}
@@ -269,6 +270,12 @@ export function GameGuidePage() {
 }
 
 /** 소개·시작 단계에서 빵긋이 서는 크기(px) */
+const INTRO_HERO_SIZE = 800
+/** 첫 번째 안내 단계에서 빵긋이를 왼쪽으로 옮기는 거리(px) */
+const INTRO_HERO_X = -220
+const INTRO_HERO_Y = -270
+const INTRO_SPEECH_X = 340
+const INTRO_SPEECH_Y = 110
 const HERO_SIZE = 300
 /** 시범·인식 단계에서 패널 안 그림 크기(px) */
 const STAGE_SIZE = 380
@@ -316,13 +323,28 @@ function StepBody({
   speech: string
 }) {
   if (kind === 'intro' || kind === 'ready') {
+    if (kind === 'intro') {
+      return (
+        <div className="relative h-full w-full">
+          <div
+            className="absolute"
+            style={{ left: INTRO_HERO_X, top: INTRO_HERO_Y }}
+          >
+            <GreetingVideo size={INTRO_HERO_SIZE} />
+          </div>
+          <div
+            className="absolute"
+            style={{ left: INTRO_SPEECH_X, top: INTRO_SPEECH_Y }}
+          >
+            <SpeechBubble speech={speech} />
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="flex items-center justify-center gap-4">
-        {kind === 'intro' ? (
-          <GreetingVideo size={HERO_SIZE} />
-        ) : (
-          <CelebrationVideo size={HERO_SIZE} />
-        )}
+        <CelebrationVideo size={HERO_SIZE} />
         <SpeechBubble speech={speech} />
       </div>
     )
@@ -572,7 +594,7 @@ function PracticeCameraPreview({
   return (
     <video
       autoPlay
-      className="pointer-events-none absolute right-1 bottom-1 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-[0_3px_8px_rgba(0,0,0,0.3)]"
+      className="pointer-events-none absolute right-1 bottom-2 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-[0_3px_8px_rgba(0,0,0,0.3)]"
       muted
       playsInline
       ref={videoRef}
@@ -643,6 +665,8 @@ function StepFooter({
     화면 왼쪽 위 뒤로가기·닫기 버튼이 그대로 있으니 갇히지도 않는다.
   */
   const hidePrev = kind === 'practice' && cameraUsable
+  const footerLayoutClass =
+    !showPrev && !mustFinish ? 'justify-center gap-12' : 'justify-between'
 
   /*
     버튼이 하나만 남을 때 가운데 오면 "이걸 눌러 진행하라"는 것처럼 보인다.
@@ -650,7 +674,7 @@ function StepFooter({
     화면 왼쪽 위 뒤로가기 버튼과도 방향이 맞는다.
   */
   return (
-    <div className="flex w-full items-center justify-between">
+    <div className={`flex w-full items-center ${footerLayoutClass}`}>
       {hidePrev ? null : (
         <GuideButton
           imageUrl={guideBackButtonUrl}
@@ -701,7 +725,7 @@ function GuideButton({
       <span
         // 버튼 이미지는 위쪽 테두리가 더 두꺼워 글자가 떠 보인다. 아래로 조금 내려
         // 나무판 안쪽 가운데에 맞춘다.
-        className={`absolute inset-0 flex items-center justify-center pt-4 text-[22px] leading-none ${labelClassName}`}
+        className={`absolute inset-0 flex items-center justify-center pt-4 text-[30px] leading-none ${labelClassName}`}
         style={jua}
       >
         {label}

@@ -2,6 +2,7 @@ package com.A501.backend.domain.game.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
@@ -32,12 +33,19 @@ class GameSessionServiceTest {
     @Mock
     private GameSessionWriter gameSessionWriter;
 
+    @Mock
+    private GameCurrentMemberProvider currentMemberProvider;
+
+    @Mock
+    private GameChildAccessVerifier childAccessVerifier;
+
     @Test
     void 게임_세션이_요청한_아이의_것인지_확인한다() {
         GameSession session = createSession(UUID.randomUUID());
         when(gameSessionRepository.findById(session.getGameSessionId())).thenReturn(Optional.of(session));
         GameSessionService service = new GameSessionService(
-                gameSessionRepository, gameRepository, gameSessionWriter);
+                gameSessionRepository, gameRepository, gameSessionWriter,
+                currentMemberProvider, childAccessVerifier);
 
         assertThat(service.existsForChild(session.getGameSessionId(), 15L)).isTrue();
         assertThat(service.existsForChild(session.getGameSessionId(), 99L)).isFalse();
@@ -53,8 +61,11 @@ class GameSessionServiceTest {
                 .thenReturn(Optional.of(existingSession));
         when(gameSessionWriter.saveAndFlush(any(GameSession.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate client_play_id"));
+        when(currentMemberProvider.getCurrentMemberId()).thenReturn(1L);
+        doNothing().when(childAccessVerifier).verifyAccess(1L, request.childId());
         GameSessionService service = new GameSessionService(
-                gameSessionRepository, gameRepository, gameSessionWriter);
+                gameSessionRepository, gameRepository, gameSessionWriter,
+                currentMemberProvider, childAccessVerifier);
 
         GameSessionResponse response = service.saveCompletedResult(request);
 

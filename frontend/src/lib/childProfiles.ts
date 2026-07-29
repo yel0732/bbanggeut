@@ -6,10 +6,32 @@ export type ChildProfile = {
   id: string
   name: string
   photoUrl: string | null
+  profileImageKey?: string
+  profileImageUrl?: string | null
   profileImageNum?: number
 }
 
 export const MAX_CHILD_PROFILES = 10
+export const CHILD_DEFAULT_IMAGE_KEY = 'profile-presets/child-avatar'
+export const CHILD_TIGER_IMAGE_KEY = 'profile-presets/child-avatar-tiger'
+export const CHILD_RABBIT_IMAGE_KEY = 'profile-presets/child-avatar-rabbit'
+export const PARENT_DEFAULT_IMAGE_KEY = 'profile-presets/parent-avatar'
+
+export function childPhotoFromImageKey(profileImageKey?: string | null) {
+  if (profileImageKey === CHILD_TIGER_IMAGE_KEY) return childTigerAvatarUrl
+  if (profileImageKey === CHILD_RABBIT_IMAGE_KEY) return childRabbitAvatarUrl
+  return null
+}
+
+export function childImageKeyFromPhoto(
+  photoUrl: string | null,
+  fallback = CHILD_DEFAULT_IMAGE_KEY,
+) {
+  if (photoUrl === childAvatarUrl || photoUrl === null) return CHILD_DEFAULT_IMAGE_KEY
+  if (photoUrl === childTigerAvatarUrl) return CHILD_TIGER_IMAGE_KEY
+  if (photoUrl === childRabbitAvatarUrl) return CHILD_RABBIT_IMAGE_KEY
+  return fallback
+}
 
 export function childPhotoFromImageNum(profileImageNum: number) {
   if (profileImageNum === 2) return childTigerAvatarUrl
@@ -63,6 +85,11 @@ function isChildProfile(value: unknown): value is ChildProfile {
     typeof profile.id === 'string' &&
     typeof profile.name === 'string' &&
     (profile.photoUrl === null || typeof profile.photoUrl === 'string') &&
+    (profile.profileImageKey === undefined ||
+      typeof profile.profileImageKey === 'string') &&
+    (profile.profileImageUrl === undefined ||
+      profile.profileImageUrl === null ||
+      typeof profile.profileImageUrl === 'string') &&
     (profile.profileImageNum === undefined ||
       (typeof profile.profileImageNum === 'number' &&
         Number.isInteger(profile.profileImageNum) &&

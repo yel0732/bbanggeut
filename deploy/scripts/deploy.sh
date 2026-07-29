@@ -30,8 +30,8 @@ export BACKEND_IMAGE="a501-backend:$sha"
 export NGINX_IMAGE="a501-nginx:$sha"
 export NGINX_CONFIG_FILE="$deploy_root/deploy/nginx.conf"
 export CERTBOT_WEBROOT=${CERTBOT_WEBROOT_HOST:-/srv/a501/deploy/certbot/www}
-export LETSENCRYPT_LIVE_DIR=${LETSENCRYPT_LIVE_DIR_HOST:-/srv/a501/deploy/certbot/letsencrypt/live/i15a501.p.ssafy.io}
-export LETSENCRYPT_ARCHIVE_DIR=${LETSENCRYPT_ARCHIVE_DIR_HOST:-/srv/a501/deploy/certbot/letsencrypt/archive/i15a501.p.ssafy.io}
+export LETSENCRYPT_LIVE_DIR=${LETSENCRYPT_LIVE_DIR_HOST:-/etc/letsencrypt/live/i15a501.p.ssafy.io}
+export LETSENCRYPT_ARCHIVE_DIR=${LETSENCRYPT_ARCHIVE_DIR_HOST:-/etc/letsencrypt/archive/i15a501.p.ssafy.io}
 
 rollback() {
     trap - INT TERM HUP EXIT
@@ -41,6 +41,8 @@ rollback() {
 trap rollback INT TERM HUP EXIT
 
 COMPOSE_FILE="$compose_file" ENV_FILE="$env_file" "$script_dir/backup-db.sh"
+docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps redis
+"$script_dir/wait-for-healthy.sh" a501-redis-1 60
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps ai-server
 "$script_dir/wait-for-healthy.sh" a501-ai-server-1 120
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps backend

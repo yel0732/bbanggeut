@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import {
   getStoredAccessToken,
   hasPendingNewSignupOnboarding,
+  isPinLockedError,
+  isPinMismatchError,
   logout,
   verifyParentPin,
 } from '@/api/auth'
@@ -12,17 +14,14 @@ import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
-import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
-import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
-import pinKeyUrl from '@/assets/images/profile/pin-key.webp'
-import pinPanelUrl from '@/assets/images/profile/pin-panel.webp'
 import logoutButtonUrl from '@/assets/images/profile/profile-switch-button.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { PinInputDialog } from '@/components/profile/PinInputDialog'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
-  childPhotoFromImageNum,
+  childPhotoFromImageKey,
   loadActiveChildProfileId,
   loadChildProfiles,
   saveActiveChildProfileId,
@@ -38,7 +37,6 @@ type ProfileSelectLocationState = {
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
 const MAX_PIN_FAILS = 5
-const PIN_LOCK_SECONDS = 5 * 60
 
 function formatPinLockTime(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60)
@@ -47,21 +45,6 @@ function formatPinLockTime(totalSeconds: number): string {
   if (seconds === 0) return `${minutes}분`
   return `${minutes}분 ${seconds}초`
 }
-const KEYPAD_DIGITS = [
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '7',
-  '8',
-  '9',
-  '',
-  '0',
-  '⌫',
-]
-
 const DEMO_CHILD_PROFILES: ChildProfile[] = [
   { id: 'demo-harin', name: '하린', photoUrl: null },
   { id: 'demo-doyun', name: '도윤', photoUrl: null },
@@ -100,6 +83,10 @@ export function ProfileSelectPage() {
   useEffect(() => {
     if (hasPendingNewSignupOnboarding()) {
       navigate('/profiles/new', { replace: true })
+      return
+    }
+    if (!getStoredAccessToken()) {
+      navigate('/', { replace: true })
     }
   }, [navigate])
 
@@ -119,9 +106,11 @@ export function ProfileSelectPage() {
               id: String(child.childId),
               name: child.name,
               photoUrl:
+                child.profileImageUrl ??
                 local?.photoUrl ??
-                childPhotoFromImageNum(child.profileImageNum),
-              profileImageNum: child.profileImageNum,
+                childPhotoFromImageKey(child.profileImageKey),
+              profileImageKey: child.profileImageKey,
+              profileImageUrl: child.profileImageUrl,
             }
           }),
         )
@@ -193,15 +182,15 @@ export function ProfileSelectPage() {
     setPin('')
   }
 
-  const startPinLock = () => {
+  const startPinLock = (retryAfterSeconds: number) => {
+    clearLockTimer()
     setIsPinLocked(true)
     setPin('')
     setIsPinError(true)
-    setPinMessage('잠겼어요. 5분 후 다시 시도하세요.')
 
-    const lockUntil = Date.now() + PIN_LOCK_SECONDS * 1000
+    const lockUntil = Date.now() + Math.max(1, retryAfterSeconds) * 1000
     pinLockUntilRef.current = lockUntil
-    lockTimerRef.current = window.setInterval(() => {
+    const updateLockMessage = () => {
       const secondsLeft = Math.ceil((lockUntil - Date.now()) / 1000)
       if (secondsLeft <= 0) {
         clearLockTimer()
@@ -215,7 +204,9 @@ export function ProfileSelectPage() {
           `잠겼어요. ${formatPinLockTime(secondsLeft)} 후 다시 시도하세요.`,
         )
       }
-    }, 1000)
+    }
+    updateLockMessage()
+    lockTimerRef.current = window.setInterval(updateLockMessage, 1000)
   }
 
   const pressDigit = (digit: string) => {
@@ -241,19 +232,27 @@ export function ProfileSelectPage() {
             pinTimersRef.current.push(navigateTimerId)
             setPinFailCount(0)
           })
-          .catch(() => {
-            const nextFailCount = pinFailCount + 1
-            setPinFailCount(nextFailCount)
-
-            if (nextFailCount >= MAX_PIN_FAILS) {
-              startPinLock()
+          .catch((error: unknown) => {
+            if (isPinLockedError(error)) {
+              startPinLock(error.retryAfterSeconds ?? 1)
               return
             }
 
+            const nextFailCount = pinFailCount + 1
+            setPinFailCount(nextFailCount)
             setIsPinError(true)
-            setPinMessage(
-              `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
-            )
+            if (
+              isPinMismatchError(error) &&
+              typeof error.remainingAttempts === 'number'
+            ) {
+              setPinMessage(
+                `비밀번호가 틀렸어요. 남은 기회 ${error.remainingAttempts}회`,
+              )
+            } else {
+              setPinMessage(
+                `비밀번호가 틀렸어요. (${nextFailCount}/${MAX_PIN_FAILS})`,
+              )
+            }
             setPin('')
           })
       }, 150)
@@ -451,103 +450,21 @@ export function ProfileSelectPage() {
         </button>
 
         {showPin ? (
-          <div
-            className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(18,30,18,0.6)]"
-            onClick={closePin}
-          >
-            <div
-              className="relative h-[560px] w-[440px]"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <img
-                alt=""
-                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-                decoding="async"
-                src={pinPanelUrl}
-              />
-
-              <div className="absolute top-[9%] right-[11%] left-[11%] flex flex-col">
-                <div
-                  className="text-center text-[30px] text-[#3a7d2c]"
-                  style={jua}
-                >
-                  부모 확인
-                </div>
-                <div
-                  className="mt-1.5 text-center text-[17px] text-[#8a7a5a]"
-                  style={jua}
-                >
-                  4자리 비밀번호를 입력하세요
-                </div>
-
-                <div className="mt-5 mb-1.5 flex justify-center gap-4">
-                  {Array.from({ length: PIN_LENGTH }).map((_, index) => {
-                    const isFilled = index < pin.length
-                    return (
-                      <span
-                        className="flex size-[30px] items-center justify-center"
-                        key={index}
-                      >
-                        <img
-                          alt=""
-                          className={
-                            isFilled
-                              ? 'size-[56px] max-w-none object-contain'
-                              : 'size-[30px] object-contain'
-                          }
-                          decoding="async"
-                          src={isFilled ? pinDotFillUrl : pinDotEmptyUrl}
-                        />
-                      </span>
-                    )
-                  })}
-                </div>
-                <div
-                  className="h-[22px] text-center text-[18px]"
-                  style={{
-                    ...jua,
-                    color: !pinMessage
-                      ? 'transparent'
-                      : isPinError
-                        ? '#d1483a'
-                        : '#3a7d2c',
-                  }}
-                >
-                  {pinMessage || '.'}
-                </div>
-
-                <div className="mt-6 grid grid-cols-3 gap-2.5">
-                  {KEYPAD_DIGITS.map((digit, index) =>
-                    digit === '' ? (
-                      <div key={`blank-${index}`} />
-                    ) : (
-                      <button
-                        className="relative h-14 bg-cover bg-center text-[28px] text-[#3a6b1e] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                        disabled={isPinLocked}
-                        key={digit}
-                        onClick={() =>
-                          digit === '⌫' ? pressBackspace() : pressDigit(digit)
-                        }
-                        style={{ ...jua, backgroundImage: `url(${pinKeyUrl})` }}
-                        type="button"
-                      >
-                        {digit}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-
-              <button
-                aria-label="닫기"
-                className="absolute -top-4 -right-4 grid size-[46px] place-items-center rounded-full border-[3px] border-white bg-[#cf6f4e] text-xl text-white shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105"
-                onClick={closePin}
-                type="button"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+          <PinInputDialog
+            description="4자리 비밀번호를 입력하세요"
+            disabled={isPinLocked}
+            message={pinMessage}
+            messageTone={
+              !pinMessage ? 'default' : isPinError ? 'error' : 'success'
+            }
+            onClose={closePin}
+            onPressKey={(key) =>
+              key === '←' ? pressBackspace() : pressDigit(key)
+            }
+            pin={pin}
+            pinLength={PIN_LENGTH}
+            title="부모 확인"
+          />
         ) : null}
       </div>
     </div>

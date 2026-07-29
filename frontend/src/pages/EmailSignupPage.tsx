@@ -26,6 +26,7 @@ const boardSize = {
   width:
     'min(580px, calc(100vw - 32px), calc((100vh - 32px) * 835 / 1064))',
 } as const
+const SIGNUP_BOARD_SCALE = 0.9
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 const PASSWORD_PATTERN =
   /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])[A-Za-z\d!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]{8,16}$/
@@ -231,7 +232,14 @@ export function EmailSignupPage() {
           />
         </button>
 
-      <div className="relative z-20 -translate-y-1" style={boardSize}>
+      <div
+        className="relative z-20"
+        style={{
+          ...boardSize,
+          transform: `translateY(-4px) scale(${SIGNUP_BOARD_SCALE})`,
+          transformOrigin: 'center center',
+        }}
+      >
         <img
           alt=""
           className="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain"
@@ -249,7 +257,7 @@ export function EmailSignupPage() {
           className="pointer-events-none absolute top-[22%] left-1/2 z-20 -translate-x-1/2 text-[clamp(18px,4.5vw,24px)] whitespace-nowrap text-[#5a7d3a]"
           style={jua}
         >
-          이메일로 들어가기
+          이메일로 등록하기
         </span>
         <input
           className="auth-transparent-input absolute top-[29.7%] left-[17%] z-20 h-[8.5%] w-[46.8%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"

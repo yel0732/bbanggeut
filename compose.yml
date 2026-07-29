@@ -44,8 +44,14 @@ services:
       - everysec
     volumes:
       - redis_data:/data
+    # host 네트워크의 ai-server가 접근할 통로. internal 네트워크(data)만 붙은
+    # 컨테이너에는 포트 publish가 동작하지 않아 edge에도 붙인다. 호스트
+    # loopback에만 바인딩하므로 외부에는 여전히 노출되지 않는다.
+    ports:
+      - 127.0.0.1:6379:6379
     networks:
       - data
+      - edge
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -58,6 +64,14 @@ services:
     build:
       context: ./ai-server
     restart: unless-stopped
+    # WebRTC 미디어(UDP)는 nginx를 거치지 않고 브라우저와 이 프로세스가 직접 붙는다.
+    # bridge 네트워크의 MASQUERADE 뒤에서는 aiortc의 srflx 후보로 들어오는 "처음 보는
+    # 주소"의 연결성 검사 패킷이 conntrack에 걸려 전부 버려져, 상대가 대칭 NAT(모바일
+    # CGNAT 등)이면 ICE가 절대 성립하지 않는다(실측: aioice send_stun 무한 재시도).
+    # host 네트워크로 도커 NAT를 제거하면 EC2의 1:1 NAT(포트 보존)만 남아 인바운드가
+    # 소켓까지 도달한다. 8000/TCP는 UFW가 외부를 막고, nginx·backend만 게이트웨이로
+    # 접근한다. 서비스명 DNS를 잃으므로 redis·backend는 호스트 loopback publish로 간다.
+    network_mode: host
     environment:
       GMS_KEY: ${GMS_KEY:?GMS_KEY is required}
       GMS_BASE_URL: ${GMS_BASE_URL:-https://gms.ssafy.io/gmsapi/api.openai.com/v1}
@@ -65,18 +79,20 @@ services:
       GMS_RESPONSE_MODEL: ${GMS_RESPONSE_MODEL:-gpt-5.4-mini}
       GMS_REPORT_MODEL: ${GMS_REPORT_MODEL:-gpt-5.4-mini}
       GMS_CHILD_DIARY_MODEL: ${GMS_CHILD_DIARY_MODEL:-gpt-5.4-mini}
-      REALTIME_REDIS_HOST: redis
+      REALTIME_REDIS_HOST: 127.0.0.1
       REALTIME_REDIS_PORT: 6379
-      REALTIME_JWKS_URL: http://backend:8080/internal/v1/realtime/jwks
+      # 8080은 호스트에서 Jenkins가 쓰고 있어 backend는 18080으로 publish한다.
+      REALTIME_JWKS_URL: http://127.0.0.1:18080/internal/v1/realtime/jwks
       REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}
       REALTIME_TICKET_AUDIENCE: ${REALTIME_TICKET_AUDIENCE:-ai-realtime}
-      REALTIME_STUN_URLS: ${REALTIME_STUN_URLS:-}
+      # NAT 뒤 배포에서 aiortc가 공인 IP(srflx) 후보를 얻는 경로. 비우면 사설 IP
+      # 후보만 내서 외부 브라우저와 절대 연결되지 않는다.
+      # REALTIME_ICE_SERVERS는 이 서비스가 아니라 backend로 간다 — 브라우저에
+      # 내려주는 값이라 ai-server는 읽지 않는다.
+      REALTIME_STUN_URLS: ${REALTIME_STUN_URLS:-stun:stun.l.google.com:19302}
     depends_on:
       redis:
         condition: service_healthy
-    networks:
-      - edge
-      - data
     healthcheck:
       test:
         - CMD
@@ -94,15 +110,25 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    # host 네트워크의 ai-server가 JWKS를 읽는 통로. 8080은 Jenkins가 선점했다.
+    ports:
+      - 127.0.0.1:18080:8080
+    # ai-server가 서비스명 DNS 밖(host 네트워크)에 있으므로 게이트웨이 별칭으로 접근한다.
+    extra_hosts:
+      - host.docker.internal:host-gateway
     environment:
+      TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: ${BACKEND_PROFILES:-prod}
       DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:?MYSQL_DATABASE is required}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
       DB_USERNAME: ${MYSQL_USER:?MYSQL_USER is required}
       DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      AI_SERVER_BASE_URL: http://ai-server:8000
+      AI_SERVER_BASE_URL: http://host.docker.internal:8000
       REALTIME_SIGNALING_URL: ${REALTIME_SIGNALING_URL:-ws://localhost/realtime/signaling}
+      # 브라우저에 내려줄 ICE 서버. ai-server의 REALTIME_STUN_URLS와 짝 — 양쪽 모두
+      # 있어야 브라우저·서버가 서로 도달 가능한 공인 후보를 낸다.
+      REALTIME_ICE_SERVERS: ${REALTIME_ICE_SERVERS:-stun:stun.l.google.com:19302}
       REALTIME_TICKET_PRIVATE_KEY_PEM: ${REALTIME_TICKET_PRIVATE_KEY_PEM:?REALTIME_TICKET_PRIVATE_KEY_PEM is required}
       REALTIME_TICKET_PUBLIC_KEY_PEM: ${REALTIME_TICKET_PUBLIC_KEY_PEM:?REALTIME_TICKET_PUBLIC_KEY_PEM is required}
       REALTIME_TICKET_ISSUER: ${REALTIME_TICKET_ISSUER:-spring-backend}
@@ -112,6 +138,14 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       REPORT_SCHEDULE_ENABLED: ${REPORT_SCHEDULE_ENABLED:-true}
       REPORT_RECOVERY_ENABLED: ${REPORT_RECOVERY_ENABLED:-true}
+      # AWS SDK reads credentials from the container OS environment.
+      # Keep the real values only in /srv/a501-secrets/.env on EC2.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:?STORAGE_PROVIDER is required}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      S3_UPLOAD_BUCKET: ${S3_UPLOAD_BUCKET:?S3_UPLOAD_BUCKET is required}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       # 실시간 대화 파이프라인 스위치 — 꺼져 있으면 FastAPI가 발행한 대화 이벤트가
       # MySQL에 반영되지 않고(일기 생성 불가), 끊긴 세션 정리도 되지 않는다.
       CONVERSATION_STREAM_ENABLED: ${CONVERSATION_STREAM_ENABLED:-true}
@@ -149,6 +183,10 @@ services:
     ports:
       - ${HTTP_PORT:-80}:80
       - ${HTTPS_PORT:-443}:443
+    # /realtime/ 프록시 대상인 ai-server가 host 네트워크로 옮겨가 서비스명 DNS에
+    # 없다 — nginx.conf의 upstream이 이 별칭으로 게이트웨이를 넘어 접근한다.
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ${NGINX_CONFIG_FILE:-./deploy/nginx-http.conf}:/etc/nginx/nginx.conf:ro
       - ${CERTBOT_WEBROOT:-./deploy/certbot/www}:/var/www/certbot:ro

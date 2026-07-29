@@ -70,7 +70,11 @@ conversation:
       ttl: ${CONVERSATION_REALTIME_CONTEXT_TTL:PT30M}
     session:
       signaling-url: ${REALTIME_SIGNALING_URL:ws://localhost:8000/realtime/signaling}
-      ice-servers: []
+      # 브라우저 RTCPeerConnection에 내려줄 ICE 서버(쉼표 구분). 비어 있으면 브라우저가
+      # 사설 IP 후보만 내므로 로컬(같은 머신)에서만 연결된다. NAT 뒤 배포에서는 STUN을
+      # 반드시 넣어야 하며, ai-server의 REALTIME_STUN_URLS와 짝으로 설정한다 — 한쪽만
+      # 넣으면 그쪽 후보만 공인 IP가 되고 반대쪽이 사설로 남아 여전히 붙지 못한다.
+      ice-servers: ${REALTIME_ICE_SERVERS:}
       lease-ttl: ${REALTIME_SESSION_LEASE_TTL:PT15S}
     ticket:
       issuer: ${REALTIME_TICKET_ISSUER:spring-backend}
@@ -187,9 +191,9 @@ app:
   cookie:
     secure: false
   local:
+    # 아이 소유권과 이름은 local에서도 child 테이블에서 읽는다. 인증 없이 열리는
+    # /harness 도구만 보호자를 특정할 수 없어 이 ID로 대신한다.
     mock-principal-id: 1
-    mock-child-id: 15
-    mock-child-owner-id: 1
 
 logging:
   level:
@@ -201,6 +205,9 @@ spring:
   config:
     activate:
       on-profile: prod
+  h2:
+    console:
+      enabled: false
   datasource:
     url: ${DB_URL}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -222,6 +229,12 @@ spring:
         jdbc:
           time_zone: UTC
     open-in-view: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 
 app:
   jwt:

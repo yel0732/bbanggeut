@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.A501.backend.domain.report.entity.ReportConversationSummary;
 
@@ -22,4 +24,8 @@ public interface ReportConversationSummaryRepository
             where summary.reportId in :reportIds
             """)
     List<Long> findReportIdsWithConversationData(Collection<Long> reportIds);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from ReportConversationSummary summary where summary.reportId in :reportIds")
+    int deleteByReportIds(@Param("reportIds") Collection<Long> reportIds);
 }

@@ -54,6 +54,7 @@ services:
     logging: *default-logging
 
   ai-server:
+    image: ${AI_SERVER_IMAGE:-a501-ai-server}
     build:
       context: ./ai-server
     restart: unless-stopped
@@ -89,6 +90,7 @@ services:
     logging: *default-logging
 
   backend:
+    image: ${BACKEND_IMAGE:-a501-backend}
     build:
       context: ./backend
     restart: unless-stopped
@@ -136,12 +138,22 @@ services:
     logging: *default-logging
 
   nginx:
-    image: nginx:1.28-alpine
+    image: ${NGINX_IMAGE:-a501-nginx}
+    build:
+      context: .
+      dockerfile: deploy/nginx.Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
     restart: unless-stopped
     ports:
       - ${HTTP_PORT:-80}:80
+      - ${HTTPS_PORT:-443}:443
     volumes:
-      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${NGINX_CONFIG_FILE:-./deploy/nginx-http.conf}:/etc/nginx/nginx.conf:ro
+      - ${CERTBOT_WEBROOT:-./deploy/certbot/www}:/var/www/certbot:ro
+      - ${LETSENCRYPT_LIVE_DIR:-./deploy/certbot/letsencrypt/live/i15a501.p.ssafy.io}:/etc/letsencrypt/live/i15a501.p.ssafy.io:ro
+      - ${LETSENCRYPT_ARCHIVE_DIR:-./deploy/certbot/letsencrypt/archive/i15a501.p.ssafy.io}:/etc/letsencrypt/archive/i15a501.p.ssafy.io:ro
     depends_on:
       backend:
         condition: service_healthy

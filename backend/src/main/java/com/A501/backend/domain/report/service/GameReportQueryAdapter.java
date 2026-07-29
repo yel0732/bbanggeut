@@ -30,9 +30,9 @@ import lombok.RequiredArgsConstructor;
 public class GameReportQueryAdapter implements GameReportQueryPort {
 
     private static final String DOBBLE_GAME_CODE = "DOBBLE";
-    private static final String DOBBLE_GAME_NAME = "도블";
+    private static final String DOBBLE_GAME_NAME = "그림 맞추기";
     private static final String FRUIT_NINJA_GAME_CODE = "FRUIT_NINJA";
-    private static final String FRUIT_NINJA_GAME_NAME = "후르츠 닌자";
+    private static final String FRUIT_NINJA_GAME_NAME = "과일 자르기";
 
     private final GameSessionRepository gameSessionRepository;
     private final CardRoundRepository cardRoundRepository;

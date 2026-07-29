@@ -38,6 +38,8 @@ const SESSION_KEYS = [
   'parentEmail',
 ] as const
 const REFRESH_BUFFER_MS = 60_000
+/** 인증 요청 응답 대기 한도(ms) */
+const REQUEST_TIMEOUT_MS = 6_000
 const NEW_SIGNUP_EMAIL_KEY = 'bbanggut-new-signup-email'
 const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
 const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
@@ -287,10 +289,13 @@ async function ensureAccessToken() {
 function refreshAccessToken() {
   if (refreshPromise) return refreshPromise
 
-  refreshPromise = requestJson<TokenRefreshResponse>('/api/auth/token/refresh', {
-    credentials: 'include',
-    method: 'POST',
-  })
+  refreshPromise = requestJson<TokenRefreshResponse>(
+    '/api/auth/token/refresh',
+    {
+      credentials: 'include',
+      method: 'POST',
+    },
+  )
     .then((response) => {
       const storage = getSessionStorage() ?? window.localStorage
       storage.setItem('accessToken', response.accessToken)
@@ -338,7 +343,12 @@ function fetchWithToken(
 }
 
 async function requestJson<T = unknown>(path: string, init: RequestInit) {
-  const response = await fetch(apiUrl(path), init)
+  // 응답이 안 오면 무한정 기다린다. 세션 확인처럼 화면 전환을 막고 있는 요청이
+  // 걸리면 아이 눈에는 버튼이 먹통이 된 것으로 보인다.
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
   const contentType = response.headers.get('content-type') ?? ''
   if (!response.ok) {
     const error = contentType.includes('application/json')
@@ -347,7 +357,9 @@ async function requestJson<T = unknown>(path: string, init: RequestInit) {
     throw new Error(error?.message ?? `요청에 실패했어요. (${response.status})`)
   }
   if (!contentType.includes('application/json')) {
-    throw new Error('서버가 올바른 응답을 보내지 않았어요. API 주소를 확인해 주세요.')
+    throw new Error(
+      '서버가 올바른 응답을 보내지 않았어요. API 주소를 확인해 주세요.',
+    )
   }
   return (await response.json()) as T
 }

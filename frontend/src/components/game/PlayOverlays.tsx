@@ -72,11 +72,7 @@ export function CameraPermissionView({
   status: CameraStatus
   title: string
 }) {
-  if (
-    status === 'denied' ||
-    status === 'unavailable' ||
-    status === 'error'
-  ) {
+  if (status === 'denied' || status === 'unavailable' || status === 'error') {
     return (
       <CameraNoticeDialog
         message={
@@ -155,7 +151,7 @@ function CameraNoticeDialog({
       className="absolute inset-0 z-50 flex items-center justify-center bg-[rgba(14,30,15,0.6)]"
       role="dialog"
     >
-      <section className="relative -mt-6 h-[420px] w-[560px] drop-shadow-[0_22px_44px_rgba(20,48,16,0.45)]">
+      <section className="relative h-[420px] w-[560px] drop-shadow-[0_22px_44px_rgba(20,48,16,0.45)]">
         <img
           alt=""
           className="pointer-events-none absolute inset-0 size-full object-fill"
@@ -219,7 +215,7 @@ export function PauseOverlay({
         />
 
         <h2
-          className="absolute top-[45px] left-1/2 -translate-x-1/2 whitespace-nowrap text-[34px] leading-none text-[#6f4a1f]"
+          className="absolute top-[45px] left-1/2 -translate-x-1/2 text-[34px] leading-none whitespace-nowrap text-[#6f4a1f]"
           style={jua}
         >
           일시 정지

@@ -71,7 +71,7 @@ class GameReportQueryAdapterTest {
 
         var fruitSource = sources.get(1);
         assertThat(fruitSource.gameSessionId()).isEqualTo(fruitNinja.getGameSessionId());
-        assertThat(fruitSource.gameName()).isEqualTo("후르츠 닌자");
+        assertThat(fruitSource.gameName()).isEqualTo("과일 자르기");
         assertThat(fruitSource.playDurationSeconds()).isEqualTo(120);
         assertThat(fruitSource.score()).isEqualTo(800);
         assertThat(fruitSource.resultMetrics()).isInstanceOf(FruitNinjaResultMetrics.class);
@@ -123,7 +123,7 @@ class GameReportQueryAdapterTest {
         assertThat(source.gameSessionId()).isEqualTo(included.getGameSessionId());
         assertThat(source.gameId()).isEqualTo(7L);
         assertThat(source.gameCode()).isEqualTo("DOBBLE");
-        assertThat(source.gameName()).isEqualTo("도블");
+        assertThat(source.gameName()).isEqualTo("그림 맞추기");
         assertThat(source.completedAt()).isEqualTo(STARTED_AT);
         assertThat(source.playDurationSeconds()).isEqualTo(120);
         assertThat(source.score()).isEqualTo(2550);

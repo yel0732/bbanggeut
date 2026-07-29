@@ -21,8 +21,7 @@ export function GameResultPage() {
 
   const game = getGameById(gameId)
   const result = location.state as
-    | (FruitGameResult & { recordError?: string })
-    | null
+    (FruitGameResult & { recordError?: string }) | null
   const [recordError, setRecordError] = useState(result?.recordError ?? '')
 
   // 정상 완료로 전달된 결과가 없으면 안내 화면으로 되돌린다.
@@ -31,14 +30,13 @@ export function GameResultPage() {
   }
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}

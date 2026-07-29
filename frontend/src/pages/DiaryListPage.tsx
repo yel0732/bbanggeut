@@ -211,14 +211,13 @@ export function DiaryListPage() {
   }
 
   return (
-    <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#2a3320_0%,_#131a0e_100%)]">
+    <main className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#2a3320_0%,_#131a0e_100%)]">
       <div
-        className="relative h-[720px] w-[1280px] shrink-0 origin-top overflow-hidden"
+        className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
         ref={canvasRef}
       >
         <audio
           aria-label="대화방 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}

@@ -202,15 +202,14 @@ export function DobblePlayPage() {
   const leaveGame = () => navigate('/games')
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         {/* 3.4MB라 전체를 미리 받지 않고 재생하면서 스트리밍한다. */}
         <audio
           aria-label="그림 맞추기 배경 음악"
-          autoPlay
           loop
           preload="metadata"
           ref={audioRef}
@@ -285,7 +284,7 @@ export function DobblePlayPage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}

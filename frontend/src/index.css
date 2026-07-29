@@ -253,18 +253,78 @@
 }
 
 /* 과일 자르기 콤보 표시 — 콤보가 올라갈 때마다 한 번 튀어오른다. */
+/* 시작 버튼 — 세션 확인 중에는 숨을 쉬듯 밝기가 오르내린다. */
+@keyframes start-button-wait {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 피버 문구 — 불길 위에서 넘실거린다. */
+@keyframes fruit-fever-bob {
+  0%,
+  100% {
+    transform: scale(1) rotate(-2deg);
+  }
+  50% {
+    transform: scale(1.07) rotate(2deg);
+  }
+}
+
+/* 피버 테두리 — 달아오른 쇠처럼 밝기가 오르내린다. */
+@keyframes fruit-fever-border {
+  0%,
+  100% {
+    opacity: 0.7;
+    box-shadow:
+      0 0 14px rgba(255, 120, 0, 0.75),
+      inset 0 0 22px rgba(255, 90, 0, 0.45);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 34px rgba(255, 210, 70, 1),
+      inset 0 0 46px rgba(255, 130, 20, 0.7);
+  }
+}
+
+/* 폭탄 아이콘 — 터진 직후 흔들린다. */
+@keyframes fruit-bomb-shake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(-4deg) scale(1);
+  }
+  25% {
+    transform: translate(-6px, 3px) rotate(3deg) scale(1.06);
+  }
+  75% {
+    transform: translate(6px, -3px) rotate(-3deg) scale(1.06);
+  }
+}
+
+/*
+  콤보 표시 — 아래에서 튀어오른다.
+
+  가로 중앙 정렬은 건드리지 않는다. Tailwind v4의 `-translate-x-1/2`는 transform이
+  아니라 `translate` 속성으로 나오는데, 여기서 또 translate(-50%)를 주면 두 값이
+  합성돼 -100%가 되어 글자가 왼쪽으로 빠진 뒤 끝날 때 가운데로 튄다.
+*/
 @keyframes fruit-combo-pop {
   0% {
     opacity: 0;
-    transform: translate(-50%, 10px) scale(0.7);
+    transform: translateY(10px) scale(0.7);
   }
   55% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1.16);
+    transform: translateY(0) scale(1.16);
   }
   100% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1);
+    transform: none;
   }
 }
 

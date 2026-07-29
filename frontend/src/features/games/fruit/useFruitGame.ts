@@ -56,6 +56,8 @@ export type FruitGameState = {
   combo: number
   /** 피버 타임 진행 중인지 — 과일이 쏟아진다 */
   fever: boolean
+  /** 폭탄에 맞아 아무것도 못 자르는 중인지 */
+  stunned: boolean
   /** 손이 보일 때의 카메라 거리 힌트 */
   distance: DistanceHint | null
   /** 과일·칼을 직접 그리는 캔버스 */
@@ -90,6 +92,8 @@ type Fruit = {
   cutAngle: number
   /** 콤보 배수까지 반영해 실제로 준 점수 */
   gained: number
+  /** 폭탄이면 점수 대신 스턴을 준다 */
+  bomb: boolean
 }
 
 export type FruitGameRuntimeRule = {
@@ -116,6 +120,12 @@ type Engine = {
   comboExpiresAt: number
   /** 이 시각까지 피버 타임 */
   feverUntil: number
+  /** 폭탄에 맞아 이 시각까지 아무것도 못 자른다 */
+  stunnedUntil: number
+  /** 폭발 연출 시작 시각. 0이면 연출 없음 */
+  blastAt: number
+  /** 폭발이 일어난 자리 (화면 px) */
+  blastPos: { x: number; y: number } | null
   playElapsedMs: number
   countdownEndsAt: number
   lastSpawnAt: number
@@ -142,6 +152,9 @@ function createEngine(now: number): Engine {
     maxCombo: 0,
     comboExpiresAt: 0,
     feverUntil: 0,
+    stunnedUntil: 0,
+    blastAt: 0,
+    blastPos: null,
     playElapsedMs: 0,
     countdownEndsAt: 0,
     lastSpawnAt: now,
@@ -149,6 +162,39 @@ function createEngine(now: number): Engine {
     tracker: createBladeTracker(now),
     ended: false,
   }
+}
+
+function spawnBomb(engine: Engine, now: number): void {
+  const size = CFG.bombSize
+  const x = CFG.spawnXMargin + Math.random() * (W - 2 * CFG.spawnXMargin)
+  const vy =
+    CFG.launchVyMin + Math.random() * (CFG.launchVyMax - CFG.launchVyMin)
+  let vx = (Math.random() * 2 - 1) * CFG.launchVxAbsMax
+  if (x < W * 0.3) vx = Math.abs(vx)
+  else if (x > W * 0.7) vx = -Math.abs(vx)
+
+  engine.fruits.push({
+    id: engine.nextId++,
+    fruitCode: 'BOMB',
+    imageUrl: '',
+    score: 0,
+    x,
+    y: H + 90,
+    vx,
+    vy,
+    w: size,
+    h: size,
+    // 폭탄은 판정을 과일보다 살짝 좁게 잡는다. 스치기만 해도 터지면 억울하다.
+    radius: size * 0.42,
+    // 도화선이 위를 향해야 폭탄으로 읽힌다. 살짝 흔들리는 정도만 준다.
+    rotation: (Math.random() * 2 - 1) * 12,
+    spin: (Math.random() * 2 - 1) * 22,
+    sliced: false,
+    slicedAt: now,
+    cutAngle: 0,
+    gained: 0,
+    bomb: true,
+  })
 }
 
 function spawnFruit(engine: Engine, rule: FruitGameRuntimeRule): void {
@@ -196,6 +242,7 @@ function spawnFruit(engine: Engine, rule: FruitGameRuntimeRule): void {
     slicedAt: 0,
     cutAngle: 0,
     gained: 0,
+    bomb: false,
   })
   engine.totalCount++
   const fruitCode = type.id.toUpperCase()
@@ -220,6 +267,7 @@ export function useFruitGame(
   active: boolean,
   onEnd: (result: FruitGameResult) => void,
   onSlice?: (combo: number) => void,
+  onBomb?: () => void,
   redesignateHand?: () => void,
   cameraError?: boolean,
   runtimeRule?: FruitGameRuntimeRule,
@@ -245,6 +293,8 @@ export function useFruitGame(
   onEndRef.current = onEnd
   const onSliceRef = useRef(onSlice)
   onSliceRef.current = onSlice
+  const onBombRef = useRef(onBomb)
+  onBombRef.current = onBomb
   const redesignateRef = useRef(redesignateHand)
   redesignateRef.current = redesignateHand
   const cameraErrorRef = useRef(cameraError)
@@ -257,6 +307,7 @@ export function useFruitGame(
     remainingSec: rule.plannedDurationSeconds,
     combo: 0,
     fever: false,
+    stunned: false,
     distance: null,
   })
 
@@ -278,6 +329,9 @@ export function useFruitGame(
       redesignateRef.current?.()
       engine.combo = 0
       engine.feverUntil = 0
+      // 멈춰 있던 동안 폭탄 벌칙까지 흘려보내지 않는다. 재개하면 바로 벨 수 있다.
+      engine.stunnedUntil = 0
+      engine.blastAt = 0
       engine.phase = 'countdown'
       engine.countdownEndsAt = performance.now() + CFG.countdownSec * 1000
     }
@@ -303,7 +357,8 @@ export function useFruitGame(
     let publishedKey = ''
 
     const judgeSlices = (engine: Engine, now: number): void => {
-      if (!isSlicing(engine.tracker, now)) {
+      // 폭탄에 맞은 뒤에는 아무것도 자를 수 없다.
+      if (now < engine.stunnedUntil || !isSlicing(engine.tracker, now)) {
         return
       }
 
@@ -319,6 +374,23 @@ export function useFruitGame(
         )
           continue
 
+        if (fruit.bomb) {
+          // 폭탄: 점수도 자른 수도 늘지 않는다. 콤보와 피버가 날아가고 잠시 멈춘다.
+          fruit.sliced = true
+          fruit.slicedAt = now
+          engine.stunnedUntil = now + CFG.bombStunMs
+          engine.blastAt = now
+          engine.blastPos = { x: fruit.x, y: fruit.y }
+          engine.combo = 0
+          engine.comboExpiresAt = 0
+          engine.feverUntil = 0
+          onBombRef.current?.()
+          // 폭발 연출만 남기고 판을 비운다. 못 자르는 3초 동안 과일이 계속
+          // 떠다니면 아이가 계속 팔을 휘두르다 더 답답해한다.
+          engine.fruits = [fruit]
+          return
+        }
+
         // 최초 성공 시 한 번만 반영, 이후 판정 대상에서 제외 (MGAME-15/16).
         // 앞선 베기와 짧은 간격이면 콤보가 이어져 배수가 올라간다.
         if (now > engine.comboExpiresAt) {
@@ -328,9 +400,14 @@ export function useFruitGame(
         engine.comboExpiresAt = now + CFG.comboWindowMs
         engine.maxCombo = Math.max(engine.maxCombo, engine.combo)
 
-        // 콤보가 기준에 처음 닿을 때 피버를 열고, 진행 중에는 시간을 연장하지 않는다.
-        if (engine.feverUntil === 0 && engine.combo === CFG.feverCombo) {
+        // 피버는 한 번 열리면 정해진 시간만큼만 간다. 콤보로 연장하지 않는다.
+        // 언제 끝나는지 알 수 있어야 아이가 "지금 몰아서 베는 구간"으로 쓴다.
+        // 한 스윙에 여러 개를 베면 콤보가 한 번에 여러 칸 오르므로 >= 로 본다.
+        if (engine.feverUntil === 0 && engine.combo >= CFG.feverCombo) {
           engine.feverUntil = now + CFG.feverDurationMs
+          // 이미 떠 있던 폭탄은 치운다. 피버로 들어가는 순간 화면에 남아 있던
+          // 폭탄 때문에 8초가 중간에 끊기면 억울하다.
+          engine.fruits = engine.fruits.filter((other) => !other.bomb)
         }
 
         // 콤보는 과일 생성량(피버)에만 영향을 주며 점수는 과일 기본 점수로 계산한다.
@@ -383,11 +460,21 @@ export function useFruitGame(
         (count, fruit) => (fruit.sliced ? count : count + 1),
         0,
       )
-      if (
+      // 폭탄에 맞은 동안은 아무것도 올려 보내지 않는다. 못 자르는데 쌓이기만
+      // 하면 억울하다. 멈춤이 풀리는 순간부터 다시 시작한다.
+      if (now < engine.stunnedUntil) {
+        engine.lastSpawnAt = engine.stunnedUntil
+      } else if (
         now - engine.lastSpawnAt >= spawnIntervalMs &&
         aliveCount < maxVisible
       ) {
-        spawnFruit(engine, ruleRef.current)
+        // 피버 중에는 폭탄을 내보내지 않는다. 쏟아지는 과일을 정신없이 베는
+        // 구간이라 폭탄을 가려낼 틈이 없고, 애써 만든 콤보가 운으로 끊긴다.
+        if (!fever && Math.random() < CFG.bombSpawnChance) {
+          spawnBomb(engine, now)
+        } else {
+          spawnFruit(engine, ruleRef.current)
+        }
         engine.lastSpawnAt = now
       }
 
@@ -417,6 +504,7 @@ export function useFruitGame(
           : 0,
         cutAngle: fruit.cutAngle,
         gained: fruit.gained,
+        bomb: fruit.bomb,
       }))
 
       let blade: RenderBlade | null = null
@@ -428,7 +516,21 @@ export function useFruitGame(
         }
       }
 
-      drawScene(ctx, fruits, blade)
+      // 피버는 켜고 끌 때 세기를 부드럽게 올렸다 내려 뚝 끊기지 않게 한다.
+      const feverLeft = engine.feverUntil - now
+      const feverIntensity =
+        feverLeft <= 0 ? 0 : Math.min(1, feverLeft / CFG.feverFadeMs)
+      const blastElapsed =
+        engine.blastAt === 0 ? Infinity : now - engine.blastAt
+      const blast =
+        blastElapsed >= CFG.bombBlastMs ? 0 : blastElapsed / CFG.bombBlastMs
+
+      drawScene(ctx, fruits, blade, {
+        fever: feverIntensity,
+        blast,
+        blastAt: engine.blastPos,
+        now,
+      })
     }
 
     const loop = (now: number): void => {
@@ -490,6 +592,8 @@ export function useFruitGame(
             engine.phase = 'interrupted'
             engine.combo = 0
             engine.feverUntil = 0
+            engine.stunnedUntil = 0
+            engine.blastAt = 0
             redesignateRef.current?.()
             break
           }
@@ -532,6 +636,7 @@ export function useFruitGame(
       )
 
       const fever = engine.phase === 'playing' && now < engine.feverUntil
+      const stunned = engine.phase === 'playing' && now < engine.stunnedUntil
 
       // 프레임마다 setState하지 않도록 실제로 바뀐 값이 있을 때만 발행한다.
       // 과일과 칼은 캔버스에 직접 그리므로 여기서 다루지 않는다.
@@ -542,6 +647,7 @@ export function useFruitGame(
         engine.score,
         engine.combo,
         fever,
+        stunned,
         engine.tracker.distance,
       ].join('|')
 
@@ -554,6 +660,7 @@ export function useFruitGame(
           remainingSec,
           combo: engine.combo,
           fever,
+          stunned,
           distance: engine.tracker.distance,
         })
       }

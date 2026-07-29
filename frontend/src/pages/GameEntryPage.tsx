@@ -1,12 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
-import dino2Url from '@/assets/images/child-home/dino-2.webp'
-import dino3Url from '@/assets/images/child-home/dino-3.webp'
-import dino4Url from '@/assets/images/child-home/dino-4.webp'
-import dino5Url from '@/assets/images/child-home/dino-5.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
@@ -14,47 +10,26 @@ import gameMenuPanelUrl from '@/assets/images/game-entry/game-menu-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
+import { DinoCharacter } from '@/components/character/DinoCharacter'
 import { GAMES } from '@/features/games/games'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
-const DINO_FRAMES: Record<number, string> = {
-  2: dino2Url,
-  3: dino3Url,
-  4: dino4Url,
-  5: dino5Url,
-}
-const DINO_STEP_SEQUENCE = [3, 2, 5, 4, 5, 2, 3]
-const DINO_STEP_INTERVAL_MS = 320
-
 export function GameEntryPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const [hoveredGameId, setHoveredGameId] = useState<string>()
-  const [dinoStep, setDinoStep] = useState(0)
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (document.hidden) return
-      setDinoStep((step) => (step + 1) % DINO_STEP_SEQUENCE.length)
-    }, DINO_STEP_INTERVAL_MS)
-
-    return () => window.clearInterval(id)
-  }, [])
-
-  const activeDinoFrame = DINO_STEP_SEQUENCE[dinoStep]
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#123219_0%,_#08160d_100%)]">
       <div
         ref={canvasRef}
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden text-white"
+        className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -159,7 +134,7 @@ export function GameEntryPage() {
           )
         })}
 
-        <div className="absolute top-[150px] left-1/2 z-20 -translate-x-6/11">
+        <div className="absolute top-[175px] left-[630px] z-20 -translate-x-6/11">
           <div className="relative h-[122px] w-[270px]">
             <img
               alt=""
@@ -176,29 +151,16 @@ export function GameEntryPage() {
           </div>
         </div>
 
-        <div
-          aria-label="공룡"
-          className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2"
-          role="img"
-        >
-          <div className="absolute bottom-2 left-1/2 h-10 w-[210px] -translate-x-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,_rgba(60,110,50,0.42),_rgba(60,110,50,0)_100%)]" />
-          {Object.entries(DINO_FRAMES).map(([frameNumber, frame]) => (
-            <img
-              alt=""
-              className="absolute bottom-0 left-1/2 h-[340px] w-auto max-w-none -translate-x-1/2 drop-shadow-[0_12px_12px_rgba(0,0,0,0.22)] will-change-[opacity]"
-              decoding="sync"
-              key={frame}
-              src={frame}
-              style={{
-                opacity: activeDinoFrame === Number(frameNumber) ? 1 : 0,
-              }}
-            />
-          ))}
+        <div className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2">
+          <DinoCharacter
+            className="absolute bottom-0 left-1/2 -translate-x-1/2"
+            size={320}
+          />
         </div>
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 h-[62px] w-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={() => {
             void toggleBgm()
           }}

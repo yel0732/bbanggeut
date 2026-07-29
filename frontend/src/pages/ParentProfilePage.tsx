@@ -155,7 +155,9 @@ export function ParentProfilePage() {
             setPin('')
             setIsPinError(true)
             setPinMessage(
-              error instanceof Error ? error.message : 'PIN 번호를 설정하지 못했어요.',
+              error instanceof Error
+                ? error.message
+                : 'PIN 번호를 설정하지 못했어요.',
             )
           })
         return
@@ -349,10 +351,7 @@ export function ParentProfilePage() {
       return
     }
 
-    saveChildProfiles([
-      ...profiles,
-      localProfile,
-    ])
+    saveChildProfiles([...profiles, localProfile])
     stopCamera()
     navigate('/profiles/children')
   }
@@ -392,14 +391,13 @@ export function ParentProfilePage() {
         : '핀번호 확인'
 
   return (
-    <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
+    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
       <div
-        className="relative h-[720px] w-[1280px] origin-top overflow-hidden"
+        className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
         <audio
           aria-label="초록 모험 시작 배경 음악"
-          autoPlay
           loop
           preload="auto"
           ref={audioRef}
@@ -426,7 +424,7 @@ export function ParentProfilePage() {
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[85px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105"
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-none bg-none p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105"
           onClick={() => void toggleBgm()}
           type="button"
         >
@@ -542,10 +540,13 @@ export function ParentProfilePage() {
             src={childAvatarUrl}
           />
           <div
-            className="absolute top-[77.5%] left-[42%] text-[27px] text-[#3a7d2c]"
+            className="absolute top-[77.5%] left-[42%] flex items-baseline gap-2 text-[27px] text-[#3a7d2c]"
             style={jua}
           >
-            아이 프로필
+            <span>아이 프로필</span>
+            <span className="text-[18px] text-[#8a7a55]">
+              ({childProfileCount}/{MAX_CHILD_PROFILES})
+            </span>
           </div>
           <button
             className="absolute top-[80.5%] left-[37.5%] flex h-[78px] w-[276px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[17px] text-white active:translate-y-0.5"
@@ -609,7 +610,7 @@ export function ParentProfilePage() {
                 )}
               </div>
 
-              <div className="absolute top-[18.2%] right-[18%] flex flex-col">
+              <div className="absolute top-[21.2%] right-[18%] flex flex-col">
                 <button
                   className="h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
                   onClick={() => void toggleCamera()}

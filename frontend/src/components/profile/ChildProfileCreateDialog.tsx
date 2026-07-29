@@ -97,7 +97,7 @@ export function ChildProfileCreateDialog({
           300,
           300,
         )
-        setPhotoUrl(canvas.toDataURL('image/webp', 0.9))
+        setPhotoUrl(canvas.toDataURL('image/png'))
       }
     }
     stopCamera()

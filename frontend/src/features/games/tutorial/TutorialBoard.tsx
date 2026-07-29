@@ -27,12 +27,14 @@ const GAP_TOTAL = 20
 
 export function TutorialBoard({
   body,
+  bodyOverflowVisible = false,
   footer,
   showTitle,
   stepCount,
   stepIndex,
 }: {
   body: ReactNode
+  bodyOverflowVisible?: boolean
   footer: ReactNode
   /** 소개·시작 단계에만 제목을 둔다. 나머지는 그 자리를 본문에 넘긴다. */
   showTitle: boolean
@@ -62,7 +64,9 @@ export function TutorialBoard({
       <StepDots current={stepIndex} total={stepCount} />
 
       <div
-        className="mt-2 flex w-full items-center justify-center overflow-hidden"
+        className={`mt-2 flex w-full items-center justify-center ${
+          bodyOverflowVisible ? 'overflow-visible' : 'overflow-hidden'
+        }`}
         style={{ height: bodyHeight }}
       >
         {body}
@@ -70,7 +74,7 @@ export function TutorialBoard({
 
       {/* 버튼 배치는 단계마다 다르다(가운데 모으기 / 좌우로 벌리기). 자리만 준다. */}
       <div
-        className="mt-3 flex w-full items-center"
+        className="-mt-7 flex w-full items-center"
         style={{ height: FOOTER_HEIGHT }}
       >
         {footer}

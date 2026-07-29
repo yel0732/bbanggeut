@@ -620,6 +620,15 @@ export function ConversationPage() {
                 </div>
               ))}
 
+              {guideMessage ? (
+                <p
+                  className="absolute top-[70%] right-[12%] left-[12%] min-h-6 text-[15px] text-[#bc5b4c]"
+                  role="alert"
+                  style={jua}
+                >
+                  {guideMessage}
+                </p>
+              ) : null}
               <button
                 className="absolute top-[76%] left-1/2 flex h-[11%] w-[45%] -translate-x-1/2 items-center justify-center bg-transparent pb-1 text-[26px] text-white transition hover:scale-[1.02]"
                 onClick={() => void startConversation()}

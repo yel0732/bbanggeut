@@ -18,6 +18,7 @@ import com.A501.backend.domain.auth.exception.PinErrorCode;
 import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.service.AuthService;
 import com.A501.backend.domain.auth.service.PinService;
+import com.A501.backend.domain.child.dto.response.ChildResponse;
 import com.A501.backend.domain.child.entity.Child;
 import com.A501.backend.domain.child.repository.ChildRepository;
 
@@ -49,10 +50,10 @@ class ChildServiceIntegrationTest {
         Parent parent = authService.signup(
                 new SignupRequest("child-delete-lock@example.com", "Abcdef1!", LocalDate.of(2000, 1, 1)));
         pinService.setPin(parent.getParentId(), "1234");
-        Child child = childService.createChild(parent.getParentId(), "chorong", 1);
+        ChildResponse child = childService.createChild(parent.getParentId(), "chorong", null);
 
         for (int i = 0; i < 4; i++) {
-            assertThatThrownBy(() -> childService.deleteChild(parent.getParentId(), child.getChildId(), "0000"))
+            assertThatThrownBy(() -> childService.deleteChild(parent.getParentId(), child.childId(), "0000"))
                     .isInstanceOf(BusinessException.class)
                     .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                             .isEqualTo(PinErrorCode.PIN_MISMATCH));
@@ -61,7 +62,7 @@ class ChildServiceIntegrationTest {
         Parent reloaded = parentRepository.findById(parent.getParentId()).orElseThrow();
         assertThat(reloaded.getPinFailedAttempts()).isEqualTo(4);
 
-        assertThatThrownBy(() -> childService.deleteChild(parent.getParentId(), child.getChildId(), "0000"))
+        assertThatThrownBy(() -> childService.deleteChild(parent.getParentId(), child.childId(), "0000"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(PinErrorCode.PIN_LOCKED));
@@ -70,7 +71,7 @@ class ChildServiceIntegrationTest {
         assertThat(lockedParent.getPinFailedAttempts()).isEqualTo(5);
         assertThat(lockedParent.getPinLockedUntil()).isNotNull();
 
-        Child stillAlive = childRepository.findByChildIdAndDeletedAtIsNull(child.getChildId()).orElseThrow();
+        Child stillAlive = childRepository.findByChildIdAndDeletedAtIsNull(child.childId()).orElseThrow();
         assertThat(stillAlive.isDeleted()).isFalse();
     }
 }

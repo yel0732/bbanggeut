@@ -1,5 +1,6 @@
 package com.A501.backend.domain.auth.service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
@@ -9,9 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.entity.Parent;
-import com.A501.backend.domain.auth.exception.AuthErrorCode;
 import com.A501.backend.domain.auth.exception.PinErrorCode;
-import com.A501.backend.domain.auth.repository.ParentRepository;
 import com.A501.backend.domain.auth.security.PinProperties;
 
 import lombok.RequiredArgsConstructor;
@@ -23,13 +22,13 @@ public class PinService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
-    private final ParentRepository parentRepository;
+    private final ParentFinder parentFinder;
     private final PasswordEncoder passwordEncoder;
     private final PinProperties pinProperties;
 
     @Transactional
     public void setPin(Long parentId, String rawPin) {
-        Parent parent = getParent(parentId);
+        Parent parent = parentFinder.getActive(parentId);
         if (parent.hasPin()) {
             throw new BusinessException(PinErrorCode.PIN_ALREADY_SET);
         }
@@ -40,24 +39,36 @@ public class PinService {
     // (AUTH의 refresh token 재사용 탐지에서 겪은 것과 동일한 문제) 롤백 대상에서 제외한다.
     @Transactional(noRollbackFor = BusinessException.class)
     public void verifyPin(Long parentId, String rawPin) {
-        Parent parent = getParent(parentId);
+        Parent parent = parentFinder.getActive(parentId);
         if (!parent.hasPin()) {
             throw new BusinessException(PinErrorCode.PIN_NOT_SET);
         }
 
         LocalDateTime now = LocalDateTime.now(KST);
         if (parent.isPinLocked(now)) {
-            throw new BusinessException(PinErrorCode.PIN_LOCKED);
+            throw lockedException(parent, now);
         }
         parent.resetPinFailuresIfLockExpired(now);
 
         if (!passwordEncoder.matches(rawPin, parent.getPinHash())) {
             parent.registerPinFailure(now, pinProperties.maxFailedAttempts(), pinProperties.lockDuration());
-            throw new BusinessException(
-                    parent.isPinLocked(now) ? PinErrorCode.PIN_LOCKED : PinErrorCode.PIN_MISMATCH);
+            throw parent.isPinLocked(now)
+                    ? lockedException(parent, now)
+                    : BusinessException.withRemainingAttempts(
+                            PinErrorCode.PIN_MISMATCH,
+                            pinProperties.maxFailedAttempts() - parent.getPinFailedAttempts());
         }
 
         parent.resetPinFailures();
+    }
+
+    // 잠금 해제까지 남은 초를 올림해서 싣는다. 내림하면(284.7 → 284) 클라이언트 카운트다운이
+    // 잠금이 풀리기 직전에 0이 되어 재시도했다가 다시 423을 받는다.
+    // now와 pinLockedUntil은 둘 다 KST 기준으로 만들어진 값이라 JVM 기본 타임존과 무관하게 맞는다.
+    private BusinessException lockedException(Parent parent, LocalDateTime now) {
+        long remainingMillis = Duration.between(now, parent.getPinLockedUntil()).toMillis();
+        int retryAfterSeconds = (int) Math.max(1, (remainingMillis + 999) / 1000);
+        return BusinessException.retryAfter(PinErrorCode.PIN_LOCKED, retryAfterSeconds);
     }
 
     // verifyPin과 마찬가지 이유로 noRollbackFor가 필요하다 — changePin 안에서 verifyPin을
@@ -72,7 +83,7 @@ public class PinService {
             throw new BusinessException(PinErrorCode.PIN_CONFIRMATION_MISMATCH);
         }
 
-        Parent parent = getParent(parentId);
+        Parent parent = parentFinder.getActive(parentId);
         parent.setPin(passwordEncoder.encode(newPin), LocalDateTime.now(KST));
         // TODO(TBD-P6): 신규 PIN이 기존 PIN과 동일한 경우의 허용/거부 정책 미정 — 지금은 허용.
     }
@@ -80,15 +91,6 @@ public class PinService {
     // child 도메인이 Parent 엔티티/리포지토리를 직접 참조하지 않고 이 서비스 메서드를 통해서만
     // PIN 설정 여부를 확인하도록 하기 위한 공개 API.
     public boolean hasPin(Long parentId) {
-        return getParent(parentId).hasPin();
-    }
-
-    // 소프트 삭제된 Parent는 걸러낸다 — AuthService.findAuthenticatedParent/googleLink와
-    // 동일한 패턴. 삭제 시점 이후에도 만료 전 access token으로 PIN API를 계속 쓸 수 있게
-    // 되는 걸 막기 위함이다(JwtAuthenticationFilter는 토큰만 검증하고 삭제 여부는 보지 않음).
-    private Parent getParent(Long parentId) {
-        return parentRepository.findById(parentId)
-                .filter(p -> !p.isDeleted())
-                .orElseThrow(() -> new BusinessException(AuthErrorCode.PARENT_NOT_FOUND));
+        return parentFinder.getActive(parentId).hasPin();
     }
 }

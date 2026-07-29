@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.A501.backend.common.exception.BusinessException;
+import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.auth.dto.request.GoogleAuthRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleCompleteRequest;
 import com.A501.backend.domain.auth.dto.request.GoogleLinkRequest;
@@ -44,6 +45,7 @@ public class AuthService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final ParentRepository parentRepository;
+    private final ParentFinder parentFinder;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
@@ -51,6 +53,7 @@ public class AuthService {
     private final GoogleTokenVerifier googleTokenVerifier;
     private final PinService pinService;
     private final ChildService childService;
+    private final ProfileImageService profileImageService;
 
     public boolean isEmailAvailable(String email) {
         return parentRepository.findByEmail(normalizeEmail(email)).isEmpty();
@@ -70,7 +73,7 @@ public class AuthService {
                 email,
                 passwordEncoder.encode(request.password()),
                 request.birthDate());
-        return parentRepository.save(parent);
+        return parentRepository.save(withDefaultProfileImage(parent));
     }
 
     @Transactional
@@ -118,7 +121,7 @@ public class AuthService {
     public void changePassword(
             Long parentId, String currentPassword, String newPassword, String newPasswordConfirm,
             String currentRawRefreshToken) {
-        Parent parent = getParent(parentId);
+        Parent parent = parentFinder.getActive(parentId);
         if (!parent.hasPassword()) {
             throw new BusinessException(AuthErrorCode.PASSWORD_NOT_SET);
         }
@@ -152,7 +155,7 @@ public class AuthService {
     // 카운트 증가가 롤백에 같이 취소된다(deleteChild/PinService에서 겪은 것과 같은 트랜잭션 경계 문제).
     @Transactional(noRollbackFor = BusinessException.class)
     public void withdraw(Long parentId, String pin) {
-        Parent parent = getParent(parentId);
+        Parent parent = parentFinder.getActive(parentId);
         if (parent.hasPin()) {
             // 형식(4자리 숫자) 검증을 verifyPin보다 먼저 한다 — null/빈값/형식오류를 400으로 구분하고,
             // 형식이 틀린 입력이 PIN 실패 카운트(잠금)를 소모하지 않게 하기 위함(verifyPin을 타지 않음).
@@ -164,6 +167,10 @@ public class AuthService {
         }
 
         parent.withdraw(LocalDateTime.now(KST));
+        // 소프트 삭제라 계정 행은 남지만 업로드한 실물 사진은 즉시 파기한다. 자녀 쪽 파기는
+        // childService가 같은 정책으로 처리한다.
+        parent.changeProfileImage(profileImageService.purgeUploadedImage(
+                parent.getProfileImageKey(), profileImageService.defaultParentPresetKey()));
         childService.softDeleteChildrenOf(parentId);
         refreshTokenRepository.findAllByParentAndRevokedFalse(parent).forEach(RefreshToken::revoke);
     }
@@ -188,8 +195,8 @@ public class AuthService {
 
         LocalDate resolvedBirthDate = resolveGoogleBirthDate(googleUser);
         if (resolvedBirthDate != null && !isUnderAge(resolvedBirthDate)) {
-            Parent parent = parentRepository.save(
-                    Parent.createGoogle(normalizeEmail(googleUser.email()), googleUser.providerId(), resolvedBirthDate));
+            Parent parent = parentRepository.save(withDefaultProfileImage(
+                    Parent.createGoogle(normalizeEmail(googleUser.email()), googleUser.providerId(), resolvedBirthDate)));
             return GoogleAuthResult.loginSuccess(issueTokens(parent, true));
         }
 
@@ -217,7 +224,7 @@ public class AuthService {
         }
 
         Parent parent = Parent.createGoogle(email, claims.providerId(), request.birthDate());
-        return parentRepository.save(parent);
+        return parentRepository.save(withDefaultProfileImage(parent));
     }
 
     @Transactional
@@ -245,20 +252,21 @@ public class AuthService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
+    // 신규 계정의 프로필 사진은 기본 프리셋으로 시작한다. 자녀 생성(ChildService)과 동일하게
+    // 설정값을 단일 출처로 삼기 위해, 엔티티 상수가 아니라 여기서 채워 넣는다.
+    private Parent withDefaultProfileImage(Parent parent) {
+        parent.changeProfileImage(profileImageService.defaultParentPresetKey());
+        return parent;
+    }
+
+    // ParentFinder를 쓰지 않는다 — 탈퇴·비밀번호 미설정·비밀번호 불일치를 모두 같은
+    // INVALID_CREDENTIALS로 응답해 계정 존재 여부가 드러나지 않게 해야 하기 때문이다.
     private Parent findAuthenticatedParent(String email, String rawPassword) {
         return parentRepository.findByEmail(email)
                 .filter(parent -> !parent.isDeleted())
                 .filter(Parent::hasPassword)
                 .filter(parent -> passwordEncoder.matches(rawPassword, parent.getPasswordHash()))
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_CREDENTIALS));
-    }
-
-    // 소프트 삭제된 Parent는 걸러낸다 — PinService.getParent와 동일한 이유(만료 전 access
-    // token으로 탈퇴 계정이 인증 필요 API를 계속 쓸 수 있게 되는 걸 막기 위함).
-    private Parent getParent(Long parentId) {
-        return parentRepository.findById(parentId)
-                .filter(p -> !p.isDeleted())
-                .orElseThrow(() -> new BusinessException(AuthErrorCode.PARENT_NOT_FOUND));
     }
 
     private boolean isUnderAge(LocalDate birthDate) {

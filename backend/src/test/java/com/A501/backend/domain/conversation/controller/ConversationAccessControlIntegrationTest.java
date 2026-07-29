@@ -59,6 +59,9 @@ class ConversationAccessControlIntegrationTest {
 
     private static final Long PARENT_ID = 1L;
     private static final Long OTHER_PARENT_ID = 2L;
+    // 자녀 프로필 이미지는 정수 프리셋에서 S3 키 문자열로 바뀌었다. 여기서는 소유권 검증만 보므로
+    // 기본 프리셋 키를 그대로 쓴다.
+    private static final String CHILD_PRESET_KEY = "profile-presets/child-avatar";
     private static final String SECRET =
             "conversation-access-control-test-secret-key-1234567890";
 
@@ -183,11 +186,11 @@ class ConversationAccessControlIntegrationTest {
     }
 
     private Long seedChild(Long parentId) {
-        return childRepository.saveAndFlush(Child.create(parentId, "테스터", 1)).getChildId();
+        return childRepository.saveAndFlush(Child.create(parentId, "테스터", CHILD_PRESET_KEY)).getChildId();
     }
 
     private Long seedDeletedChild(Long parentId) {
-        Child child = Child.create(parentId, "테스터", 1);
+        Child child = Child.create(parentId, "테스터", CHILD_PRESET_KEY);
         child.softDelete(LocalDateTime.of(2026, 7, 22, 0, 0));
         return childRepository.saveAndFlush(child).getChildId();
     }

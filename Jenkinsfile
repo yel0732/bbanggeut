@@ -8,6 +8,13 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
+    parameters {
+        booleanParam(
+                name: 'SKIP_TESTS',
+                defaultValue: false,
+                description: 'Temporary manual deployment only: skip Backend and AI Server tests')
+    }
+
     environment {
         ENV_FILE = '/srv/a501-secrets/.env'
         COMPOSE_PROJECT_NAME = 'a501'
@@ -15,16 +22,32 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                script {
+                    def scmVars = checkout scm
+                    env.GIT_COMMIT = scmVars.GIT_COMMIT
+                    if (!env.GIT_COMMIT?.trim()) {
+                        error('Git commit SHA could not be resolved after checkout.')
+                    }
+                    echo "Resolved Git commit: ${env.GIT_COMMIT}"
+                }
+            }
         }
 
         stage('Verify master') {
             steps {
                 script {
-                    def deployedBranch = env.BRANCH_NAME
-                            ?: env.gitlabSourceBranch
-                            ?: env.GIT_BRANCH?.replaceFirst('^origin/', '')
-                    if (deployedBranch != 'master') {
+                    def branchRefs = [
+                            env.BRANCH_NAME,
+                            env.gitlabSourceBranch,
+                            env.GIT_BRANCH,
+                            scm.branches?.first()?.name
+                    ].findAll { it }
+                    def isMaster = branchRefs.any {
+                        it == 'master' || it.endsWith('/master')
+                    }
+                    echo "Resolved branch refs: ${branchRefs.join(', ')}"
+                    if (!isMaster) {
                         currentBuild.result = 'NOT_BUILT'
                         error('Deployment pipeline only runs for master.')
                     }
@@ -33,6 +56,9 @@ pipeline {
         }
 
         stage('Backend test') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
             steps {
                 dir('backend') {
                     sh './gradlew test'
@@ -41,6 +67,9 @@ pipeline {
         }
 
         stage('AI Server test') {
+            when {
+                expression { !params.SKIP_TESTS }
+            }
             steps {
                 dir('ai-server') {
                     sh '''python3 -m venv "$WORKSPACE/.venv-ai-ci"
@@ -68,6 +97,12 @@ pipeline {
     }
 
     post {
-        always { deleteDir() }
+        always {
+            junit allowEmptyResults: true,
+                    testResults: 'backend/build/test-results/test/*.xml'
+            archiveArtifacts allowEmptyArchive: true,
+                    artifacts: 'backend/build/reports/tests/test/**'
+            deleteDir()
+        }
     }
 }

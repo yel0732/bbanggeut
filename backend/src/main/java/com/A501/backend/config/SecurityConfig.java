@@ -63,6 +63,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/children").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/children/{childId}").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/children/{childId}").authenticated()
+                        // 아이 실물 사진을 올리는 경로다. 아래 anyRequest().permitAll() 때문에 여기서
+                        // 빠뜨리면 인증 없이 열리므로 반드시 명시한다.
+                        .requestMatchers(HttpMethod.POST, "/api/children/{childId}/image").authenticated()
+                        // TODO: game/report/conversation 도메인이 실제 인증으로 전환되면 .authenticated()로 좁힐 것
                         // report·conversation은 서비스 계층에서 SecurityContext 기반으로 인증/인가를
                         // 강제한다(미인증 시 401). game 도메인은 아직 mock 기반이라 여기서 좁히지 않는다.
                         .anyRequest().permitAll())

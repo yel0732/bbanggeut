@@ -10,6 +10,9 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
+import com.A501.backend.common.storage.ImageErrorCode;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -57,7 +60,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = e.getErrorCode();
         log.warn("Business exception: {} - {}", errorCode.getCode(), errorCode.getMessage());
         return ResponseEntity.status(errorCode.getStatus())
-                .body(ErrorResponse.of(errorCode.getStatus().value(), errorCode.getCode(), errorCode.getMessage()));
+                .body(ErrorResponse.from(e));
     }
 
     // 애플리케이션 레이어 중복 체크를 통과한 뒤에도 동시 요청으로 DB 유니크 제약을 건드릴 수
@@ -69,6 +72,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of(HttpStatus.CONFLICT.value(), "DATA_CONFLICT",
                         "요청을 처리할 수 없습니다. 이미 존재하는 값인지 확인해주세요."));
+    }
+
+    // 서블릿 multipart 한도(spring.servlet.multipart.max-file-size)를 넘으면 요청이 컨트롤러에
+    // 닿기 전에 끊긴다. 매핑이 없으면 500으로 떨어지지만 사용자 입력 문제이므로 400으로 돌린다.
+    //
+    // 앱 레벨 검증(app.storage.max-image-size)과 같은 IMAGE_TOO_LARGE를 쓰는 이유: 클라이언트
+    // 입장에서는 "사진이 너무 큼"이라는 동일한 상황인데 한도를 어디서 걸렀느냐에 따라 응답이
+    // 달라지면 처리 분기가 늘어난다. 현재 multipart 엔드포인트는 프로필 사진 업로드뿐이며,
+    // 이미지가 아닌 업로드가 생기면 이 매핑을 다시 검토해야 한다.
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
+        log.warn("Upload exceeded servlet multipart limit", e);
+        ErrorCode errorCode = ImageErrorCode.IMAGE_TOO_LARGE;
+        return ResponseEntity.status(errorCode.getStatus())
+                .body(ErrorResponse.of(errorCode.getStatus().value(), errorCode.getCode(), errorCode.getMessage()));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

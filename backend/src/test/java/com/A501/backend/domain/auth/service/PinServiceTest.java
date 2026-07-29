@@ -40,7 +40,9 @@ class PinServiceTest {
 
     @BeforeEach
     void setUp() {
-        pinService = new PinService(parentRepository, passwordEncoder, PIN_PROPERTIES);
+        // ParentFinder는 목이 아니라 실제 구현을 끼운다 — 소프트 삭제 필터가 실제로 도는지까지
+        // 이 테스트가 계속 검증하도록 하기 위함이다.
+        pinService = new PinService(new ParentFinder(parentRepository), passwordEncoder, PIN_PROPERTIES);
     }
 
     @Test
@@ -230,6 +232,86 @@ class PinServiceTest {
                 .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
                         .isEqualTo(PinErrorCode.PIN_CONFIRMATION_MISMATCH));
         assertThat(parent.getPinHash()).isEqualTo("old-hash");
+    }
+
+    // 잠금 잔여시간과 남은 시도 횟수는 서버만 아는 값이다. 실패 카운트가 계정 단위로 누적되므로
+    // 클라이언트가 5회째 실패 시점부터 자체 계산하면 다른 기기·다른 화면에서 이미 실패한 이력을
+    // 반영하지 못한다. 아래 세 테스트가 이 값들이 예외에 실려 나가는 것을 고정한다.
+
+    @Test
+    void verifyPin_carriesRemainingAttemptsOnMismatch() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("wrong", "hashed-pin")).thenReturn(false);
+
+        assertThatThrownBy(() -> pinService.verifyPin(1L, "wrong"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> {
+                    BusinessException ex = (BusinessException) e;
+                    assertThat(ex.getErrorCode()).isEqualTo(PinErrorCode.PIN_MISMATCH);
+                    // 5회 정책에서 1회 실패 → 4회 남음
+                    assertThat(ex.getRemainingAttempts()).isEqualTo(4);
+                    assertThat(ex.getRetryAfterSeconds()).isNull();
+                });
+    }
+
+    @Test
+    void verifyPin_carriesRetryAfterSecondsWhenLockTriggered() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now());
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+        when(passwordEncoder.matches("wrong", "hashed-pin")).thenReturn(false);
+
+        for (int i = 0; i < 4; i++) {
+            assertThatThrownBy(() -> pinService.verifyPin(1L, "wrong"));
+        }
+
+        assertThatThrownBy(() -> pinService.verifyPin(1L, "wrong"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> {
+                    BusinessException ex = (BusinessException) e;
+                    assertThat(ex.getErrorCode()).isEqualTo(PinErrorCode.PIN_LOCKED);
+                    // 방금 잠갔으므로 잠금 시간(5분=300초) 전부가 남아 있다. 올림 처리 때문에
+                    // 300을 넘지 않으면서도 0이나 음수가 될 수 없다.
+                    assertThat(ex.getRetryAfterSeconds()).isBetween(1, 300);
+                    assertThat(ex.getRemainingAttempts()).isNull();
+                });
+    }
+
+    @Test
+    void verifyPin_carriesRemainingLockTimeWhileLockAlreadyActive() {
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        parent.setPin("hashed-pin", LocalDateTime.now(kst));
+        // 4분 전에 잠긴 상태 — 다른 기기에서 이미 잠근 뒤 이 기기가 처음 시도하는 상황이다.
+        parent.registerPinFailure(LocalDateTime.now(kst).minusMinutes(4), 1, Duration.ofMinutes(5));
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> pinService.verifyPin(1L, "1234"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> {
+                    BusinessException ex = (BusinessException) e;
+                    assertThat(ex.getErrorCode()).isEqualTo(PinErrorCode.PIN_LOCKED);
+                    // 5분 잠금 중 4분이 지났으므로 약 60초가 남는다. 경과 시간이 아니라
+                    // 남은 시간을 내려준다는 것이 핵심이다.
+                    assertThat(ex.getRetryAfterSeconds()).isBetween(55, 60);
+                });
+    }
+
+    @Test
+    void verifyPin_carriesNoExtraInfoForUnrelatedErrors() {
+        Parent parent = Parent.createLocal("parent@example.com", "hashed-password", LocalDate.of(1990, 1, 1));
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> pinService.verifyPin(1L, "1234"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> {
+                    BusinessException ex = (BusinessException) e;
+                    assertThat(ex.getErrorCode()).isEqualTo(PinErrorCode.PIN_NOT_SET);
+                    assertThat(ex.getRetryAfterSeconds()).isNull();
+                    assertThat(ex.getRemainingAttempts()).isNull();
+                });
     }
 
     // 스펙 4.3절이 별도로 경고하는 지점: 잠금이 자연 만료된 뒤 실패 횟수를 리셋하지 않으면,

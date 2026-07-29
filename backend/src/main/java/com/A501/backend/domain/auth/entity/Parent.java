@@ -60,9 +60,14 @@ public class Parent extends BaseTimeEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    // 부모도 자녀와 동일하게 기본 제공 이미지 중 선택하는 프로필 사진을 설정할 수 있다(CHILD와 동일 방식).
-    @Column(name = "profile_image_num", nullable = false)
-    private int profileImageNum = 1;
+    // 부모도 자녀와 동일하게 프로필 사진을 갖는다. 프리셋과 업로드(웹캠) 사진을 S3 키 하나로 표현하고,
+    // 공개 여부는 키 접두사가 결정한다(common/storage).
+    //
+    // 기본값을 엔티티에 상수로 두지 않는다 — 그러면 설정(app.storage.default-preset-key)과 값이
+    // 두 군데로 갈라져 한쪽만 바꿔도 조용히 어긋난다. 자녀와 동일하게 생성 시점에 서비스가
+    // 설정값을 넣어준다(AuthService). 넣지 않고 저장하면 NOT NULL 위반으로 즉시 드러난다.
+    @Column(name = "profile_image_key", nullable = false, length = 512)
+    private String profileImageKey;
 
     private Parent(String email, String passwordHash, LocalDate birthDate, AuthProvider provider, String providerId) {
         this.email = email;
@@ -138,7 +143,7 @@ public class Parent extends BaseTimeEntity {
         this.pinLockedUntil = null;
     }
 
-    public void changeProfileImage(int profileImageNum) {
-        this.profileImageNum = profileImageNum;
+    public void changeProfileImage(String profileImageKey) {
+        this.profileImageKey = profileImageKey;
     }
 }

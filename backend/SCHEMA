@@ -95,6 +95,29 @@ CREATE TABLE conversation_game_session (
 -- Multiple completed games from the same KST day are linked to one GAME topic.
 
 
+-- GAME-00: game -------------------------------------------------------------
+
+CREATE TABLE game (
+    game_id    BIGINT       NOT NULL,
+    game_code  VARCHAR(40)  NOT NULL,
+    game_name  VARCHAR(100) NOT NULL,
+    created_at DATETIME(6)  NOT NULL,
+    updated_at DATETIME(6)  NOT NULL,
+    PRIMARY KEY (game_id),
+    CONSTRAINT uk_game_code UNIQUE (game_code)
+);
+
+INSERT INTO game (
+    game_id,
+    game_code,
+    game_name,
+    created_at,
+    updated_at
+) VALUES
+    (7, 'DOBBLE', '그림 맞추기', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),
+    (8, 'FRUIT_NINJA', '과일 자르기', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6));
+
+
 -- GAME-01: game_session -----------------------------------------------------
 
 CREATE TABLE game_session (
@@ -110,12 +133,14 @@ CREATE TABLE game_session (
     score                 INT          NOT NULL,
     created_at            DATETIME(6)  NOT NULL,
     PRIMARY KEY (game_session_id),
-    CONSTRAINT uk_game_session_client_play_id UNIQUE (client_play_id)
+    CONSTRAINT uk_game_session_client_play_id UNIQUE (client_play_id),
+    CONSTRAINT fk_game_session_game
+        FOREIGN KEY (game_id) REFERENCES game (game_id)
 );
 
 -- game_session_id, client_play_id는 UUID를 MySQL BINARY(16)으로 저장한다.
 -- difficulty_code는 난이도 정책 확정 전까지 NULL을 허용한다.
--- child와 game 테이블이 아직 없으므로 FK 제약조건은 부모 테이블 확정 후 추가한다.
+-- child FK는 부모 테이블 정책 확정 후 추가한다.
 -- Entity: backend/src/main/java/com/A501/backend/domain/game/entity/GameSession.java
 
 -- MOTIONTASK05/MOTIONTASK19: Fruit Ninja rule and result tables -------------

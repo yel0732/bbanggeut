@@ -39,6 +39,12 @@ public interface ChildRepository extends JpaRepository<Child, Long> {
     List<Long> findAllChildIdsByParentId(@Param("parentId") Long parentId);
 
     /**
+     * 계정 파기 시 정리할 자녀 프로필 이미지 키. 조회와 같은 이유로 소프트 삭제를 포함한다.
+     */
+    @Query("select c.profileImageKey from Child c where c.parentId = :parentId")
+    List<String> findAllProfileImageKeysByParentId(@Param("parentId") Long parentId);
+
+    /**
      * 계정 파기 시 해당 부모의 자녀를 전부 물리 삭제한다.
      * 조회와 같은 이유로 소프트 삭제 여부를 보지 않는다.
      */

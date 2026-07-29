@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.A501.backend.common.storage.ProfileImageService;
 import com.A501.backend.domain.child.repository.ChildRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ChildPurgeService {
 
     private final ChildRepository childRepository;
+    private final ProfileImageService profileImageService;
 
     /**
      * 파기 대상 자녀 ID. **소프트 삭제된 자녀를 포함한다** — 탈퇴 시 자녀도 함께 소프트 삭제되므로
@@ -37,6 +39,27 @@ public class ChildPurgeService {
             return List.of();
         }
         return childRepository.findAllChildIdsByParentId(parentId);
+    }
+
+    /**
+     * 자녀 프로필 이미지의 **잔여 객체**를 정리한다. 탈퇴 API가 이미 파기했으므로 대부분 no-op인
+     * 안전망이다. 직후에 child row가 삭제되므로 키를 되돌리지는 않는다.
+     *
+     * <p>한 자녀의 S3 삭제 실패가 나머지를 막지 않게 개별로 처리한다 — 여기서 예외가 나면
+     * 아래 hardDeleteByParentId까지 도달하지 못해 계정 파기 전체가 매 주기 실패한다.
+     */
+    public void deleteChildProfileImagesByParentId(Long parentId) {
+        if (parentId == null) {
+            return;
+        }
+        for (String key : childRepository.findAllProfileImageKeysByParentId(parentId)) {
+            try {
+                profileImageService.deleteIfUpload(key);
+            } catch (RuntimeException e) {
+                // 키 원문은 남기지 않는다(개인정보). 남은 객체는 스토리지 수명주기 정책에 맡긴다.
+                log.warn("자녀 프로필 이미지 정리 실패: parentId={}", parentId, e);
+            }
+        }
     }
 
     /**

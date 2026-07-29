@@ -32,6 +32,59 @@ class AuthServiceIntegrationTest {
     @Autowired
     private ParentRepository parentRepository;
 
+    // 익명화가 없으면 파기 스케줄러가 row를 지울 때까지 같은 이메일로 재가입할 수 없고,
+    // 스케줄러를 켜지 않은 환경에서는 영구 차단된다.
+    @Test
+    void withdraw_freesTheEmailForImmediateResignup() {
+        authService.signup(new SignupRequest("reuse@example.com", "Abcdef1!", LocalDate.of(1990, 1, 1)));
+        Long parentId = parentRepository.findByEmail("reuse@example.com").orElseThrow().getParentId();
+
+        authService.withdraw(parentId, null);
+        parentRepository.flush();
+
+        authService.signup(new SignupRequest("reuse@example.com", "Abcdef1!", LocalDate.of(1990, 1, 1)));
+
+        Parent resignedUp = parentRepository.findByEmail("reuse@example.com").orElseThrow();
+        // 기존 계정을 되살린 것이 아니라 완전히 새 row여야 한다.
+        assertThat(resignedUp.getParentId()).isNotEqualTo(parentId);
+        assertThat(resignedUp.isDeleted()).isFalse();
+    }
+
+    // 탈퇴한 구글 계정도 같은 providerId로 다시 가입할 수 있어야 한다. providerId를 비우지 않으면
+    // googleAuth가 탈퇴 계정을 필터로 걸러낸 뒤 신규 생성하다 uk_parent_provider_id에 걸린다.
+    @Test
+    void withdraw_clearsProviderIdSoTheSameGoogleAccountCanSignUpAgain() {
+        Parent google = Parent.createGoogle("g@example.com", "google-sub-1", LocalDate.of(1990, 1, 1));
+        google.changeProfileImage("profile-presets/parent-avatar");
+        Long parentId = parentRepository.saveAndFlush(google).getParentId();
+
+        authService.withdraw(parentId, null);
+        parentRepository.flush();
+
+        assertThat(parentRepository.findByProviderId("google-sub-1")).isEmpty();
+        assertThat(parentRepository.findById(parentId).orElseThrow().isDeleted()).isTrue();
+    }
+
+    // 스케줄러가 꺼져 있으면 row가 무기한 남는데 익명화 덕에 재가입은 잘 되므로 아무도 이상함을
+    // 느끼지 못한다. 그 사이 자격증명과 생년월일이 보존되지 않아야 한다.
+    @Test
+    void withdraw_scrubsCredentialsAndBirthDateButKeepsPurgeKeys() {
+        authService.signup(new SignupRequest("scrub@example.com", "Abcdef1!", LocalDate.of(1990, 1, 1)));
+        Long parentId = parentRepository.findByEmail("scrub@example.com").orElseThrow().getParentId();
+        pinService.setPin(parentId, "1234");
+
+        authService.withdraw(parentId, "1234");
+        parentRepository.flush();
+
+        Parent withdrawn = parentRepository.findById(parentId).orElseThrow();
+        assertThat(withdrawn.getPasswordHash()).isNull();
+        assertThat(withdrawn.getPinHash()).isNull();
+        assertThat(withdrawn.getBirthDate()).isEqualTo(LocalDate.of(1900, 1, 1));
+        // 파기가 의존하는 값은 남아 있어야 한다.
+        assertThat(withdrawn.getDeletedAt()).isNotNull();
+        assertThat(withdrawn.getProfileImageKey()).isNotNull();
+    }
+
     @Test
     void signup_persistsBirthDateAndAuditingTimestampsInRealAppContext() {
         SignupRequest request = new SignupRequest(

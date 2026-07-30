@@ -9,6 +9,8 @@ import org.springframework.web.client.RestClientResponseException;
 
 import com.A501.backend.domain.conversation.dto.internal.DialogueAiRequest;
 import com.A501.backend.domain.conversation.dto.internal.DialogueAiResponse;
+import com.A501.backend.domain.conversation.dto.internal.DialogueOpeningRequest;
+import com.A501.backend.domain.conversation.dto.internal.DialogueOpeningResponse;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
 import com.A501.backend.domain.conversation.exception.ConversationException;
 
@@ -29,13 +31,28 @@ public class HttpDialogueAiClient implements DialogueAiClient {
     }
 
     @Override
+    public DialogueOpeningResponse openConversation(DialogueOpeningRequest request) {
+        return post(
+                "/internal/v1/dialogue/opening",
+                request,
+                DialogueOpeningResponse.class);
+    }
+
+    @Override
     public DialogueAiResponse processTurn(DialogueAiRequest request) {
+        return post(
+                "/internal/v1/dialogue/turns",
+                request,
+                DialogueAiResponse.class);
+    }
+
+    private <T> T post(String uri, Object request, Class<T> responseType) {
         try {
-            DialogueAiResponse response = restClient.post()
-                    .uri("/internal/v1/dialogue/turns")
+            T response = restClient.post()
+                    .uri(uri)
                     .body(request)
                     .retrieve()
-                    .body(DialogueAiResponse.class);
+                    .body(responseType);
             if (response == null) {
                 throw new ConversationException(
                         ConversationErrorCode.AI_DIALOGUE_INVALID_RESPONSE);

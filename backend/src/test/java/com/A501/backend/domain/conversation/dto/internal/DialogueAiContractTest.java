@@ -21,10 +21,12 @@ class DialogueAiContractTest {
                 "req_contract",
                 "conv_contract",
                 "친구와 블록 놀이를 했어.",
-                null,
+                "어떤 일이 있었어?",
+                "event",
                 ConversationTopic.GAME,
                 ConversationTopic.DAILY,
                 DialogueSlotsPayload.empty(),
+                List.of(),
                 List.of(),
                 new DialogueTopicContextPayload(
                         ConversationTopic.GAME,
@@ -38,10 +40,13 @@ class DialogueAiContractTest {
                 .contains("\"requestId\":\"req_contract\"")
                 .contains("\"conversationId\":\"conv_contract\"")
                 .contains("\"childAnswer\":\"친구와 블록 놀이를 했어.\"")
+                .contains("\"currentTarget\":\"event\"")
+                .contains("\"skippedTargets\":[]")
                 .contains("\"currentTopic\":\"GAME\"")
                 .contains("\"nextTopic\":\"DAILY\"")
                 .contains("\"currentTopicSlots\"")
                 .contains("\"recentQuestions\":[]")
+                .contains("\"topicHistory\":[]")
                 .contains("\"topicContext\"")
                 .contains("\"topicQuestionCount\":0")
                 .contains("\"topicMaxQuestionCount\":6")
@@ -61,13 +66,15 @@ class DialogueAiContractTest {
                     "emotionReason": null,
                     "memorableMoment": "성을 완성한 순간"
                   },
+                  "updatedSkippedTargets": ["emotionReason"],
                   "decision": "TERMINATE_SESSION",
                   "terminationReason": "REQUIRED_SLOTS_FILLED",
                   "assistantMessage": null,
                   "assistantQuestion": null,
                   "questionGenerationStatus": null,
                   "questionGenerationSource": null,
-                  "questionGenerationFailureCode": null
+                  "questionGenerationFailureCode": null,
+                  "closingMessage": "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
                 }
                 """,
                 DialogueAiResponse.class);
@@ -76,6 +83,10 @@ class DialogueAiContractTest {
                 .isEqualTo(DialogueAiDecision.TERMINATE_SESSION);
         assertThat(response.terminationReason())
                 .isEqualTo(TerminationReason.REQUIRED_SLOTS_FILLED);
+        assertThat(response.updatedSkippedTargets())
+                .containsExactly("emotionReason");
+        assertThat(response.closingMessage())
+                .isEqualTo("오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자.");
         assertThat(response.updatedSlots().people())
                 .containsExactly("친구");
     }
@@ -90,6 +101,7 @@ class DialogueAiContractTest {
                   "terminationReason": "MAX_QUESTION_REACHED",
                   "assistantMessage": "게임 이야기를 들려줘서 고마워! 이번에는 오늘 있었던 다른 일도 이야기해 줄래?",
                   "assistantQuestion": "이번에는 오늘 있었던 다른 일도 이야기해 줄래?",
+                  "assistantTarget": "event",
                   "questionGenerationStatus": "fallback",
                   "questionGenerationSource": "policy",
                   "questionGenerationFailureCode": null
@@ -100,5 +112,6 @@ class DialogueAiContractTest {
         assertThat(response.decision()).isEqualTo(DialogueAiDecision.SWITCH_TOPIC);
         assertThat(response.assistantQuestion())
                 .isEqualTo("이번에는 오늘 있었던 다른 일도 이야기해 줄래?");
+        assertThat(response.assistantTarget()).isEqualTo("event");
     }
 }

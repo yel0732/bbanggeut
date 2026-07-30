@@ -82,6 +82,7 @@ public class AiTurnEventHandler implements ConversationEventHandler {
                     responseId,
                     text,
                     questionText,
+                    payload.targetSlot(),
                     turnTopic);
             return;
         }
@@ -105,6 +106,7 @@ public class AiTurnEventHandler implements ConversationEventHandler {
                 turnSeq,
                 text,
                 questionText,
+                payload.targetSlot(),
                 responseId,
                 payloadReader.toUtc(event.occurredAt(), "occurredAt"),
                 turnTopic));
@@ -142,6 +144,7 @@ public class AiTurnEventHandler implements ConversationEventHandler {
                 responseId,
                 turn.getContent(),
                 turn.getQuestionText(),
+                turn.getQuestionTarget(),
                 turn.getTopicType());
 
         if (turn.getStatus() == TurnStatus.GENERATING) {
@@ -173,9 +176,18 @@ public class AiTurnEventHandler implements ConversationEventHandler {
             DialogueSlotsPayload slots =
                     objectMapper.treeToValue(payload.topicSlots(), DialogueSlotsPayload.class);
             topicState.updateSlots(objectMapper.writeValueAsString(slots));
+            if (payload.skippedTargets() != null) {
+                topicState.updateSkippedTargets(objectMapper.writeValueAsString(
+                        DialogueTopicHistoryAssembler.normalizeSupportedQuestionTargets(
+                                payload.skippedTargets())));
+            }
         } catch (JacksonException exception) {
             throw new ConversationEventContractException(
                     "payload.topicSlots cannot be serialized.",
+                    exception);
+        } catch (IllegalArgumentException exception) {
+            throw new ConversationEventContractException(
+                    "payload.skippedTargets contains an invalid target.",
                     exception);
         }
 
@@ -268,6 +280,7 @@ public class AiTurnEventHandler implements ConversationEventHandler {
             String responseId,
             String text,
             String questionText,
+            String questionTarget,
             ConversationTopic topic) {
         if (!turn.getTurnId().equals(turnId)
                 || !turn.getConversationId().equals(conversationId)
@@ -276,6 +289,9 @@ public class AiTurnEventHandler implements ConversationEventHandler {
                 || !responseId.equals(turn.getResponseId())
                 || !text.equals(turn.getContent())
                 || !questionText.equals(turn.getQuestionText())
+                || !java.util.Objects.equals(
+                        questionTarget,
+                        turn.getQuestionTarget())
                 || turn.getTopicType() != topic) {
             throw new ConversationEventContractException(
                     "turnId is already bound to a different AI turn.");

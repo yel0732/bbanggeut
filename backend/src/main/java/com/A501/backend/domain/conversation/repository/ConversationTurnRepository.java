@@ -41,6 +41,12 @@ public interface ConversationTurnRepository extends JpaRepository<ConversationTu
                     Speaker speaker,
                     TurnStatus status);
 
+    List<ConversationTurn>
+            findByConversationIdAndTopicTypeAndStatusOrderByTurnSeqAsc(
+                    String conversationId,
+                    ConversationTopic topicType,
+                    TurnStatus status);
+
     @Query("""
             select coalesce(max(turn.turnSeq), 0)
             from ConversationTurn turn

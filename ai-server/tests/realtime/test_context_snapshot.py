@@ -5,6 +5,7 @@ import logging
 
 import pytest
 
+from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.schemas import DialogueTopic
 from app.realtime.context_snapshot import (
     ContextSnapshot,
@@ -49,6 +50,7 @@ _SNAPSHOT_JSON = {
             "order": 1,
             "maxQuestionCount": 6,
             "questionCount": 3,
+            "skippedTargets": ["emotionReason"],
             "games": [
                 {
                     "gameSessionId": "b3b10000-0000-0000-0000-000000000001",
@@ -92,6 +94,9 @@ class TestModel:
         assert snapshot.topics[1].games[0].score == 820
         assert snapshot.topics[1].initial_slots.event == "과일 게임"
         assert snapshot.topics[1].question_count == 3
+        assert snapshot.topics[1].skipped_targets == frozenset(
+            {QuestionTarget.EMOTION_REASON}
+        )
 
     def test_ordered_topics_sorts_by_order_not_input_position(self) -> None:
         snapshot = ContextSnapshot.model_validate(_SNAPSHOT_JSON)

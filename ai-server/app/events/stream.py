@@ -35,6 +35,7 @@ from typing import Any
 
 from redis.exceptions import RedisError
 
+from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.schemas import DiarySlots
 
 STREAM_KEY = "conversation-events"
@@ -151,6 +152,7 @@ class ConversationStreamProducer:
         target_slot: str | None,
         topic_type: str,
         topic_slots: DiarySlots,
+        skipped_targets: frozenset[QuestionTarget] | None = None,
         slots_topic_type: str | None = None,
         topic_question_count: int | None = None,
         session_question_count: int | None = None,
@@ -166,6 +168,11 @@ class ConversationStreamProducer:
                 "topicType": topic_type,
                 "slotsTopicType": slots_topic_type or topic_type,
                 "topicSlots": _slots_payload(topic_slots),
+                "skippedTargets": (
+                    sorted(target.value for target in skipped_targets)
+                    if skipped_targets is not None
+                    else None
+                ),
                 "topicQuestionCount": topic_question_count,
                 "sessionQuestionCount": session_question_count,
                 "topicCompletionReason": topic_completion_reason,

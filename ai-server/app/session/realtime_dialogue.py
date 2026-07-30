@@ -37,6 +37,7 @@ from app.dialogue.pipeline import (
     DialogueTurnRequest,
     DialogueTurnResponse,
     conversation_opening_question,
+    conversation_opening_target,
 )
 from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
@@ -50,7 +51,12 @@ from app.dialogue.policy.termination import (
     DialogueTerminationPolicy,
 )
 from app.dialogue.question.fallback import build_fallback_question
-from app.dialogue.schemas import DialogueTopic, DialogueTopicContext, DiarySlots
+from app.dialogue.schemas import (
+    DialogueTopic,
+    DialogueTopicContext,
+    DialogueTopicHistoryItem,
+    DiarySlots,
+)
 from app.events.outbound import ConversationEventPublisher
 from app.events.stream import ConversationStreamProducer
 from app.realtime.context_snapshot import ContextSnapshot, TopicSnapshot
@@ -92,6 +98,7 @@ class _TopicState:
     slots: DiarySlots
     question_count: int = 0
     skipped_targets: frozenset[QuestionTarget] = field(default_factory=frozenset)
+    history: list[DialogueTopicHistoryItem] = field(default_factory=list)
 
 
 class DialogueSessionState:
@@ -107,6 +114,8 @@ class DialogueSessionState:
                 snapshot=topic,
                 slots=topic.initial_slots.model_copy(deep=True),
                 question_count=topic.question_count,
+                skipped_targets=topic.skipped_targets,
+                history=list(topic.topic_history),
             )
             for topic in topics
         ]
@@ -119,8 +128,19 @@ class DialogueSessionState:
             ),
             0,
         )
-        self.recent_questions: list[str] = []
-        self.last_question: str | None = None
+        current_snapshot = self.current_topic.snapshot
+        self.recent_questions = [
+            item.assistant_question
+            for item in self.current_topic.history[-_RECENT_QUESTION_LIMIT:]
+        ]
+        if current_snapshot.current_question is not None:
+            self.recent_questions.append(current_snapshot.current_question)
+            del self.recent_questions[:-_RECENT_QUESTION_LIMIT]
+        self.last_question = current_snapshot.current_question
+        self.last_target = current_snapshot.current_target
+        self.last_assistant_message = (
+            current_snapshot.current_assistant_message
+        )
         self.consecutive_no_responses = 0
         self.consecutive_low_confidence_reasks = 0
         self.terminated = False
@@ -144,11 +164,40 @@ class DialogueSessionState:
         if self._topic_index + 1 >= len(self._topics):
             raise ValueError("no next topic to advance to")
         self._topic_index += 1
+        snapshot = self.current_topic.snapshot
+        self.recent_questions = [
+            item.assistant_question
+            for item in self.current_topic.history[-_RECENT_QUESTION_LIMIT:]
+        ]
+        if snapshot.current_question is not None:
+            self.recent_questions.append(snapshot.current_question)
+            del self.recent_questions[:-_RECENT_QUESTION_LIMIT]
+        self.last_question = snapshot.current_question
+        self.last_target = snapshot.current_target
+        self.last_assistant_message = snapshot.current_assistant_message
 
-    def remember_question(self, question: str) -> None:
+    def remember_question(
+        self,
+        question: str,
+        assistant_message: str | None = None,
+        target: QuestionTarget | None = None,
+    ) -> None:
         self.recent_questions.append(question)
         del self.recent_questions[:-_RECENT_QUESTION_LIMIT]
         self.last_question = question
+        self.last_target = target
+        self.last_assistant_message = assistant_message or question
+
+    def remember_exchange(self, child_answer: str) -> None:
+        if self.last_question is None or self.last_assistant_message is None:
+            return
+        self.current_topic.history.append(
+            DialogueTopicHistoryItem(
+                assistantMessage=self.last_assistant_message,
+                assistantQuestion=self.last_question,
+                childAnswer=child_answer,
+            )
+        )
 
 
 class RealtimeDialogueManager:
@@ -236,9 +285,11 @@ class RealtimeDialogueManager:
             child_answer=result.text,
             stt_confidence=result.confidence,
             current_question=state.last_question,
+            current_target=state.last_target,
             current_topic=topic.snapshot.type,
             next_topic=state.next_topic_type,
             current_slots=topic.slots,
+            topic_history=tuple(topic.history),
             recent_questions=tuple(state.recent_questions),
             game_context=DialogueTopicContext(
                 topic=topic.snapshot.type,
@@ -267,11 +318,14 @@ class RealtimeDialogueManager:
             )
             return
 
+        state.remember_exchange(result.text)
         self._apply_turn_response(response)
 
     def _apply_turn_response(self, response: DialogueTurnResponse) -> None:
         state = self._state
         topic = state.current_topic
+        if response.updated_skipped_targets is not None:
+            topic.skipped_targets = response.updated_skipped_targets
 
         if response.decision is DialogueTurnDecision.TERMINATE_SESSION:
             # DIARY-1 계약상 terminal 응답에는 메시지가 없다 — 마무리 멘트는
@@ -291,7 +345,6 @@ class RealtimeDialogueManager:
 
         if response.decision is DialogueTurnDecision.SWITCH_TOPIC:
             topic.slots = response.updated_slots  # 끝난 주제의 최종 슬롯
-            # 전환 질문은 목표가 없다 — 새 주제 오프닝이다(§11-C: null target).
             state.advance_topic()
             # 전환 질문은 새 주제의 첫 질문으로 센다.
             state.current_topic.question_count = 1
@@ -299,7 +352,7 @@ class RealtimeDialogueManager:
                 ai_ref,
                 response.assistant_message,
                 response.assistant_question,
-                None,
+                response.assistant_target or QuestionTarget.EVENT,
                 state.current_topic,
                 slots_topic=topic,
                 topic_completion_reason=_reason_value(response),
@@ -307,8 +360,10 @@ class RealtimeDialogueManager:
         else:
             topic.slots = response.updated_slots
             topic.question_count += 1
-            # 이 질문이 겨냥한 목표를 갱신 슬롯으로 재계산한다(§11-C, 결정론적).
-            target = select_next_question_target(topic.slots)
+            target = response.assistant_target or select_next_question_target(
+                topic.slots,
+                excluded_targets=topic.skipped_targets,
+            )
             self._emit_ai_turn_generated(
                 ai_ref,
                 response.assistant_message,
@@ -316,7 +371,17 @@ class RealtimeDialogueManager:
                 target,
                 topic,
             )
-        state.remember_question(response.assistant_question)
+        state.remember_question(
+            response.assistant_question,
+            response.assistant_message,
+            (
+                response.assistant_target
+                or select_next_question_target(
+                    state.current_topic.slots,
+                    excluded_targets=state.current_topic.skipped_targets,
+                )
+            ),
+        )
 
     # --- 낮은 STT 신뢰도 되묻기 (§22 STT_LOW_CONFIDENCE) ----------------------
 
@@ -360,8 +425,9 @@ class RealtimeDialogueManager:
         topic = state.current_topic
         ai_ref = self._publish_assistant_text(ASK_TO_REPEAT_PROMPT)
         if ai_ref is not None:
-            target = select_next_question_target(
-                topic.slots, excluded_targets=topic.skipped_targets
+            target = state.last_target or select_next_question_target(
+                topic.slots,
+                excluded_targets=topic.skipped_targets,
             )
             self._emit_ai_turn_generated(
                 ai_ref, ASK_TO_REPEAT_PROMPT, ASK_TO_REPEAT_PROMPT, target, topic
@@ -387,17 +453,25 @@ class RealtimeDialogueManager:
             or topic.question_count > 0
         ):
             return
+        game_names = [
+            game.game_name
+            for game in topic.snapshot.games
+            if game.game_name
+        ]
         question = conversation_opening_question(
             topic.snapshot.type,
-            [game.game_name for game in topic.snapshot.games if game.game_name],
+            game_names,
         )
         ai_ref = self._publish_assistant_text(question)
         if ai_ref is None:
             return
         topic.question_count = 1
-        target = select_next_question_target(topic.slots)
+        target = conversation_opening_target(
+            topic.snapshot.type,
+            game_names,
+        )
         self._emit_ai_turn_generated(ai_ref, question, question, target, topic)
-        state.remember_question(question)
+        state.remember_question(question, question, target)
 
     # --- no-response (ADR-018 연결) -----------------------------------------
 
@@ -408,8 +482,9 @@ class RealtimeDialogueManager:
         if state.terminated:
             return
         topic = state.current_topic
-        current_target = select_next_question_target(
-            topic.slots, excluded_targets=topic.skipped_targets
+        current_target = state.last_target or select_next_question_target(
+            topic.slots,
+            excluded_targets=topic.skipped_targets,
         )
         if current_target is None:
             # 물을 목표가 남지 않았는데 답도 없다 — 종료가 유일한 결정이다.
@@ -459,7 +534,7 @@ class RealtimeDialogueManager:
                 ai_ref, prompt_text, prompt_text, target, topic
             )
             # 재질문은 질문 수에 세지 않는다(W03 plan §7-E) — 상태만 갱신.
-            self._state.remember_question(prompt_text)
+            self._state.remember_question(prompt_text, target=target)
 
     # --- publishing (T15) ----------------------------------------------------
 
@@ -563,6 +638,7 @@ class RealtimeDialogueManager:
             topic_type=turn_topic.snapshot.type.value,
             slots_topic_type=slots_owner.snapshot.type.value,
             topic_slots=slots_owner.slots,
+            skipped_targets=slots_owner.skipped_targets,
             topic_question_count=turn_topic.question_count,
             session_question_count=self._state.total_question_count,
             topic_completion_reason=topic_completion_reason,

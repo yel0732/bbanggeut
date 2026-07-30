@@ -79,6 +79,7 @@ class ConversationStreamEventContractTest {
                       "event": "과일 자르기", "people": [], "place": null,
                       "emotion": null, "emotionReason": null, "memorableMoment": null
                     },
+                    "skippedTargets": ["memorableMoment"],
                     "topicQuestionCount": 2,
                     "sessionQuestionCount": 2,
                     "topicCompletionReason": null
@@ -96,6 +97,8 @@ class ConversationStreamEventContractTest {
         assertThat(event.payload().get("slotsTopicType").asString()).isEqualTo("GAME");
         assertThat(event.payload().get("topicQuestionCount").asInt()).isEqualTo(2);
         assertThat(event.payload().get("sessionQuestionCount").asInt()).isEqualTo(2);
+        assertThat(event.payload().get("skippedTargets").get(0).asString())
+                .isEqualTo("memorableMoment");
         assertThat(event.payload().get("topicSlots").get("event").asString())
                 .isEqualTo("과일 자르기");
         assertThat(event.payload().get("topicSlots").get("emotion").isNull()).isTrue();

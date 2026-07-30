@@ -71,6 +71,9 @@ public class ConversationTopicState extends BaseTimeEntity
     @Column(name = "context_json", nullable = false, columnDefinition = "TEXT")
     private String contextJson;
 
+    @Column(name = "skipped_targets_json", nullable = false, columnDefinition = "TEXT")
+    private String skippedTargetsJson;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "completion_reason", length = 40)
     private TerminationReason completionReason;
@@ -114,6 +117,7 @@ public class ConversationTopicState extends BaseTimeEntity
         this.maxQuestionCount = maxQuestionCount;
         this.slotsJson = requireText(slotsJson, "슬롯 JSON이 필요합니다.");
         this.contextJson = requireText(contextJson, "주제 Context JSON이 필요합니다.");
+        this.skippedTargetsJson = "[]";
         this.status = ConversationTopicStatus.PENDING;
         this.questionCount = 0;
     }
@@ -163,6 +167,12 @@ public class ConversationTopicState extends BaseTimeEntity
 
     public void updateSlots(String slotsJson) {
         this.slotsJson = requireText(slotsJson, "슬롯 JSON이 필요합니다.");
+    }
+
+    public void updateSkippedTargets(String skippedTargetsJson) {
+        this.skippedTargetsJson = requireText(
+                skippedTargetsJson,
+                "Skipped targets JSON is required.");
     }
 
     public void synchronizeQuestionCount(int count) {

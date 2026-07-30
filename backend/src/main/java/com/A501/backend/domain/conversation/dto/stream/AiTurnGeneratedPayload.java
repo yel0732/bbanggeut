@@ -1,5 +1,7 @@
 package com.A501.backend.domain.conversation.dto.stream;
 
+import java.util.List;
+
 import tools.jackson.databind.JsonNode;
 
 public record AiTurnGeneratedPayload(
@@ -9,6 +11,7 @@ public record AiTurnGeneratedPayload(
         String topicType,
         String slotsTopicType,
         JsonNode topicSlots,
+        List<String> skippedTargets,
         Integer topicQuestionCount,
         Integer sessionQuestionCount,
         String topicCompletionReason) {

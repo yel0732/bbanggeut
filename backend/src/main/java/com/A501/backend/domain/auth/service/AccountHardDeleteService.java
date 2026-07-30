@@ -3,6 +3,8 @@ package com.A501.backend.domain.auth.service;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
@@ -33,6 +35,15 @@ public class AccountHardDeleteService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
+    // 이 횟수에 도달하면 수동 확인 요청을 한 번 남기고, 이후에는 스택트레이스를 생략한다.
+    static final int FAILURE_LOG_THRESHOLD = 10;
+
+    // parentId별 연속 실패 횟수. 스케줄러 스레드 하나가 순차 실행하지만, 배치 실행 중 다른
+    // 경로에서 이 서비스를 호출할 수 있어 동시 접근에 안전한 맵을 쓴다.
+    // 계정 파기와 자녀 파기는 실패 원인이 다르므로 카운터를 분리한다.
+    private final Map<Long, Integer> accountFailures = new ConcurrentHashMap<>();
+    private final Map<Long, Integer> childFailures = new ConcurrentHashMap<>();
+
     private final AccountPurgeProperties properties;
     private final AuthPurgeService authPurgeService;
     private final ProfilePurgeService profilePurgeService;
@@ -58,9 +69,36 @@ public class AccountHardDeleteService {
         for (Long parentId : parentIds) {
             try {
                 purgeWithdrawnParent(parentId);
+                accountFailures.remove(parentId);
             } catch (Exception e) {
-                log.error("계정 hard delete 실패: parentId={}", parentId, e);
+                logRepeatedFailure(accountFailures, parentId, e, "계정");
             }
+        }
+    }
+
+    /**
+     * 같은 계정이 계속 실패할 때 로그가 무한히 쌓이는 것을 막는다.
+     *
+     * <p>운영 주기(5분)에서 영구 실패 계정 하나가 하루 288회 × 스택트레이스를 남기면, 디스크를
+     * 채우는 것보다 <b>다른 에러가 그 노이즈에 묻히는 것</b>이 더 문제다. 영구 실패가 "원래 나는
+     * 에러"처럼 보여 아무도 손대지 않게 된다.
+     *
+     * <p>임계치까지는 스택트레이스를 남겨 원인을 볼 수 있게 하고, 넘어서면 한 번만 수동 확인
+     * 요청을 남긴 뒤 메시지만 기록한다. 신규 테이블을 만들지 않기로 했으므로 메모리 카운터이며,
+     * 인스턴스 재시작 시 초기화된다(정밀 추적이 필요해지면 테이블 도입을 재검토한다).
+     */
+    private void logRepeatedFailure(
+            Map<Long, Integer> counters, Long parentId, Exception e, String what) {
+        int failures = counters.merge(parentId, 1, Integer::sum);
+
+        if (failures < FAILURE_LOG_THRESHOLD) {
+            log.error("{} hard delete 실패: parentId={}, 연속 {}회", what, parentId, failures, e);
+        } else if (failures == FAILURE_LOG_THRESHOLD) {
+            log.error("{} hard delete가 {}회 연속 실패했다 — 수동 확인이 필요하다: parentId={}. "
+                    + "이후 주기부터는 스택트레이스를 남기지 않는다.", what, failures, parentId, e);
+        } else {
+            log.warn("{} hard delete 실패 지속: parentId={}, 연속 {}회 ({})",
+                    what, parentId, failures, e.getClass().getSimpleName());
         }
     }
 
@@ -83,8 +121,9 @@ public class AccountHardDeleteService {
             }
             try {
                 purgeDeletedChildrenOf(parentId, purgeBefore);
+                childFailures.remove(parentId);
             } catch (Exception e) {
-                log.error("삭제된 자녀 hard delete 실패: parentId={}", parentId, e);
+                logRepeatedFailure(childFailures, parentId, e, "삭제된 자녀");
             }
         }
     }

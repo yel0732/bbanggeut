@@ -1,8 +1,10 @@
 package com.A501.backend.domain.child.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -37,6 +39,37 @@ public interface ChildRepository extends JpaRepository<Child, Long> {
      */
     @Query("select c.childId from Child c where c.parentId = :parentId")
     List<Long> findAllChildIdsByParentId(@Param("parentId") Long parentId);
+
+    // --- 개별 삭제된 자녀 파기용 ---
+
+    /**
+     * 소프트 삭제된 자녀를 가진 보호자 ID. 유예 기간이 지난 자녀만 센다.
+     *
+     * <p>부모가 탈퇴했는지는 여기서 걸러내지 않는다 — child 도메인이 parent 테이블을 조회하면
+     * 도메인 침범이므로, 호출자(AccountHardDeleteService)가 auth 도메인에 물어 걸러낸다.
+     * 탈퇴한 부모의 자녀는 계정 파기 경로가 처리해야 한다. 자녀 파기가 먼저 child row를 지우면
+     * 계정 파기가 childIds를 빈 목록으로 조회해 대화·리포트가 고아로 남는다.
+     */
+    @Query("select distinct c.parentId from Child c "
+            + "where c.deletedAt is not null and c.deletedAt <= :purgeBefore")
+    List<Long> findParentIdsWithDeletedChildren(
+            @Param("purgeBefore") LocalDateTime purgeBefore, Pageable pageable);
+
+    /**
+     * 해당 보호자의 소프트 삭제된 자녀 ID. 활성 자녀는 포함하지 않는다 —
+     * 계정 파기(자녀 전부 삭제)와 달리 여기서는 삭제된 자녀만 대상이다.
+     */
+    @Query("select c.childId from Child c "
+            + "where c.parentId = :parentId and c.deletedAt is not null and c.deletedAt <= :purgeBefore")
+    List<Long> findDeletedChildIds(
+            @Param("parentId") Long parentId, @Param("purgeBefore") LocalDateTime purgeBefore);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from Child c where c.childId in :childIds")
+    int deleteByChildIds(@Param("childIds") List<Long> childIds);
+
+    @Query("select c.profileImageKey from Child c where c.childId in :childIds")
+    List<String> findProfileImageKeysByChildIds(@Param("childIds") List<Long> childIds);
 
     /**
      * 계정 파기 시 정리할 자녀 프로필 이미지 키. 조회와 같은 이유로 소프트 삭제를 포함한다.

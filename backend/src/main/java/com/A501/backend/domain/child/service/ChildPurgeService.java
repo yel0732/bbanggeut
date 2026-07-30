@@ -1,7 +1,9 @@
 package com.A501.backend.domain.child.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +61,52 @@ public class ChildPurgeService {
                 // 키 원문은 남기지 않는다(개인정보). 남은 객체는 스토리지 수명주기 정책에 맡긴다.
                 log.warn("자녀 프로필 이미지 정리 실패: parentId={}", parentId, e);
             }
+        }
+    }
+
+    // --- 개별 삭제된 자녀 파기 ---
+
+    /**
+     * 소프트 삭제된 자녀를 가진 보호자 ID. 부모의 탈퇴 여부는 걸러내지 않으므로
+     * 호출자가 auth 도메인에 물어 활성 계정만 남겨야 한다.
+     */
+    public List<Long> findParentIdsWithDeletedChildren(LocalDateTime purgeBefore, int limit) {
+        if (purgeBefore == null || limit < 1) {
+            return List.of();
+        }
+        return childRepository.findParentIdsWithDeletedChildren(purgeBefore, PageRequest.of(0, limit));
+    }
+
+    public List<Long> findDeletedChildIds(Long parentId, LocalDateTime purgeBefore) {
+        if (parentId == null || purgeBefore == null) {
+            return List.of();
+        }
+        return childRepository.findDeletedChildIds(parentId, purgeBefore);
+    }
+
+    /** 지정한 자녀들의 프로필 이미지 잔여 객체를 정리한다. 개별 자녀 파기용. */
+    public void deleteProfileImagesByChildIds(List<Long> childIds) {
+        if (childIds == null || childIds.isEmpty()) {
+            return;
+        }
+        for (String key : childRepository.findProfileImageKeysByChildIds(childIds)) {
+            try {
+                profileImageService.deleteIfUpload(key);
+            } catch (RuntimeException e) {
+                log.warn("자녀 프로필 이미지 정리 실패: childIds={}건", childIds.size(), e);
+            }
+        }
+    }
+
+    /** 지정한 자녀들을 물리 삭제한다. 자녀를 참조하는 도메인 삭제 이후에 호출해야 한다. */
+    @Transactional
+    public void hardDeleteByChildIds(List<Long> childIds) {
+        if (childIds == null || childIds.isEmpty()) {
+            return;
+        }
+        int deleted = childRepository.deleteByChildIds(childIds);
+        if (deleted > 0) {
+            log.info("삭제된 자녀 hard delete 완료: count={}", deleted);
         }
     }
 

@@ -31,6 +31,8 @@ class AccountHardDeleteServiceTest {
 
     private static final Long PARENT_ID = 42L;
     private static final List<Long> CHILD_IDS = List.of(10L, 11L);
+    private static final java.time.LocalDateTime PURGE_BEFORE =
+            java.time.LocalDateTime.of(2026, 7, 30, 12, 0);
 
     @Mock
     private AuthPurgeService authPurgeService;
@@ -129,6 +131,74 @@ class AccountHardDeleteServiceTest {
         verifyNoInteractions(
                 profilePurgeService, childPurgeService, reportPurgeService,
                 childDiaryPurgeService, conversationPurgeService, gamePurgeService);
+    }
+
+    // --- 개별 삭제된 자녀 파기 ---
+
+    // 탈퇴한 부모의 자녀는 계정 파기가 처리해야 한다. 여기서 먼저 child row를 지우면
+    // 계정 파기가 childIds를 빈 목록으로 조회해 대화·리포트가 고아로 남는다.
+    @Test
+    void purgeDeletedChildrenBatch_skipsChildrenOfWithdrawnParents() {
+        when(childPurgeService.findParentIdsWithDeletedChildren(any(), anyInt()))
+                .thenReturn(List.of(PARENT_ID));
+        when(authPurgeService.isWithdrawn(PARENT_ID)).thenReturn(true);
+
+        service().purgeDeletedChildrenBatch();
+
+        verify(childPurgeService, never()).findDeletedChildIds(anyLong(), any());
+        verify(childPurgeService, never()).hardDeleteByChildIds(any());
+        verifyNoInteractions(childDiaryPurgeService, conversationPurgeService, gamePurgeService);
+    }
+
+    @Test
+    void purgeDeletedChildrenOf_deletesLeafDomainsBeforeTheChildRows() {
+        when(childPurgeService.findDeletedChildIds(PARENT_ID, PURGE_BEFORE)).thenReturn(CHILD_IDS);
+
+        service().purgeDeletedChildrenOf(PARENT_ID, PURGE_BEFORE);
+
+        InOrder order = inOrder(
+                childPurgeService, childDiaryPurgeService, conversationPurgeService, gamePurgeService);
+        order.verify(childPurgeService).deleteProfileImagesByChildIds(CHILD_IDS);
+        order.verify(childDiaryPurgeService).purgeByChildIds(CHILD_IDS);
+        order.verify(conversationPurgeService).purgeByChildIds(CHILD_IDS);
+        order.verify(gamePurgeService).purgeByChildIds(CHILD_IDS);
+        order.verify(childPurgeService).hardDeleteByChildIds(CHILD_IDS);
+    }
+
+    // report는 아직 연결하지 않았다(자녀 범위 메서드 대기). 계정 파기용
+    // purgeByParentIdAndChildIds를 실수로 부르면 형제 자녀의 알림까지 삭제된다.
+    @Test
+    void purgeDeletedChildrenOf_doesNotCallAccountScopedReportPurge() {
+        when(childPurgeService.findDeletedChildIds(PARENT_ID, PURGE_BEFORE)).thenReturn(CHILD_IDS);
+
+        service().purgeDeletedChildrenOf(PARENT_ID, PURGE_BEFORE);
+
+        verifyNoInteractions(reportPurgeService);
+    }
+
+    @Test
+    void purgeDeletedChildrenOf_doesNothingWhenNoDeletedChildren() {
+        when(childPurgeService.findDeletedChildIds(PARENT_ID, PURGE_BEFORE)).thenReturn(List.of());
+
+        service().purgeDeletedChildrenOf(PARENT_ID, PURGE_BEFORE);
+
+        verify(childPurgeService, never()).hardDeleteByChildIds(any());
+        verifyNoInteractions(childDiaryPurgeService, conversationPurgeService, gamePurgeService);
+    }
+
+    @Test
+    void purgeDeletedChildrenBatch_continuesAfterOneParentFails() {
+        when(childPurgeService.findParentIdsWithDeletedChildren(any(), anyInt()))
+                .thenReturn(List.of(1L, 2L));
+        when(authPurgeService.isWithdrawn(anyLong())).thenReturn(false);
+        when(childPurgeService.findDeletedChildIds(anyLong(), any())).thenReturn(CHILD_IDS);
+        doThrow(new RuntimeException("boom")).when(gamePurgeService).purgeByChildIds(CHILD_IDS);
+
+        service().purgeDeletedChildrenBatch();
+
+        // 1번이 터져도 2번까지 시도되어야 한다.
+        verify(childPurgeService, org.mockito.Mockito.times(2))
+                .findDeletedChildIds(anyLong(), any());
     }
 
     @Test

@@ -40,9 +40,7 @@ public class AccountHardDeleteService {
 
     // parentId별 연속 실패 횟수. 스케줄러 스레드 하나가 순차 실행하지만, 배치 실행 중 다른
     // 경로에서 이 서비스를 호출할 수 있어 동시 접근에 안전한 맵을 쓴다.
-    // 계정 파기와 자녀 파기는 실패 원인이 다르므로 카운터를 분리한다.
     private final Map<Long, Integer> accountFailures = new ConcurrentHashMap<>();
-    private final Map<Long, Integer> childFailures = new ConcurrentHashMap<>();
 
     private final AccountPurgeProperties properties;
     private final AuthPurgeService authPurgeService;
@@ -100,50 +98,6 @@ public class AccountHardDeleteService {
             log.warn("{} hard delete 실패 지속: parentId={}, 연속 {}회 ({})",
                     what, parentId, failures, e.getClass().getSimpleName());
         }
-    }
-
-    /**
-     * 보호자가 직접 삭제한 자녀의 데이터를 파기한다.
-     *
-     * <p>계정 파기와 대상이 겹치지 않는다 — 여기서는 <b>부모가 살아 있는</b> 계정의 삭제된
-     * 자녀만 본다. 탈퇴한 부모의 자녀는 계정 파기가 처리한다. 겹치면 자녀 파기가 child row를
-     * 먼저 지워 계정 파기가 childIds를 빈 목록으로 조회하고, 대화·리포트가 고아로 남는다.
-     */
-    public void purgeDeletedChildrenBatch() {
-        LocalDateTime purgeBefore = properties.purgeBefore(LocalDateTime.now(KST));
-        List<Long> parentIds = childPurgeService.findParentIdsWithDeletedChildren(
-                purgeBefore, properties.batchSize());
-
-        for (Long parentId : parentIds) {
-            // 탈퇴한 부모는 건너뛴다 — 계정 파기 경로의 몫이다.
-            if (authPurgeService.isWithdrawn(parentId)) {
-                continue;
-            }
-            try {
-                purgeDeletedChildrenOf(parentId, purgeBefore);
-                childFailures.remove(parentId);
-            } catch (Exception e) {
-                logRepeatedFailure(childFailures, parentId, e, "삭제된 자녀");
-            }
-        }
-    }
-
-    void purgeDeletedChildrenOf(Long parentId, LocalDateTime purgeBefore) {
-        List<Long> childIds = childPurgeService.findDeletedChildIds(parentId, purgeBefore);
-        if (childIds.isEmpty()) {
-            return;
-        }
-
-        childPurgeService.deleteProfileImagesByChildIds(childIds);
-
-        // TODO: reportPurgeService.purgeByChildIds(childIds) — 담당자 동의 후 연결.
-        // 계정 파기용 purgeByParentIdAndChildIds는 알림·재생성 요청을 parent_id OR 조건으로
-        // 지우므로 여기서 부르면 형제 자녀의 알림까지 사라진다.
-        childDiaryPurgeService.purgeByChildIds(childIds);
-        conversationPurgeService.purgeByChildIds(childIds);
-        gamePurgeService.purgeByChildIds(childIds);
-
-        childPurgeService.hardDeleteByChildIds(childIds);
     }
 
     /**

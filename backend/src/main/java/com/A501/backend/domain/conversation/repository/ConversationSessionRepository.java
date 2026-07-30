@@ -4,8 +4,6 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDateTime;
-import java.util.List;
 
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -44,20 +42,10 @@ public interface ConversationSessionRepository extends JpaRepository<Conversatio
     @Query("select session from ConversationSession session where session.conversationId = :conversationId")
     Optional<ConversationSession> findByIdForUpdate(@Param("conversationId") String conversationId);
 
-    // --- 계정/자녀 파기용 (ConversationPurgeService) ---
+    @Query("select session.conversationId from ConversationSession session where session.childId in :childIds")
+    List<String> findIdsByChildIds(@Param("childIds") Collection<Long> childIds);
 
-    /**
-     * 해당 자녀들의 대화 ID. 상태를 가리지 않는다 — 파기는 진행 중·중단된 대화도 대상이다.
-     */
-    @Query("select session.conversationId from ConversationSession session "
-            + "where session.childId in :childIds")
-    List<String> findIdsByChildIds(@Param("childIds") List<Long> childIds);
-
-    /**
-     * 해당 자녀들의 대화 세션 행을 물리 삭제한다.
-     * 하위 테이블(turn·topic_state·game_session)을 먼저 지운 뒤 호출해야 한다.
-     */
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("delete from ConversationSession session where session.childId in :childIds")
-    int deleteByChildIds(@Param("childIds") List<Long> childIds);
+    @Modifying
+    @Query("delete from ConversationSession session where session.conversationId in :conversationIds")
+    int deleteByConversationIds(@Param("conversationIds") Collection<String> conversationIds);
 }

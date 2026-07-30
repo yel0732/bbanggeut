@@ -37,11 +37,13 @@ const FRUIT_POSE_INDEX: Record<FruitPose, number> = {
 export function TutorialVideo({
   label,
   poster,
+  scale = 1,
   size,
   src,
 }: {
   label: string
   poster?: string
+  scale?: number
   size: number
   src: string
 }) {
@@ -58,7 +60,12 @@ export function TutorialVideo({
       preload="auto"
       role="img"
       src={src}
-      style={{ width: size, height: size }}
+      style={{
+        width: size,
+        height: size,
+        transform: `scale(${scale})`,
+        transformOrigin: 'center',
+      }}
     />
   )
 }
@@ -75,10 +82,17 @@ export function GreetingVideo({ size }: { size: number }) {
 }
 
 /** 축하하는 빵긋 (시작 단계). */
-export function CelebrationVideo({ size }: { size: number }) {
+export function CelebrationVideo({
+  scale,
+  size,
+}: {
+  scale?: number
+  size: number
+}) {
   return (
     <TutorialVideo
       label="빵긋이 신나게 축하해요"
+      scale={scale}
       size={size}
       src={celebrationUrl}
     />
@@ -86,10 +100,17 @@ export function CelebrationVideo({ size }: { size: number }) {
 }
 
 /** 팔을 칼처럼 휘둘러 과일을 자르는 시범. */
-export function FruitSliceVideo({ size }: { size: number }) {
+export function FruitSliceVideo({
+  scale,
+  size,
+}: {
+  scale?: number
+  size: number
+}) {
   return (
     <TutorialVideo
       label="빵긋이 팔을 휘둘러 과일을 자르는 모습"
+      scale={scale}
       size={size}
       src={fruitDemoUrl}
     />
@@ -97,10 +118,17 @@ export function FruitSliceVideo({ size }: { size: number }) {
 }
 
 /** 손을 펴서 가져간 뒤 주먹을 쥐는 시범. */
-export function DobbleGrabVideo({ size }: { size: number }) {
+export function DobbleGrabVideo({
+  scale,
+  size,
+}: {
+  scale?: number
+  size: number
+}) {
   return (
     <TutorialVideo
       label="빵긋이 손을 폈다가 주먹을 쥐는 모습"
+      scale={scale}
       size={size}
       src={dobbleDemoUrl}
     />

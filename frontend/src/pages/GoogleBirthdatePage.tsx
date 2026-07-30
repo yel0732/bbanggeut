@@ -315,17 +315,20 @@ export function GoogleBirthdatePage() {
             src={logoUrl}
           />
 
-        <h1 className="absolute top-[34%] right-0 left-0 text-center text-[24px] text-[#5a7d3a]" style={jua}>
-          {stage === 'signin'
-            ? '구글로 들어가기'
-            : stage === 'connecting'
-              ? '구글 계정 확인 중'
-            : stage === 'birthdate'
-              ? '구글 연동 완료!'
-              : stage === 'complete'
-                ? '회원가입 완료!'
-                : '기존 계정과 연결하기'}
-        </h1>
+          <h1
+            className="absolute top-[34%] right-0 left-0 text-center text-[24px] text-[#5a7d3a]"
+            style={jua}
+          >
+            {stage === 'signin'
+              ? '구글로 들어가기'
+              : stage === 'connecting'
+                ? '구글 계정 확인 중'
+                : stage === 'birthdate'
+                  ? '구글 연동 완료!'
+                  : stage === 'complete'
+                    ? '회원가입 완료!'
+                    : '기존 계정과 연결하기'}
+          </h1>
 
           {stage === 'signin' ? (
             <div className="absolute top-[49%] right-0 left-0 flex flex-col items-center gap-4">
@@ -338,49 +341,60 @@ export function GoogleBirthdatePage() {
             </div>
           ) : null}
 
-        {stage === 'birthdate' ? (
-          <>
-            <p className="absolute top-[43%] right-0 left-0 text-center text-[14px] text-[#8a7a55]" style={jua}>
-              {email || '구글 계정'} · 생년월일을 입력해 주세요
-            </p>
-            <div className="absolute top-[52%] left-[18.5%] z-20 h-[9%] w-[63%] rounded-2xl border-2 border-[#e4c98a] bg-[#fdf6e0]">
-              <BirthDatePicker maxDate={maxBirthDate} onChange={setBirth} value={birth} />
-            </div>
-            <ActionButton disabled={isBusy} label={isBusy ? '가입 중...' : '가입 완료'} onClick={() => void completeSignup()} />
-          </>
-        ) : null}
+          {stage === 'birthdate' ? (
+            <>
+              <p
+                className="absolute top-[43%] right-0 left-0 text-center text-[14px] text-[#8a7a55]"
+                style={jua}
+              >
+                {email || '구글 계정'} · 생년월일을 입력해 주세요
+              </p>
+              <div className="absolute top-[52%] left-[18.5%] z-20 h-[9%] w-[63%] rounded-2xl border-2 border-[#e4c98a] bg-[#fdf6e0]">
+                <BirthDatePicker
+                  maxDate={maxBirthDate}
+                  onChange={setBirth}
+                  value={birth}
+                />
+              </div>
+              <ActionButton
+                disabled={isBusy}
+                label={isBusy ? '가입 중...' : '가입 완료'}
+                onClick={() => void completeSignup()}
+              />
+            </>
+          ) : null}
 
-        {stage === 'connecting' ? (
-          <p
-            className="absolute top-[49%] right-0 left-0 text-center text-[17px] text-[#6f8a5e]"
-            style={jua}
-          >
-            구글 로그인 정보를 확인하고 있어요...
-          </p>
-        ) : null}
-
-        {stage === 'complete' ? (
-          <>
+          {stage === 'connecting' ? (
             <p
-              className="absolute top-[45%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
+              className="absolute top-[49%] right-0 left-0 text-center text-[17px] text-[#6f8a5e]"
               style={jua}
             >
-              구글 회원가입이 완료되었어요!
-              <br />
-              아래 버튼을 눌러 로그인해 주세요.
+              구글 로그인 정보를 확인하고 있어요...
             </p>
-            <ActionButton
-              disabled={false}
-              label="로그인하기"
-              onClick={() => {
-                navigate('/', {
-                  replace: true,
-                  state: { openLoginModal: true },
-                })
-              }}
-            />
-          </>
-        ) : null}
+          ) : null}
+
+          {stage === 'complete' ? (
+            <>
+              <p
+                className="absolute top-[45%] right-[14%] left-[14%] text-center text-[17px] leading-relaxed text-[#6f8a5e]"
+                style={jua}
+              >
+                구글 회원가입이 완료되었어요!
+                <br />
+                아래 버튼을 눌러 로그인해 주세요.
+              </p>
+              <ActionButton
+                disabled={false}
+                label="로그인하기"
+                onClick={() => {
+                  navigate('/', {
+                    replace: true,
+                    state: { openLoginModal: true },
+                  })
+                }}
+              />
+            </>
+          ) : null}
 
           {stage === 'link' ? (
             <>

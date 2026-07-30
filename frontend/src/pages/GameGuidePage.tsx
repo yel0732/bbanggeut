@@ -7,6 +7,7 @@ import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
 import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
 import guideStartButtonUrl from '@/assets/images/game-entry/guide-start-btn.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
+import fruitPracticeBackgroundUrl from '@/assets/images/tutorial/fruit/fruit-ninja-bg-ver2.png'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
@@ -230,7 +231,11 @@ export function GameGuidePage() {
                 speech={step.speech}
               />
             }
-            bodyOverflowVisible={step.kind === 'intro'}
+            bodyOverflowVisible={
+              step.kind === 'intro' ||
+              step.kind === 'demo' ||
+              step.kind === 'ready'
+            }
             footer={
               <StepFooter
                 cameraUsable={cameraUsable}
@@ -243,7 +248,12 @@ export function GameGuidePage() {
                 showPrev={stepIndex > 0}
               />
             }
-            showTitle={step.kind === 'intro' || step.kind === 'ready'}
+            showTitle={
+              step.kind === 'intro' ||
+              step.kind === 'demo' ||
+              step.kind === 'detect' ||
+              step.kind === 'ready'
+            }
             stepCount={steps.length}
             stepIndex={stepIndex}
           />
@@ -270,15 +280,44 @@ export function GameGuidePage() {
 }
 
 /** 소개·시작 단계에서 빵긋이 서는 크기(px) */
-const INTRO_HERO_SIZE = 800
+const INTRO_HERO_SIZE = 750
 /** 첫 번째 안내 단계에서 빵긋이를 왼쪽으로 옮기는 거리(px) */
 const INTRO_HERO_X = -220
-const INTRO_HERO_Y = -270
+const INTRO_HERO_Y = -230
 const INTRO_SPEECH_X = 340
 const INTRO_SPEECH_Y = 110
-const HERO_SIZE = 300
-/** 시범·인식 단계에서 패널 안 그림 크기(px) */
-const STAGE_SIZE = 380
+/** 마지막 시작 단계에서 공룡 에셋 크기(px) */
+const READY_HERO_SIZE = 400
+/** 마지막 시작 단계 영상 내부의 투명 여백까지 감안해 실제 공룡을 키우는 배율 */
+const READY_HERO_SCALE = 1.35
+/** 마지막 시작 단계 공룡 좌우 이동(px) */
+const READY_HERO_X = -20
+/** 마지막 시작 단계 공룡 상하 이동(px) */
+const READY_HERO_Y = -20
+/** 마지막 시작 단계 말풍선 너비(px) */
+const READY_SPEECH_WIDTH = 350
+/** 마지막 시작 단계 말풍선 글자 배율 */
+const READY_SPEECH_TEXT_SCALE = 1.2
+/** 마지막 시작 단계 말풍선 좌우 이동(px) */
+const READY_SPEECH_X = -10
+/** 마지막 시작 단계 말풍선 상하 이동(px) */
+const READY_SPEECH_Y = -20
+/** 두 번째 시범 단계에서 패널 안 공룡 에셋 크기(px) */
+const DEMO_STAGE_SIZE = 500
+/** demo 영상 내부의 투명 여백까지 감안해 실제 공룡을 키우는 배율 */
+const DEMO_STAGE_SCALE = 1.55
+/** 두 번째 시범 단계 공룡 에셋 좌우 이동(px) */
+const DEMO_STAGE_X = 15
+/** 두 번째 시범 단계 공룡 에셋 상하 이동(px) */
+const DEMO_STAGE_Y = -15
+/** 두 번째·세 번째 단계 점선 안내 패널 너비(px 또는 %) */
+const COMPACT_GUIDE_PANEL_WIDTH = '100%'
+/** 두 번째·세 번째 단계 점선 안내 패널 높이(px) */
+const COMPACT_GUIDE_PANEL_HEIGHT = 360
+/** 두 번째·세 번째 단계 점선 안내 패널 좌우 이동(px) */
+const COMPACT_GUIDE_PANEL_X = 0
+/** 두 번째·세 번째 단계 점선 안내 패널 상하 이동(px) */
+const COMPACT_GUIDE_PANEL_Y = -10
 /** 연습 단계 안내 띠 높이(px) */
 const PRACTICE_BANNER_HEIGHT = 52
 /**
@@ -344,8 +383,25 @@ function StepBody({
 
     return (
       <div className="flex items-center justify-center gap-4">
-        <CelebrationVideo size={HERO_SIZE} />
-        <SpeechBubble speech={speech} />
+        <div
+          style={{
+            transform: `translate(${READY_HERO_X}px, ${READY_HERO_Y}px)`,
+          }}
+        >
+          <CelebrationVideo scale={READY_HERO_SCALE} size={READY_HERO_SIZE} />
+        </div>
+        <div
+          style={{
+            transform: `translate(${READY_SPEECH_X}px, ${READY_SPEECH_Y}px)`,
+            width: READY_SPEECH_WIDTH,
+          }}
+        >
+          <SpeechBubble
+            className="w-full"
+            speech={speech}
+            textScale={READY_SPEECH_TEXT_SCALE}
+          />
+        </div>
       </div>
     )
   }
@@ -368,7 +424,12 @@ function StepBody({
               <CameraFallbackNotice status={camera.status} />
             </TutorialPanel>
           ) : gameId === 'fruit' ? (
-            <FruitPracticeStage camera={camera} practice={practice} />
+            <TutorialPanel
+              className="relative bg-cover bg-center"
+              style={{ backgroundImage: `url(${fruitPracticeBackgroundUrl})` }}
+            >
+              <FruitPracticeStage camera={camera} practice={practice} />
+            </TutorialPanel>
           ) : (
             <DobblePracticeStage
               practice={dobblePractice}
@@ -383,10 +444,25 @@ function StepBody({
 
   // demo · detect — 왼쪽에 말풍선, 오른쪽에 보여 줄 것.
   // detect에서는 왼쪽 아래에 취해야 할 자세를 작게 곁들인다.
+  const isDemoStep = kind === 'demo'
+  const usesCompactGuidePanel = kind === 'demo' || kind === 'detect'
+
   return (
-    <div className="flex h-full w-full items-center gap-4">
-      <div className="flex w-[240px] shrink-0 flex-col items-center gap-2">
-        <SpeechBubble side="right" size="small" speech={speech} />
+    <div
+      className={`flex h-full w-full items-center ${
+        isDemoStep ? 'gap-6' : 'gap-4'
+      }`}
+    >
+      <div
+        className={`flex shrink-0 flex-col items-center gap-2 ${
+          isDemoStep ? 'w-[310px]' : 'w-[240px]'
+        }`}
+      >
+        <SpeechBubble
+          side="right"
+          size={isDemoStep ? 'large' : 'small'}
+          speech={speech}
+        />
         {kind === 'detect' ? (
           gameId === 'fruit' ? (
             <FruitPose pose="raise-arm" size={POSE_HINT_SIZE} />
@@ -396,29 +472,59 @@ function StepBody({
         ) : null}
       </div>
       <div className="flex h-full min-w-0 flex-1 items-center justify-center">
-        <TutorialPanel>
-          {kind === 'demo' ? (
-            gameId === 'fruit' ? (
-              <FruitSliceVideo size={STAGE_SIZE} />
+        <div
+          className="flex items-center justify-center"
+          style={{
+            width: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_WIDTH : '100%',
+            height: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_HEIGHT : '100%',
+            transform: usesCompactGuidePanel
+              ? `translate(${COMPACT_GUIDE_PANEL_X}px, ${COMPACT_GUIDE_PANEL_Y}px)`
+              : undefined,
+          }}
+        >
+          <TutorialPanel overflowVisible={isDemoStep}>
+            {kind === 'demo' ? (
+              gameId === 'fruit' ? (
+                <div
+                  style={{
+                    transform: `translate(${DEMO_STAGE_X}px, ${DEMO_STAGE_Y}px)`,
+                  }}
+                >
+                  <FruitSliceVideo
+                    scale={DEMO_STAGE_SCALE}
+                    size={DEMO_STAGE_SIZE}
+                  />
+                </div>
+              ) : (
+                <div
+                  style={{
+                    transform: `translate(${DEMO_STAGE_X}px, ${DEMO_STAGE_Y}px)`,
+                  }}
+                >
+                  <DobbleGrabVideo
+                    scale={DEMO_STAGE_SCALE}
+                    size={DEMO_STAGE_SIZE}
+                  />
+                </div>
+              )
             ) : (
-              <DobbleGrabVideo size={STAGE_SIZE} />
-            )
-          ) : (
-            <TutorialCamera
-              detected={camera.detected}
-              hintWhenWaiting={
-                gameId === 'fruit'
-                  ? '한 팔을 번쩍 들어 주세요'
-                  : '두 손을 다 보여 주세요'
-              }
-              modelReady={camera.modelReady}
-              progress={camera.progress}
-              status={camera.status}
-              streamRef={camera.streamRef}
-              videoRef={camera.videoRef}
-            />
-          )}
-        </TutorialPanel>
+              <TutorialCamera
+                detected={camera.detected}
+                gapClassName="gap-5"
+                hintWhenWaiting={
+                  gameId === 'fruit'
+                    ? '한 팔을 번쩍 들어 주세요'
+                    : '두 손을 다 보여 주세요'
+                }
+                modelReady={camera.modelReady}
+                progress={camera.progress}
+                status={camera.status}
+                streamRef={camera.streamRef}
+                videoRef={camera.videoRef}
+              />
+            )}
+          </TutorialPanel>
+        </div>
       </div>
     </div>
   )
@@ -546,18 +652,17 @@ function FruitPracticeStage({
   }
 
   return (
-    <div className="relative flex h-full items-center justify-center">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[18px]">
       <canvas
-        // 판 자체가 테두리 역할을 한다. 점선 패널로 한 번 더 감싸면 그만큼
-        // 놀 자리가 줄어든다.
-        className="block max-h-full max-w-full rounded-[18px] border-[3px] border-[#c39a5d] bg-[#fffaec]/60"
+        // 배경 이미지는 바깥 점선 패널에 깔고, 캔버스는 과일과 칼날만 투명하게 얹는다.
+        className="absolute inset-0 z-10 block h-full w-full"
         height={FRUIT_GAME_CONFIG.canvasHeight}
         ref={practice.canvasRef}
         width={FRUIT_GAME_CONFIG.canvasWidth}
       />
 
       {/* 남은 개수는 판 위에 겹쳐 둔다. 아래에 두면 그만큼 판이 작아진다. */}
-      <div className="pointer-events-none absolute top-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[rgba(255,250,236,0.85)] px-3 py-1.5">
+      <div className="pointer-events-none absolute top-2 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[rgba(255,250,236,0.85)] px-3 py-1.5">
         {Array.from({ length: practice.targetCount }, (_, index) => (
           <span
             className="block size-[16px] rounded-full transition-colors"
@@ -594,7 +699,7 @@ function PracticeCameraPreview({
   return (
     <video
       autoPlay
-      className="pointer-events-none absolute right-1 bottom-2 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-[0_3px_8px_rgba(0,0,0,0.3)]"
+      className="pointer-events-none absolute right-1 bottom-2 z-30 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-[0_3px_8px_rgba(0,0,0,0.3)]"
       muted
       playsInline
       ref={videoRef}
@@ -665,8 +770,12 @@ function StepFooter({
     화면 왼쪽 위 뒤로가기·닫기 버튼이 그대로 있으니 갇히지도 않는다.
   */
   const hidePrev = kind === 'practice' && cameraUsable
+  const alignWithIntroButtons = kind === 'demo' || kind === 'detect'
+  const keepSingleButtonInLeftSlot = kind === 'detect' && mustFinish
   const footerLayoutClass =
-    !showPrev && !mustFinish ? 'justify-center gap-12' : 'justify-between'
+    !showPrev || alignWithIntroButtons
+      ? 'justify-center gap-12'
+      : 'justify-between'
 
   /*
     버튼이 하나만 남을 때 가운데 오면 "이걸 눌러 진행하라"는 것처럼 보인다.
@@ -691,6 +800,12 @@ function StepFooter({
           onClick={onNext}
         />
       )}
+      {keepSingleButtonInLeftSlot ? (
+        <div
+          aria-hidden="true"
+          style={{ width: 236, height: Math.round(236 * (96 / 236)) }}
+        />
+      ) : null}
     </div>
   )
 }

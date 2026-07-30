@@ -29,6 +29,10 @@ import com.A501.backend.domain.child.entity.Child;
 import com.A501.backend.domain.child.exception.ChildErrorCode;
 import com.A501.backend.domain.child.repository.ChildRepository;
 import com.A501.backend.domain.child.security.ChildProperties;
+import com.A501.backend.domain.childdiary.service.ChildDiaryPurgeService;
+import com.A501.backend.domain.conversation.service.ConversationPurgeService;
+import com.A501.backend.domain.game.service.GamePurgeService;
+import com.A501.backend.domain.report.service.ReportPurgeService;
 
 @ExtendWith(MockitoExtension.class)
 class ChildServiceTest {
@@ -55,12 +59,32 @@ class ChildServiceTest {
     @Mock
     private ProfileImageService profileImageService;
 
+    @Mock
+    private ChildDiaryPurgeService childDiaryPurgeService;
+
+    @Mock
+    private ReportPurgeService reportPurgeService;
+
+    @Mock
+    private ConversationPurgeService conversationPurgeService;
+
+    @Mock
+    private GamePurgeService gamePurgeService;
+
     private ChildService childService;
 
     @BeforeEach
     void setUp() {
         childService = new ChildService(
-                childRepository, CHILD_PROPERTIES, parentFinder, pinService, profileImageService);
+                childRepository,
+                CHILD_PROPERTIES,
+                parentFinder,
+                pinService,
+                profileImageService,
+                childDiaryPurgeService,
+                reportPurgeService,
+                conversationPurgeService,
+                gamePurgeService);
     }
 
     @Test
@@ -332,14 +356,18 @@ class ChildServiceTest {
     }
 
     @Test
-    void deleteChild_softDeletesWhenOwnedAndPinCorrect() {
+    void deleteChild_hardDeletesChildAndRelatedDataWhenOwnedAndPinCorrect() {
         Child child = Child.create(1L, "chorong", PRESET_KEY);
         when(childRepository.findByChildIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(child));
 
         childService.deleteChild(1L, 10L, "1234");
 
         verify(pinService).verifyPin(1L, "1234");
-        assertThat(child.isDeleted()).isTrue();
+        verify(childRepository).delete(child);
+        verify(childDiaryPurgeService).purgeByChildIds(List.of(10L));
+        verify(reportPurgeService).purgeByChildIds(List.of(10L));
+        verify(conversationPurgeService).purgeByChildIds(List.of(10L));
+        verify(gamePurgeService).purgeByChildIds(List.of(10L));
     }
 
     // 소프트 삭제라 DB 행은 남지만 아이 실물 사진은 즉시 파기되어야 한다.
@@ -352,8 +380,8 @@ class ChildServiceTest {
 
         childService.deleteChild(1L, 10L, "1234");
 
-        assertThat(child.isDeleted()).isTrue();
         assertThat(child.getProfileImageKey()).isEqualTo(PRESET_KEY);
+        verify(childRepository).delete(child);
     }
 
     // PIN이 틀려 삭제가 거절되면 사진도 남아 있어야 한다.

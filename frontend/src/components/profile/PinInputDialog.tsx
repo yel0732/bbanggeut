@@ -140,7 +140,7 @@ export function PinInputDialog({
             {DEFAULT_KEYS.map((key, index) =>
               key ? (
                 <button
-                  className="-m-3 -ml-1.5 mx-auto h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="-m-3 mx-auto -ml-1.5 h-[90px] w-[120px] bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-[#3a7d2c] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={disabled}
                   key={key}
                   onClick={() => onPressKey(key)}

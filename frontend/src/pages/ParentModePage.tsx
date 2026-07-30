@@ -11,9 +11,11 @@ import {
 
 import {
   getChildReports,
+  getReportNotificationPreference,
   getStoredAccessToken,
   isBackendChildId,
   subscribeToReportNotifications,
+  updateReportNotificationPreference,
 } from '@/api/parentMode'
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -361,6 +363,25 @@ export function ParentModePage() {
     if (!getStoredAccessToken()) return
     const controller = new AbortController()
 
+    void getReportNotificationPreference(controller.signal)
+      .then((preference) => {
+        setNotification(preference)
+        window.localStorage.setItem(
+          NOTIFICATION_KEY,
+          JSON.stringify(preference),
+        )
+      })
+      .catch(() => {
+        // Keep the last local preference while the server is unavailable.
+      })
+
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!getStoredAccessToken() || !notification.enabled) return
+    const controller = new AbortController()
+
     void subscribeToReportNotifications((event) => {
       const childName = event.childName.trim()
       const message = childName
@@ -388,7 +409,7 @@ export function ParentModePage() {
     })
 
     return () => controller.abort()
-  }, [])
+  }, [notification.enabled])
 
   const openArrivedReport = (arrival: ReportArrivalNotification) => {
     const profile = profiles.find(
@@ -804,9 +825,20 @@ export function ParentModePage() {
   }
 
   const saveNotification = () => {
-    window.localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notification))
-    setSavedMessage('알림 설정을 저장했어요.')
-    window.setTimeout(() => setPopup(null), 500)
+    void updateReportNotificationPreference(notification)
+      .then((saved) => {
+        setNotification(saved)
+        window.localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(saved))
+        setSavedMessage('알림 설정을 저장했어요.')
+        window.setTimeout(() => setPopup(null), 500)
+      })
+      .catch((error: unknown) => {
+        setSavedMessage(
+          error instanceof Error
+            ? error.message
+            : '알림 설정을 저장하지 못했어요.',
+        )
+      })
   }
 
   const closePopup = () => {
@@ -1200,7 +1232,7 @@ export function ParentModePage() {
                       </div>
                       <div className="relative z-10 mr-[50px] flex -translate-y-0.5 flex-col">
                         <button
-                          className="-mt-[2px] pt-[3px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat text-[25px] text-[#7a5a1e] transition hover:scale-105"
+                          className="-mt-[2px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#7a5a1e] transition hover:scale-105"
                           onClick={() => editChildProfile(profile)}
                           style={{
                             ...jua,
@@ -1211,7 +1243,7 @@ export function ParentModePage() {
                           수정
                         </button>
                         <button
-                          className="pt-[3px] mt-[2px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat text-[25px] text-[#9a4a3e] transition hover:scale-105"
+                          className="mt-[2px] h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#9a4a3e] transition hover:scale-105"
                           onClick={() => removeChildProfile(profile)}
                           style={{
                             ...jua,
@@ -1525,7 +1557,9 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span className={`${item.view === 'password' && isGoogleAccount ? '-mt-1 text-[22px]' : 'text-[25px]'} block text-[#5f492a]`}>
+                      <span
+                        className={`${item.view === 'password' && isGoogleAccount ? '-mt-1 text-[22px]' : 'text-[25px]'} block text-[#5f492a]`}
+                      >
                         {item.label}
                       </span>
                       {item.view === 'password' && isGoogleAccount ? (

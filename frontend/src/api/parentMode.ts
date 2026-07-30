@@ -91,6 +91,12 @@ export type ReportNotificationEvent = {
   childName: string
 }
 
+export type ReportNotificationPreference = {
+  enabled: boolean
+  time: string
+  timezone: string
+}
+
 type ReportApiErrorBody = {
   code?: string
   message?: string
@@ -112,7 +118,8 @@ export function reportErrorMessage(status: number) {
   if (status === 401) return '로그인이 만료되었어요. 다시 로그인해 주세요.'
   if (status === 403) return '이 아이의 리포트를 볼 권한이 없어요.'
   if (status === 404) return '리포트를 찾을 수 없어요.'
-  if (status >= 500) return '서버에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'
+  if (status >= 500)
+    return '서버에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'
   if (status === 0) return '네트워크 연결을 확인한 뒤 다시 시도해 주세요.'
   return '리포트를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'
 }
@@ -121,14 +128,17 @@ async function reportFetch(input: RequestInfo | URL, init?: RequestInit) {
   try {
     return await authFetch(input, init)
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof DOMException && error.name === 'AbortError')
+      throw error
     throw new ReportApiError(0)
   }
 }
 
 async function requireReportResponse(response: Response) {
   if (response.ok) return
-  const body = (await response.json().catch(() => null)) as ReportApiErrorBody | null
+  const body = (await response
+    .json()
+    .catch(() => null)) as ReportApiErrorBody | null
   if (response.status === 401) clearLoginSession()
   throw new ReportApiError(response.status, body?.code)
 }
@@ -139,7 +149,7 @@ export const PARENT_MODE_API_CAPABILITIES = {
   parentPhotoUpdate: false,
   parentPinUpdate: false,
   parentPasswordUpdate: false,
-  reportNotificationPreferenceUpdate: false,
+  reportNotificationPreferenceUpdate: true,
 } as const
 
 export function isBackendChildId(id: string) {
@@ -202,6 +212,26 @@ export async function regenerateChildReport(
   )
   await requireReportResponse(response)
   return (await response.json()) as ReportRegenerationResponse
+}
+
+export async function getReportNotificationPreference(signal?: AbortSignal) {
+  const response = await reportFetch(apiUrl('/api/notifications/preferences'), {
+    signal,
+  })
+  await requireReportResponse(response)
+  return (await response.json()) as ReportNotificationPreference
+}
+
+export async function updateReportNotificationPreference(
+  preference: ReportNotificationPreference,
+) {
+  const response = await reportFetch(apiUrl('/api/notifications/preferences'), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preference),
+  })
+  await requireReportResponse(response)
+  return (await response.json()) as ReportNotificationPreference
 }
 
 export async function subscribeToReportNotifications(
@@ -270,7 +300,8 @@ function parseSseBlock(block: string): ReportNotificationEvent | null {
       data.childNickname,
       data.nickname,
     ].find(
-      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+      (value): value is string =>
+        typeof value === 'string' && value.trim().length > 0,
     )
     const childName =
       explicitChildName?.trim() ??

@@ -1,6 +1,7 @@
 package com.A501.backend.domain.report.entity;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import com.A501.backend.common.entity.BaseTimeEntity;
 
@@ -57,13 +58,20 @@ public class ReportNotification extends BaseTimeEntity {
     @Column(name = "message", nullable = false, length = 200)
     private String message;
 
+    @Column(name = "scheduled_at")
+    private LocalDateTime scheduledAt;
+
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+
     private ReportNotification(
             Long parentId,
             Long reportId,
             Long childId,
             LocalDate reportDate,
             ReportNotificationType notificationType,
-            String message
+            String message,
+            LocalDateTime scheduledAt
     ) {
         if (parentId == null || reportId == null || childId == null) {
             throw new IllegalArgumentException(
@@ -84,6 +92,7 @@ public class ReportNotification extends BaseTimeEntity {
         this.notificationType = notificationType;
         this.notificationStatus = ReportNotificationStatus.UNREAD;
         this.message = message;
+        this.scheduledAt = scheduledAt;
     }
 
     public static ReportNotification create(
@@ -92,7 +101,8 @@ public class ReportNotification extends BaseTimeEntity {
             Long childId,
             LocalDate reportDate,
             ReportNotificationType notificationType,
-            String message
+            String message,
+            LocalDateTime scheduledAt
     ) {
         return new ReportNotification(
                 parentId,
@@ -100,6 +110,22 @@ public class ReportNotification extends BaseTimeEntity {
                 childId,
                 reportDate,
                 notificationType,
-                message);
+                message,
+                scheduledAt);
+    }
+
+    public void markDelivered(LocalDateTime deliveredAt) {
+        if (deliveredAt == null) {
+            throw new IllegalArgumentException("Delivered time is required.");
+        }
+        if (this.deliveredAt == null) {
+            this.deliveredAt = deliveredAt;
+        }
+    }
+
+    public void reschedule(LocalDateTime scheduledAt) {
+        if (deliveredAt == null) {
+            this.scheduledAt = scheduledAt;
+        }
     }
 }

@@ -27,17 +27,11 @@ public class AccountHardDeleteScheduler {
 
     @Scheduled(cron = "${account.purge.cron}", zone = "${account.purge.zone}")
     public void purgeWithdrawnAccounts() {
-        // 두 배치를 각각 감싼다 — 계정 파기가 실패해도 자녀 파기는 돌아야 하고, 그 반대도 같다.
-        // 여기서 예외가 새어 나가면 스케줄러 스레드가 죽어 이후 주기가 아예 돌지 않는다.
         try {
             accountHardDeleteService.purgeBatch();
         } catch (Exception e) {
+            // 여기서 예외가 새어 나가면 스케줄러 스레드가 죽어 이후 주기가 아예 돌지 않는다.
             log.error("계정 hard delete 배치 실행 실패", e);
-        }
-        try {
-            accountHardDeleteService.purgeDeletedChildrenBatch();
-        } catch (Exception e) {
-            log.error("삭제된 자녀 hard delete 배치 실행 실패", e);
         }
     }
 }

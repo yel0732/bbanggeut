@@ -23,6 +23,7 @@ import com.A501.backend.domain.report.repository.ReportGenerationAttemptReposito
 import com.A501.backend.domain.report.repository.ReportManualRegenerationRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationFailureRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
+import com.A501.backend.domain.report.repository.ReportNotificationPreferenceRepository;
 
 @ExtendWith(MockitoExtension.class)
 class ReportPurgeServiceTest {
@@ -40,15 +41,44 @@ class ReportPurgeServiceTest {
     @Mock
     private ReportNotificationRepository reportNotificationRepository;
     @Mock
+    private ReportNotificationPreferenceRepository reportNotificationPreferenceRepository;
+    @Mock
     private ReportManualRegenerationRepository reportManualRegenerationRepository;
 
     @InjectMocks
     private ReportPurgeService reportPurgeService;
 
     @Test
+    void deletesOnlyChildScopedReportRowsForChildProfileDeletion() {
+        List<Long> childIds = List.of(1L);
+        List<Long> reportIds = List.of(100L);
+        when(dailyReportRepository.findIdsByChildIds(childIds)).thenReturn(reportIds);
+
+        reportPurgeService.purgeByChildIds(childIds);
+
+        InOrder deletionOrder = inOrder(
+                reportGameResultRepository,
+                reportConversationSummaryRepository,
+                reportGenerationAttemptRepository,
+                reportNotificationFailureRepository,
+                reportNotificationRepository,
+                reportManualRegenerationRepository,
+                dailyReportRepository);
+        deletionOrder.verify(reportGameResultRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportConversationSummaryRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportGenerationAttemptRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportNotificationFailureRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportNotificationRepository).deleteByChildIds(childIds);
+        deletionOrder.verify(reportManualRegenerationRepository).deleteByChildIds(childIds);
+        deletionOrder.verify(dailyReportRepository).deleteByChildIds(childIds);
+        verifyNoInteractions(reportNotificationPreferenceRepository);
+    }
+
+    @Test
     void skipsPurgeWhenChildIdsAreEmpty() {
         reportPurgeService.purgeByParentIdAndChildIds(10L, List.of());
 
+        verify(reportNotificationPreferenceRepository).deleteByParentId(10L);
         verifyNoInteractions(
                 dailyReportRepository,
                 reportGameResultRepository,
@@ -74,6 +104,7 @@ class ReportPurgeServiceTest {
                 reportGenerationAttemptRepository,
                 reportNotificationFailureRepository,
                 reportNotificationRepository,
+                reportNotificationPreferenceRepository,
                 reportManualRegenerationRepository);
     }
 

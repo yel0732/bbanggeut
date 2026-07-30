@@ -226,7 +226,9 @@ function GoogleLoginButton() {
     if (window.google) {
       renderGoogleButton()
     } else if (existingScript) {
-      existingScript.addEventListener('load', renderGoogleButton, { once: true })
+      existingScript.addEventListener('load', renderGoogleButton, {
+        once: true,
+      })
     } else {
       const script = document.createElement('script')
       script.id = GOOGLE_SCRIPT_ID
@@ -269,7 +271,10 @@ function GoogleLoginButton() {
         ref={googleButtonRef}
       />
       {loadError ? (
-        <p className="absolute right-0 bottom-0 left-0 z-30 text-center text-[14px] text-[#b84b3a]" style={{ fontFamily: "'Jua', sans-serif" }}>
+        <p
+          className="absolute right-0 bottom-0 left-0 z-30 text-center text-[14px] text-[#b84b3a]"
+          style={{ fontFamily: "'Jua', sans-serif" }}
+        >
           {loadError}
         </p>
       ) : null}

@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
+import { ChildRouteGuard } from '@/components/auth/ChildRouteGuard'
 import { ParentRouteGuard } from '@/components/auth/ParentRouteGuard'
 import {
   ChildHomePage,
@@ -34,37 +35,46 @@ export const router = createBrowserRouter([
     element: <ProfileSelectPage />,
   },
   {
-    path: '/child',
-    element: <ChildHomePage />,
-  },
-  {
-    path: '/games',
-    element: <GameEntryPage />,
-  },
-  {
-    path: '/games/:gameId/guide',
-    element: <GameGuidePage />,
-  },
-  // 도블은 양손 포인터/카드 판정이라 플레이·결과 화면을 따로 쓴다.
-  {
-    path: '/games/dobble/play',
-    element: <DobblePlayPage />,
-  },
-  {
-    path: '/games/dobble/result',
-    element: <DobbleResultPage />,
-  },
-  {
-    path: '/games/:gameId/play',
-    element: <GamePlayPage />,
-  },
-  {
-    path: '/games/:gameId/result',
-    element: <GameResultPage />,
-  },
-  {
-    path: '/conversation',
-    element: <ConversationPage />,
+    element: <ChildRouteGuard />,
+    children: [
+      {
+        path: '/child',
+        element: <ChildHomePage />,
+      },
+      {
+        path: '/games',
+        element: <GameEntryPage />,
+      },
+      {
+        path: '/games/:gameId/guide',
+        element: <GameGuidePage />,
+      },
+      // 도블은 양손 포인터/카드 판정이라 플레이·결과 화면을 따로 쓴다.
+      {
+        path: '/games/dobble/play',
+        element: <DobblePlayPage />,
+      },
+      {
+        path: '/games/dobble/result',
+        element: <DobbleResultPage />,
+      },
+      {
+        path: '/games/:gameId/play',
+        element: <GamePlayPage />,
+      },
+      {
+        path: '/games/:gameId/result',
+        element: <GameResultPage />,
+      },
+      {
+        path: '/conversation',
+        element: <ConversationPage />,
+      },
+      {
+        path: '/diaries',
+        element: <DiaryListPage />,
+      },
+    ],
   },
   {
     path: '/auth',
@@ -87,10 +97,6 @@ export const router = createBrowserRouter([
   {
     path: '/auth/signup',
     element: <EmailSignupPage />,
-  },
-  {
-    path: '/diaries',
-    element: <DiaryListPage />,
   },
   {
     element: <ParentRouteGuard allowOnboarding />,

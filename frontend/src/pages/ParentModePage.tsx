@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   changeAccountPassword,
@@ -34,6 +34,7 @@ import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import menuBoardUrl from '@/assets/images/parent-mode/menu-board.webp'
 import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide-trimmed.png'
+import reportArrivalNoticeUrl from '@/assets/images/parent-mode/report-arrival-notice-bg.png'
 import reportNotificationButtonUrl from '@/assets/images/parent-mode/report-notification-button.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
@@ -67,6 +68,12 @@ import {
   saveChildProfiles,
   type ChildProfile,
 } from '@/lib/childProfiles'
+import {
+  loadReportArrivals,
+  saveReportArrivals,
+  upsertReportArrival,
+  type ReportArrivalNotification,
+} from '@/lib/reportArrivals'
 
 type PopupType =
   'children' | 'child-create' | 'child-edit' | 'profile' | 'notification' | null
@@ -85,22 +92,22 @@ type NotificationSettings = {
   timezone: string
 }
 
-type ReportArrivalNotification = {
-  id: string
-  childName: string
-  reportDate: string
-  read: boolean
-}
-
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PARENT_PHOTO_KEY = 'bbanggut-parent-photo'
 const NOTIFICATION_KEY = 'bbanggut-report-notification'
-const REPORT_ARRIVALS_KEY = 'bbanggut-report-arrivals'
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 const MAX_PIN_FAILS = 5
 const ALLOWED_PASSWORD_SPECIALS = `!"#$%&'()*+,-./:;<=>?@[\\]₩^_\`{|}~`
 const PASSWORD_GUIDE =
   '8~16자의 영문, 숫자, 특수문자를 각각 1자 이상 포함해 주세요.'
+
+const TIME_PICKER_PERIODS = ['AM', 'PM'] as const
+const TIME_PICKER_HOURS = Array.from({ length: 12 }, (_, index) =>
+  String(index + 1).padStart(2, '0'),
+)
+const TIME_PICKER_MINUTES = Array.from({ length: 12 }, (_, index) =>
+  String(index * 5).padStart(2, '0'),
+)
 
 const DEMO_PROFILES: ChildProfile[] = [
   { id: 'demo-1', name: '아이1', photoUrl: null },
@@ -131,15 +138,37 @@ function loadNotificationSettings(): NotificationSettings {
   }
 }
 
-function loadReportArrivals(): ReportArrivalNotification[] {
-  try {
-    const value = JSON.parse(
-      window.localStorage.getItem(REPORT_ARRIVALS_KEY) ?? '[]',
-    )
-    return Array.isArray(value) ? value : []
-  } catch {
-    return []
+function splitNotificationTime(time: string) {
+  const [hour = '20', minute = '00'] = time.split(':')
+  return {
+    hour: hour.padStart(2, '0'),
+    minute: minute.padStart(2, '0'),
   }
+}
+
+function toPeriodTime(time: string) {
+  const { hour, minute } = splitNotificationTime(time)
+  const hourNumber = Number(hour)
+  const period = hourNumber < 12 ? 'AM' : 'PM'
+  const displayHour = hourNumber % 12 || 12
+  return {
+    period,
+    hour: String(displayHour).padStart(2, '0'),
+    minute,
+  }
+}
+
+function toNotificationTime(period: string, hour: string, minute: string) {
+  const hourNumber = Number(hour)
+  const normalizedHour =
+    period === 'PM'
+      ? hourNumber === 12
+        ? 12
+        : hourNumber + 12
+      : hourNumber === 12
+        ? 0
+        : hourNumber
+  return `${String(normalizedHour).padStart(2, '0')}:${minute}`
 }
 
 function validatePassword(password: string) {
@@ -170,6 +199,37 @@ function validatePassword(password: string) {
   return null
 }
 
+function playReportArrivalSound() {
+  try {
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext
+        }
+      ).webkitAudioContext
+    if (!AudioContextConstructor) return
+    const context = new AudioContextConstructor()
+    const gain = context.createGain()
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55)
+    gain.connect(context.destination)
+
+    ;[880, 1175].forEach((frequency, index) => {
+      const oscillator = context.createOscillator()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(frequency, context.currentTime)
+      oscillator.connect(gain)
+      oscillator.start(context.currentTime + index * 0.12)
+      oscillator.stop(context.currentTime + index * 0.12 + 0.22)
+    })
+    window.setTimeout(() => void context.close(), 700)
+  } catch {
+    // Some browsers block audio before user interaction. The visual notice still appears.
+  }
+}
+
 function isDataImageUrl(value: string | null): value is string {
   return typeof value === 'string' && value.startsWith('data:image/')
 }
@@ -185,6 +245,7 @@ export function ParentModePage() {
   const isGoogleAccount = getStoredLoginMethod() === 'google'
   const parentVideoRef = useRef<HTMLVideoElement>(null)
   const parentStreamRef = useRef<MediaStream | null>(null)
+  const lastUnreadReportCountRef = useRef(0)
   const [popup, setPopup] = useState<PopupType>(null)
   const [profileView, setProfileView] = useState<ProfileView>('menu')
   const [profiles, setProfiles] = useState(() => {
@@ -223,11 +284,17 @@ export function ParentModePage() {
   })
   const [passwordSuccess, setPasswordSuccess] = useState('')
   const [notification, setNotification] = useState(loadNotificationSettings)
+  const [savedNotificationTime, setSavedNotificationTime] = useState(
+    () => loadNotificationSettings().time,
+  )
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({})
   const [notificationToast, setNotificationToast] = useState('')
   const [reportArrivals, setReportArrivals] = useState(loadReportArrivals)
   const [isArrivalListOpen, setIsArrivalListOpen] = useState(false)
+  const [isUnreadReportNoticeVisible, setIsUnreadReportNoticeVisible] =
+    useState(false)
   const [childListPage, setChildListPage] = useState(0)
   const [editingChildProfile, setEditingChildProfile] =
     useState<ChildProfile | null>(null)
@@ -366,6 +433,7 @@ export function ParentModePage() {
     void getReportNotificationPreference(controller.signal)
       .then((preference) => {
         setNotification(preference)
+        setSavedNotificationTime(preference.time)
         window.localStorage.setItem(
           NOTIFICATION_KEY,
           JSON.stringify(preference),
@@ -376,6 +444,22 @@ export function ParentModePage() {
       })
 
     return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    const syncReportArrivals = () => setReportArrivals(loadReportArrivals())
+    window.addEventListener(
+      'bbanggut-report-arrivals-updated',
+      syncReportArrivals,
+    )
+    window.addEventListener('storage', syncReportArrivals)
+    return () => {
+      window.removeEventListener(
+        'bbanggut-report-arrivals-updated',
+        syncReportArrivals,
+      )
+      window.removeEventListener('storage', syncReportArrivals)
+    }
   }, [])
 
   useEffect(() => {
@@ -390,18 +474,21 @@ export function ParentModePage() {
       setNotificationToast(message)
       window.setTimeout(() => setNotificationToast(''), 4500)
       if (event.type !== 'REPORT_COMPLETED' || !childName) return
+      const matchedProfile = profiles.find(
+        (profile) =>
+          profile.name.trim().toLocaleLowerCase('ko-KR') ===
+          childName.toLocaleLowerCase('ko-KR'),
+      )
       setReportArrivals((current) => {
         const nextItem: ReportArrivalNotification = {
           id: event.id || `${childName}-${event.reportDate}`,
+          childId: matchedProfile?.id,
           childName,
           reportDate: event.reportDate,
           read: false,
         }
-        const next = [
-          nextItem,
-          ...current.filter((item) => item.id !== nextItem.id),
-        ].slice(0, 30)
-        window.localStorage.setItem(REPORT_ARRIVALS_KEY, JSON.stringify(next))
+        const next = upsertReportArrival(current, nextItem)
+        saveReportArrivals(next)
         return next
       })
     }, controller.signal).catch(() => {
@@ -409,23 +496,44 @@ export function ParentModePage() {
     })
 
     return () => controller.abort()
-  }, [notification.enabled])
+  }, [notification.enabled, profiles])
+
+  const unreadReportArrivals = reportArrivals.filter((item) => !item.read)
+  const unreadReportCount = unreadReportArrivals.length
+
+  useEffect(() => {
+    if (unreadReportCount <= 0) {
+      lastUnreadReportCountRef.current = 0
+      setIsUnreadReportNoticeVisible(false)
+      return
+    }
+
+    if (
+      lastUnreadReportCountRef.current === 0 ||
+      unreadReportCount > lastUnreadReportCountRef.current
+    ) {
+      setIsUnreadReportNoticeVisible(true)
+      playReportArrivalSound()
+    }
+    lastUnreadReportCountRef.current = unreadReportCount
+  }, [unreadReportCount])
 
   const openArrivedReport = (arrival: ReportArrivalNotification) => {
     const profile = profiles.find(
       (item) =>
+        item.id === arrival.childId ||
         item.name.trim().toLocaleLowerCase('ko-KR') ===
-        arrival.childName.trim().toLocaleLowerCase('ko-KR'),
+          arrival.childName.trim().toLocaleLowerCase('ko-KR'),
     )
     if (!profile) {
       setNotificationToast(`${arrival.childName} 프로필을 찾을 수 없어요.`)
       return
     }
-    const next = reportArrivals.map((item) =>
-      item.id === arrival.id ? { ...item, read: true } : item,
-    )
+    const next = reportArrivals.filter((item) => item.id !== arrival.id)
     setReportArrivals(next)
-    window.localStorage.setItem(REPORT_ARRIVALS_KEY, JSON.stringify(next))
+    saveReportArrivals(next)
+    setIsUnreadReportNoticeVisible(false)
+    window.dispatchEvent(new Event('bbanggut-report-arrivals-updated'))
     navigate(
       `/reports?childId=${encodeURIComponent(profile.id)}&childName=${encodeURIComponent(profile.name)}&reportDate=${encodeURIComponent(arrival.reportDate)}`,
     )
@@ -433,6 +541,7 @@ export function ParentModePage() {
 
   const openPopup = (nextPopup: Exclude<PopupType, null>) => {
     setSavedMessage('')
+    setIsTimePickerOpen(false)
     if (nextPopup === 'profile') setProfileView('menu')
     if (nextPopup === 'children') setChildListPage(0)
     setPopup(nextPopup)
@@ -825,12 +934,18 @@ export function ParentModePage() {
   }
 
   const saveNotification = () => {
+    const timeChanged = notification.time !== savedNotificationTime
     void updateReportNotificationPreference(notification)
       .then((saved) => {
         setNotification(saved)
+        setSavedNotificationTime(saved.time)
+        setIsTimePickerOpen(false)
         window.localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(saved))
         setSavedMessage('알림 설정을 저장했어요.')
-        window.setTimeout(() => setPopup(null), 500)
+        if (timeChanged) {
+          setSavedMessage('변경한 시간은 다음 일일 리포트부터 적용됩니다.')
+        }
+        window.setTimeout(() => setPopup(null), timeChanged ? 1400 : 500)
       })
       .catch((error: unknown) => {
         setSavedMessage(
@@ -844,6 +959,7 @@ export function ParentModePage() {
   const closePopup = () => {
     setPopup(null)
     setProfileView('menu')
+    setIsTimePickerOpen(false)
     setSavedMessage('')
   }
 
@@ -959,6 +1075,7 @@ export function ParentModePage() {
     currentChildPage * 3,
     currentChildPage * 3 + 3,
   )
+  const selectedNotificationTime = toPeriodTime(notification.time)
 
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">
@@ -1010,7 +1127,10 @@ export function ParentModePage() {
             aria-expanded={isArrivalListOpen}
             aria-label="도착한 일일 리포트 알림"
             className="relative size-[62px] bg-transparent p-0 transition hover:scale-106"
-            onClick={() => setIsArrivalListOpen((value) => !value)}
+            onClick={() => {
+              setIsUnreadReportNoticeVisible(false)
+              setIsArrivalListOpen((value) => !value)
+            }}
             type="button"
           >
             <img
@@ -1018,18 +1138,41 @@ export function ParentModePage() {
               className="size-full scale-[1.62] object-cover drop-shadow-[0_4px_5px_rgba(0,0,0,.3)]"
               src={reportNotificationButtonUrl}
             />
-            {reportArrivals.some((item) => !item.read) ? (
+            {unreadReportCount ? (
               <span
                 className="absolute top-0.5 right-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-[#ef694f] px-1 text-[12px] leading-none text-white shadow"
                 style={jua}
               >
-                {Math.min(
-                  99,
-                  reportArrivals.filter((item) => !item.read).length,
-                )}
+                {Math.min(99, unreadReportCount)}
               </span>
             ) : null}
           </button>
+
+          {isUnreadReportNoticeVisible && unreadReportCount ? (
+            <div
+              className="absolute bottom-[-17px] left-[40px] flex h-[102px] w-[430px] cursor-pointer items-center bg-[length:100%_100%] bg-center bg-no-repeat px-[58px] pr-[76px] text-[19px] leading-tight text-[#6a4f2a] drop-shadow-[0_8px_18px_rgba(0,0,0,.26)] transition hover:scale-[1.01]"
+              onClick={() => {
+                setIsUnreadReportNoticeVisible(false)
+                setIsArrivalListOpen(true)
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                setIsUnreadReportNoticeVisible(false)
+                setIsArrivalListOpen(true)
+              }}
+              role="button"
+              style={{
+                ...jua,
+                backgroundImage: `url(${reportArrivalNoticeUrl})`,
+              }}
+              tabIndex={0}
+            >
+              <span>
+                아직 읽지 않은 {unreadReportCount}건의 리포트가 있습니다!
+              </span>
+            </div>
+          ) : null}
 
           {isArrivalListOpen ? (
             <section
@@ -1050,14 +1193,10 @@ export function ParentModePage() {
                 </button>
               </div>
               <div className="max-h-[250px] space-y-2 overflow-y-auto pr-1">
-                {reportArrivals.length ? (
-                  reportArrivals.map((arrival) => (
+                {unreadReportArrivals.length ? (
+                  unreadReportArrivals.map((arrival) => (
                     <button
-                      className={`w-full rounded-[15px] border-2 px-4 py-3 text-left text-[16px] transition hover:-translate-y-0.5 hover:bg-[#eef6d9] ${
-                        arrival.read
-                          ? 'border-[#dfd5b9] bg-[#faf5e8] text-[#756a51]'
-                          : 'border-[#aac86b] bg-[#f5fbdc] text-[#4e6434]'
-                      }`}
+                      className="w-full rounded-[15px] border-2 border-[#aac86b] bg-[#f5fbdc] px-4 py-3 text-left text-[16px] text-[#4e6434] transition hover:-translate-y-0.5 hover:bg-[#eef6d9]"
                       key={arrival.id}
                       onClick={() => openArrivedReport(arrival)}
                       style={jua}
@@ -1123,11 +1262,12 @@ export function ParentModePage() {
             <button
               className="group relative flex w-[150px] flex-col items-center gap-3.5 transition hover:-translate-y-1.5"
               key={profile.id}
-              onClick={() =>
+              onClick={() => {
+                setIsUnreadReportNoticeVisible(false)
                 navigate(
                   `/reports?childId=${encodeURIComponent(profile.id)}&childName=${encodeURIComponent(profile.name)}`,
                 )
-              }
+              }}
               type="button"
             >
               <span className="size-[130px] overflow-hidden rounded-full border-[7px] border-[#ffe6a6] bg-[#eaf4d8] shadow-[0_12px_26px_rgba(0,0,0,.3)] transition group-hover:scale-105">
@@ -1906,33 +2046,118 @@ export function ParentModePage() {
                 </button>
               </div>
 
-              <label
-                className="absolute top-[33%] right-[16.5%] left-[16.5%] text-[19px] text-[#8a7a55]"
+              <div
+                className="absolute top-[32.5%] right-[16.5%] left-[16.5%] text-[19px] text-[#8a7a55]"
                 style={jua}
               >
-                알림 받을 시각
-                <span
-                  className="relative -mt-1 block h-[70px] bg-[length:100%_100%] bg-center bg-no-repeat"
-                  style={{ backgroundImage: `url(${inputBarUrl})` }}
+                리포트 받을 시각
+                <button
+                  aria-expanded={isTimePickerOpen}
+                  className="relative -mt-1 block h-[70px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-left text-[25px] text-[#5a4a2a] disabled:opacity-55"
+                  disabled={!notification.enabled}
+                  onClick={() => setIsTimePickerOpen((open) => !open)}
+                  style={{
+                    ...jua,
+                    backgroundImage: `url(${inputBarUrl})`,
+                  }}
+                  type="button"
                 >
-                  <input
-                    className="absolute inset-y-1.5 right-5 left-8 bg-transparent text-[20px] text-[#5a4a2a] outline-none"
-                    disabled={!notification.enabled}
-                    onChange={(event) =>
-                      setNotification((current) => ({
-                        ...current,
-                        time: event.target.value,
-                      }))
-                    }
-                    style={jua}
-                    type="time"
-                    value={notification.time}
-                  />
-                </span>
-              </label>
+                  <span className="absolute inset-y-1.5 right-5 left-8 flex items-center">
+                    {selectedNotificationTime.period === 'AM' ? '오전' : '오후'}{' '}
+                    {selectedNotificationTime.hour}:
+                    {selectedNotificationTime.minute}
+                  </span>
+                </button>
+                {isTimePickerOpen && notification.enabled ? (
+                  <div className="absolute top-[72px] right-0 left-0 z-50 flex h-[154px] gap-3 rounded-[8px] border-[3px] border-[#d9c79a] bg-[#fffaf0] p-3 shadow-[0_14px_24px_rgba(80,60,28,.22)]">
+                    <div className="h-full w-[92px] overflow-y-auto pr-1">
+                      {TIME_PICKER_PERIODS.map((period) => (
+                        <button
+                          className={`mb-1 h-8 w-full rounded-[6px] text-[19px] ${
+                            selectedNotificationTime.period === period
+                              ? 'bg-[#7ec850] text-white'
+                              : 'bg-[#f4ead2] text-[#5a4a2a]'
+                          }`}
+                          key={period}
+                          onClick={() =>
+                            setNotification((current) => ({
+                              ...current,
+                              time: toNotificationTime(
+                                period,
+                                selectedNotificationTime.hour,
+                                selectedNotificationTime.minute,
+                              ),
+                            }))
+                          }
+                          style={jua}
+                          type="button"
+                        >
+                          {period === 'AM' ? '오전' : '오후'}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="h-full flex-1 overflow-y-auto pr-1">
+                      {TIME_PICKER_HOURS.map((hour) => (
+                        <button
+                          className={`mb-1 h-8 w-full rounded-[6px] text-[19px] ${
+                            selectedNotificationTime.hour === hour
+                              ? 'bg-[#7ec850] text-white'
+                              : 'bg-[#f4ead2] text-[#5a4a2a]'
+                          }`}
+                          key={hour}
+                          onClick={() =>
+                            setNotification((current) => ({
+                              ...current,
+                              time: toNotificationTime(
+                                selectedNotificationTime.period,
+                                hour,
+                                selectedNotificationTime.minute,
+                              ),
+                            }))
+                          }
+                          style={jua}
+                          type="button"
+                        >
+                          {hour}시
+                        </button>
+                      ))}
+                    </div>
+                    <div className="h-full flex-1 overflow-y-auto pl-1">
+                      {TIME_PICKER_MINUTES.map((minute) => (
+                        <button
+                          className={`mb-1 h-8 w-full rounded-[6px] text-[19px] ${
+                            selectedNotificationTime.minute === minute
+                              ? 'bg-[#7ec850] text-white'
+                              : 'bg-[#f4ead2] text-[#5a4a2a]'
+                          }`}
+                          key={minute}
+                          onClick={() =>
+                            setNotification((current) => ({
+                              ...current,
+                              time: toNotificationTime(
+                                selectedNotificationTime.period,
+                                selectedNotificationTime.hour,
+                                minute,
+                              ),
+                            }))
+                          }
+                          style={jua}
+                          type="button"
+                        >
+                          {minute}분
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <p className="-mt-2.5 px-1 text-[13px] leading-[1.25] text-[#9a6a2a]">
+                  생성에 시간이 걸려요. 직전의 게임과 대화는 반영되지 않을 수
+                  있어요!
+                </p>
+              </div>
 
               <label
-                className="absolute top-[50.5%] right-[16.5%] left-[16.5%] text-[19px] text-[#8a7a55]"
+                className="absolute top-[51.5%] right-[16.5%] left-[16.5%] text-[19px] text-[#8a7a55]"
                 style={jua}
               >
                 기준 시간대

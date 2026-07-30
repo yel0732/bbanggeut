@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import {
   getStoredAccessToken,
@@ -283,6 +283,10 @@ export function ProfileSelectPage() {
     window.addEventListener('keydown', handlePinKeyboard)
     return () => window.removeEventListener('keydown', handlePinKeyboard)
   })
+
+  if (hasPendingNewSignupOnboarding()) {
+    return <Navigate replace to="/profiles/new" />
+  }
 
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">

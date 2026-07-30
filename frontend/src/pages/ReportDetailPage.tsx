@@ -16,6 +16,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import { makeDemoReportDetail } from '@/lib/reportDemo'
+import { removeReadReportArrival } from '@/lib/reportArrivals'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
@@ -44,13 +45,18 @@ export function ReportDetailPage() {
       }
       if (!isBackendChildId(childId)) {
         setReport(makeDemoReportDetail(reportDate))
+        removeReadReportArrival({ childId, childName, reportDate })
         setIsLoading(false)
         return
       }
       try {
-        setReport(
-          await getChildReport(Number(childId), reportDate, controller.signal),
+        const nextReport = await getChildReport(
+          Number(childId),
+          reportDate,
+          controller.signal,
         )
+        setReport(nextReport)
+        removeReadReportArrival({ childId, childName, reportDate })
       } catch (loadError) {
         if (controller.signal.aborted) return
         setError(
@@ -64,7 +70,7 @@ export function ReportDetailPage() {
     }
     void loadReport()
     return () => controller.abort()
-  }, [childId, reportDate])
+  }, [childId, childName, reportDate])
 
   async function requestRegeneration() {
     if (!isBackendChildId(childId)) {
@@ -241,29 +247,29 @@ export function ReportPaperContent({
         </div>
       ) : (
         <>
-          {hasGames ? (
-            <section className="absolute top-[15.9%] right-[8%] left-[8%] h-[34.5%] text-[#675636]">
-              <h3 className="absolute top-0.5 -left-3 flex h-[11.5%] w-[31%] min-w-[230px] items-center justify-center px-3 text-[20px] text-[#55783b]">
-                {childName}의 놀이 요약
-              </h3>
-              <div className="absolute top-[14.5%] right-0 bottom-0 left-0 grid grid-cols-2 items-stretch gap-3 overflow-hidden px-5 py-5">
-                {gameSlots.map(({ game, name }) => (
+          <section className="absolute top-[15.9%] right-[8%] left-[8%] h-[34.5%] text-[#675636]">
+            <h3 className="absolute top-0.5 -left-2 flex h-[11.5%] w-[31%] min-w-[230px] items-center justify-center px-3 text-[22px] text-[#55783b]">
+              {childName}의 게임 결과
+            </h3>
+            <div className="absolute top-[14.5%] right-0 bottom-0 left-0 grid grid-cols-2 items-stretch gap-3 overflow-hidden px-5 py-5">
+              {hasGames ? (
+                gameSlots.map(({ game, name }) => (
                   <article
-                    className="flex h-full flex-col justify-center rounded-[18px] bg-[rgba(242,233,206,.72)] px-6 py-5"
+                    className="flex h-full flex-col justify-start rounded-[18px] bg-[rgba(242,233,206,.72)] px-6 py-5"
                     key={name}
                   >
-                    <h3 className="text-[22px] text-[#5a4a2a]">{name}</h3>
+                    <h3 className="text-[24px] text-[#5a4a2a]">{name}</h3>
                     {game ? (
                       <>
-                        <p className="mt-2 text-[17px]">
+                        <p className="mt-2 text-[19px]">
                           플레이 시간 {formatDuration(game.playDurationSeconds)}
                         </p>
-                        <p className="text-[17px]">
+                        <p className="text-[19px]">
                           점수 {game.score}점 · 완료
                         </p>
                         {metricEntries(game.resultMetrics).map(
                           ([key, value]) => (
-                            <p className="text-[15px] text-[#85744f]" key={key}>
+                            <p className="text-[19px] text-[#5a4a2a]" key={key}>
                               {formatMetricKey(key)} {value}
                             </p>
                           ),
@@ -275,46 +281,50 @@ export function ReportPaperContent({
                       </p>
                     )}
                   </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {hasConversation ? (
-            <section className="absolute top-[61%] right-[8%] left-[8%] h-[32.3%] text-[#675636]">
-              <h3 className="absolute top-0 left-0 flex h-[12.5%] w-[43.5%] min-w-[300px] items-center justify-center px-3 text-[20px] text-[#55783b]">
-                {childName}와 캐릭터가 한 대화 요약
-              </h3>
-              <div className="absolute top-[16%] right-0 bottom-0 left-0 flex flex-col overflow-hidden rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
-                <h4 className="text-[20px] text-[#5a4a2a]">
-                  {report.conversationSummary!.diaryTitle}
-                </h4>
-                <p className="mt-2 min-h-0 flex-1 text-[15px] leading-6 whitespace-pre-line">
-                  {report.conversationSummary!.diaryContent}
-                </p>
-                <div className="grid min-h-[104px] grid-cols-3 items-stretch gap-3">
-                  <PaperSummaryList
-                    label="주요 사건"
-                    values={report.conversationSummary!.mainEvents}
-                  />
-                  <PaperSummaryList
-                    label="감정"
-                    values={report.conversationSummary!.expressedEmotions}
-                  />
-                  <PaperSummaryList
-                    label="관심사"
-                    values={report.conversationSummary!.interests}
-                  />
+                ))
+              ) : (
+                <div className="col-span-2 flex items-center justify-center rounded-[18px] bg-[rgba(242,233,206,.72)] px-6 py-5 text-[19px] text-[#85744f]">
+                  오늘은 게임을 하지 않았어요.
                 </div>
-              </div>
-            </section>
-          ) : null}
-
-          {!hasGames && !hasConversation ? (
-            <div className="absolute top-[22%] right-[13%] left-[13%] text-center text-[19px] text-[#6a5a3a]">
-              표시할 리포트 내용이 없어요.
+              )}
             </div>
-          ) : null}
+          </section>
+
+          <section className="absolute top-[61%] right-[8%] left-[8%] h-[32.3%] text-[#675636]">
+            <h3 className="absolute top-0 -left-1 flex h-[12.5%] w-[43.5%] min-w-[300px] items-center justify-center px-3 text-[22px] text-[#55783b]">
+              {childName}와 캐릭터의 대화 요약
+            </h3>
+            <div className="absolute top-[16%] right-0 bottom-0 left-0 flex flex-col overflow-hidden rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
+              {hasConversation ? (
+                <>
+                  <h4 className="text-[25px] text-[#5a4a2a]">
+                    {report.conversationSummary!.diaryTitle}
+                  </h4>
+                  <p className="mt-2 min-h-0 flex-1 text-[17px] leading-6 whitespace-pre-line">
+                    {report.conversationSummary!.diaryContent}
+                  </p>
+                  <div className="grid min-h-[104px] grid-cols-3 items-stretch gap-3">
+                    <PaperSummaryList
+                      label="주요 사건"
+                      values={report.conversationSummary!.mainEvents}
+                    />
+                    <PaperSummaryList
+                      label="감정"
+                      values={report.conversationSummary!.expressedEmotions}
+                    />
+                    <PaperSummaryList
+                      label="관심사"
+                      values={report.conversationSummary!.interests}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center text-[25px] text-[#85744f]">
+                  오늘은 대화를 나누지 않았어요.
+                </div>
+              )}
+            </div>
+          </section>
         </>
       )}
     </div>
@@ -330,8 +340,8 @@ function PaperSummaryList({
 }) {
   return (
     <div className="h-full rounded-xl bg-[rgba(233,241,216,.82)] px-3 py-2">
-      <h4 className="text-[14px] text-[#55783b]">{label}</h4>
-      <p className="mt-0.5 truncate text-[12px]">
+      <h4 className="text-[16px] text-[#55783b]">{label}</h4>
+      <p className="mt-0.5 truncate text-[13px]">
         {values.length ? `• ${values.join(', ')}` : '기록 없음'}
       </p>
     </div>
@@ -387,13 +397,10 @@ export function ReportContent({
 
   return (
     <div className="space-y-8" style={jua}>
-      {hasGames ? <GameSection games={report.gameResults} /> : null}
-      {hasConversation ? (
-        <ConversationSection summary={report.conversationSummary!} />
-      ) : null}
-      {!hasGames && !hasConversation ? (
-        <Message>표시할 리포트 내용이 없어요.</Message>
-      ) : null}
+      <GameSection games={hasGames ? report.gameResults : []} />
+      <ConversationSection
+        summary={hasConversation ? report.conversationSummary! : null}
+      />
     </div>
   )
 }
@@ -402,25 +409,31 @@ function GameSection({ games }: { games: ReportGameResult[] }) {
   return (
     <section className="rounded-[24px] border-2 border-[#decda1] bg-[rgba(255,252,239,.82)] p-5">
       <h2 className="mb-3 text-[25px] text-[#55783b]">게임 결과</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {games.map((game) => (
-          <article
-            className="rounded-2xl bg-[#f5ecd3] p-4 text-[#675636]"
-            key={game.gameSessionId}
-          >
-            <h3 className="text-[21px] text-[#5a4a2a]">{game.gameName}</h3>
-            <p className="mt-1 text-[16px]">
-              플레이 시간 {formatDuration(game.playDurationSeconds)}
-            </p>
-            <p className="text-[16px]">점수 {game.score}점 · 완료</p>
-            {metricEntries(game.resultMetrics).map(([key, value]) => (
-              <p className="text-[14px] text-[#85744f]" key={key}>
-                {formatMetricKey(key)} {value}
+      {games.length ? (
+        <div className="grid grid-cols-2 gap-3">
+          {games.map((game) => (
+            <article
+              className="rounded-2xl bg-[#f5ecd3] p-4 text-[#675636]"
+              key={game.gameSessionId}
+            >
+              <h3 className="text-[21px] text-[#5a4a2a]">{game.gameName}</h3>
+              <p className="mt-1 text-[16px]">
+                플레이 시간 {formatDuration(game.playDurationSeconds)}
               </p>
-            ))}
-          </article>
-        ))}
-      </div>
+              <p className="text-[16px]">점수 {game.score}점 · 완료</p>
+              {metricEntries(game.resultMetrics).map(([key, value]) => (
+                <p className="text-[14px] text-[#85744f]" key={key}>
+                  {formatMetricKey(key)} {value}
+                </p>
+              ))}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-2xl bg-[#f5ecd3] p-5 text-[18px] text-[#675636]">
+          오늘은 게임을 하지 않았어요.
+        </p>
+      )}
     </section>
   )
 }
@@ -428,20 +441,30 @@ function GameSection({ games }: { games: ReportGameResult[] }) {
 function ConversationSection({
   summary,
 }: {
-  summary: NonNullable<ReportDetailResponse['conversationSummary']>
+  summary: ReportDetailResponse['conversationSummary']
 }) {
   return (
     <section className="rounded-[24px] border-2 border-[#decda1] bg-[rgba(255,252,239,.82)] p-5 text-[#675636]">
-      <h2 className="text-[25px] text-[#55783b]">대화 기반 일기 요약</h2>
-      <h3 className="mt-2 text-[22px] text-[#5a4a2a]">{summary.diaryTitle}</h3>
-      <p className="mt-2 text-[17px] leading-7 whitespace-pre-line">
-        {summary.diaryContent}
-      </p>
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <SummaryList label="주요 사건" values={summary.mainEvents} />
-        <SummaryList label="감정" values={summary.expressedEmotions} />
-        <SummaryList label="관심사" values={summary.interests} />
-      </div>
+      <h2 className="text-[25px] text-[#55783b]">대화 요약</h2>
+      {summary ? (
+        <>
+          <h3 className="mt-2 text-[22px] text-[#5a4a2a]">
+            {summary.diaryTitle}
+          </h3>
+          <p className="mt-2 text-[17px] leading-7 whitespace-pre-line">
+            {summary.diaryContent}
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <SummaryList label="주요 사건" values={summary.mainEvents} />
+            <SummaryList label="감정" values={summary.expressedEmotions} />
+            <SummaryList label="관심사" values={summary.interests} />
+          </div>
+        </>
+      ) : (
+        <p className="mt-3 rounded-2xl bg-[#eef3df] p-5 text-[18px] text-[#675636]">
+          오늘은 대화를 나누지 않았어요.
+        </p>
+      )}
     </section>
   )
 }
@@ -503,6 +526,7 @@ function formatMetricKey(key: string) {
     wrongCount: '오답',
     slicedFruitCount: '자른 과일',
     totalFruitCount: '전체 과일 수',
+    maxCombo: '최대 콤보',
   }
   return `${labels[key] ?? key}:`
 }

@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { getStoredAccessToken, hasPendingNewSignupOnboarding } from '@/api/auth'
+import { clearActiveChildProfileId } from '@/lib/childProfiles'
 import { hasParentAccess } from '@/lib/parentAccess'
 
 export function ParentRouteGuard({
@@ -13,6 +15,10 @@ export function ParentRouteGuard({
   const canContinueOnboarding =
     allowOnboarding && hasPendingNewSignupOnboarding()
   const canEnter = (hasToken && hasParentAccess()) || canContinueOnboarding
+
+  useEffect(() => {
+    if (canEnter) clearActiveChildProfileId()
+  }, [canEnter])
 
   if (!hasToken && !canContinueOnboarding) {
     return <Navigate replace to="/" />

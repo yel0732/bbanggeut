@@ -11,6 +11,8 @@ import com.A501.backend.domain.report.entity.ReportNotificationType;
 public record ReportNotificationCreatedEvent(
         Long notificationId,
         Long parentId,
+        Long reportId,
+        Long childId,
         ReportNotificationType notificationType,
         LocalDate reportDate,
         String message

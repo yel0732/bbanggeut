@@ -90,10 +90,7 @@ class ReportNotificationSchedulingTest {
     }
 
     @Test
-    void changingPreferenceReschedulesPendingNotifications() {
-        Clock clock = Clock.fixed(
-                Instant.parse("2026-07-29T10:00:00Z"),
-                ZoneOffset.UTC);
+    void changingPreferenceAppliesFromNextReportCycle() {
         ReportNotificationPreference preference =
                 ReportNotificationPreference.defaults(1L);
         ReportNotification pending = ReportNotification.create(
@@ -107,17 +104,12 @@ class ReportNotificationSchedulingTest {
         when(preferenceRepository.findByParentId(1L))
                 .thenReturn(Optional.of(preference));
         when(preferenceRepository.save(preference)).thenReturn(preference);
-        when(notificationRepository.findByParentIdAndDeliveredAtIsNull(1L))
-                .thenReturn(List.of(pending));
-
         new ReportNotificationPreferenceService(
-                preferenceRepository,
-                notificationRepository,
-                new ReportNotificationScheduleCalculator(clock))
+                preferenceRepository)
                 .update(1L, true, LocalTime.of(21, 0), "Asia/Seoul");
 
         assertThat(pending.getScheduledAt())
-                .isEqualTo(LocalDateTime.of(2026, 7, 29, 12, 0));
+                .isEqualTo(LocalDateTime.of(2026, 7, 29, 11, 0));
     }
 
     private ReportNotificationPersistenceService service(Clock clock) {

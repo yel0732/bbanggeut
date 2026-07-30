@@ -96,6 +96,8 @@ public class ReportNotificationPersistenceService {
         eventPublisher.publishEvent(new ReportNotificationCreatedEvent(
                 saved.getId(),
                 saved.getParentId(),
+                saved.getReportId(),
+                saved.getChildId(),
                 saved.getNotificationType(),
                 saved.getReportDate(),
                 saved.getMessage()));

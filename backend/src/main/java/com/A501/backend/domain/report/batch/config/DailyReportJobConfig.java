@@ -22,6 +22,7 @@ import com.A501.backend.domain.report.batch.processor.DailyReportProcessor;
 import com.A501.backend.domain.report.batch.reader.ActiveChildItemReader;
 import com.A501.backend.domain.report.model.DailyReportCandidate;
 import com.A501.backend.domain.report.model.ReportPeriod;
+import com.A501.backend.domain.report.model.ReportDeliverySchedule;
 import com.A501.backend.domain.report.port.ChildReportQueryPort;
 import com.A501.backend.domain.report.port.ConversationReportQueryPort;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
@@ -62,8 +63,14 @@ public class DailyReportJobConfig {
     @Bean
     @StepScope
     public ItemReader<Long> activeChildItemReader(
-            ChildReportQueryPort childReportQueryPort) {
-        return new ActiveChildItemReader(childReportQueryPort);
+            ChildReportQueryPort childReportQueryPort,
+            @Value("#{jobParameters['deliveryTime']}") String deliveryTime,
+            @Value("#{jobParameters['timezone']}") String timezone) {
+        return new ActiveChildItemReader(
+                childReportQueryPort,
+                new ReportDeliverySchedule(
+                        java.time.LocalTime.parse(deliveryTime),
+                        timezone));
     }
 
     @Bean

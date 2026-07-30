@@ -3,6 +3,9 @@ package com.A501.backend.domain.report.controller;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,6 +19,8 @@ import com.A501.backend.domain.report.dto.request.ReportNotificationPreferenceRe
 import com.A501.backend.domain.report.dto.response.ReportNotificationPreferenceResponse;
 import com.A501.backend.domain.report.port.ReportCurrentParentProvider;
 import com.A501.backend.domain.report.service.ReportNotificationPreferenceService;
+import com.A501.backend.domain.report.service.ReportNotificationQueryService;
+import com.A501.backend.domain.report.dto.response.UnreadReportNotificationsResponse;
 import com.A501.backend.domain.report.sse.ReportNotificationStreamService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,6 +38,34 @@ public class ReportNotificationController {
     private final ObjectProvider<ReportCurrentParentProvider>
             currentParentProvider;
     private final ReportNotificationPreferenceService preferenceService;
+    private final ReportNotificationQueryService notificationQueryService;
+
+    @Operation(summary = "Get available unread report notifications")
+    @GetMapping("/unread")
+    public UnreadReportNotificationsResponse unread() {
+        return notificationQueryService.getAvailableUnread(
+                requiredParentProvider().getCurrentParentId());
+    }
+
+    @Operation(summary = "Mark a report notification as read")
+    @PatchMapping("/{notificationId}/read")
+    public ResponseEntity<Void> markRead(
+            @PathVariable Long notificationId) {
+        notificationQueryService.markRead(
+                requiredParentProvider().getCurrentParentId(),
+                notificationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Mark the notification for a viewed report as read")
+    @PatchMapping("/reports/{reportId}/read")
+    public ResponseEntity<Void> markReportRead(
+            @PathVariable Long reportId) {
+        notificationQueryService.markReportRead(
+                requiredParentProvider().getCurrentParentId(),
+                reportId);
+        return ResponseEntity.noContent().build();
+    }
 
     @Operation(summary = "Get report notification preference")
     @GetMapping("/preferences")

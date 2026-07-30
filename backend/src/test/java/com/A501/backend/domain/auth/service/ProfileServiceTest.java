@@ -122,7 +122,7 @@ class ProfileServiceTest {
     @Test
     void updateProfileImage_rejectsNonPresetKeyBeforeTouchingParent() {
         doThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY))
-                .when(profileImageService).assertValidPreset(UPLOAD_KEY);
+                .when(profileImageService).assertValidParentPreset(UPLOAD_KEY);
 
         assertThatThrownBy(() -> profileService.updateProfileImage(1L, UPLOAD_KEY))
                 .isInstanceOf(BusinessException.class)

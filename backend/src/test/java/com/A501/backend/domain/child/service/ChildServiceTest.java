@@ -139,7 +139,7 @@ class ChildServiceTest {
 
         assertThat(child.name()).isEqualTo("chorong");
         assertThat(child.profileImageUrl()).isEqualTo(OTHER_PRESET_URL);
-        verify(profileImageService).assertValidPreset(OTHER_PRESET_KEY);
+        verify(profileImageService).assertValidChildPreset(OTHER_PRESET_KEY);
     }
 
     // imageKey는 선택값이다 — 생략하면 기본 프리셋으로 생성된다.
@@ -155,7 +155,7 @@ class ChildServiceTest {
         ChildResponse child = childService.createChild(1L, "chorong", null);
 
         assertThat(child.profileImageUrl()).isEqualTo(PRESET_URL);
-        verify(profileImageService, never()).assertValidPreset(any());
+        verify(profileImageService, never()).assertValidChildPreset(any());
     }
 
     // 클라이언트가 프리셋이 아닌 키(예: 타인의 업로드 키)를 보내면 생성 자체가 거절되어야 한다.
@@ -165,7 +165,7 @@ class ChildServiceTest {
         when(childRepository.countByParentIdAndDeletedAtIsNull(1L)).thenReturn(0L);
         when(childRepository.existsByParentIdAndNameAndDeletedAtIsNull(1L, "chorong")).thenReturn(false);
         doThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY))
-                .when(profileImageService).assertValidPreset(UPLOAD_KEY);
+                .when(profileImageService).assertValidChildPreset(UPLOAD_KEY);
 
         assertThatThrownBy(() -> childService.createChild(1L, "chorong", UPLOAD_KEY))
                 .isInstanceOf(BusinessException.class)
@@ -239,7 +239,7 @@ class ChildServiceTest {
     @Test
     void updateChild_rejectsNonPresetImageKeyBeforeTouchingChild() {
         doThrow(new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY))
-                .when(profileImageService).assertValidPreset(UPLOAD_KEY);
+                .when(profileImageService).assertValidChildPreset(UPLOAD_KEY);
 
         assertThatThrownBy(() -> childService.updateChild(1L, 10L, "banjjak", UPLOAD_KEY))
                 .isInstanceOf(BusinessException.class)

@@ -195,6 +195,59 @@ class ProfileImageServiceTest {
     }
 
     @Test
+    void assertValidParentPreset_passesForParentAvatar() {
+        profileImageService.assertValidParentPreset("profile-presets/parent-avatar");
+    }
+
+    // 부모 프로필에 자녀용 아바타가 붙는 것을 막는다. 화이트리스트에는 있는 키라
+    // assertValidPreset으로는 통과한다.
+    @Test
+    void assertValidParentPreset_rejectsChildPreset() {
+        assertThatThrownBy(() -> profileImageService.assertValidParentPreset(PRESET_KEY))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+    }
+
+    @Test
+    void assertValidParentPreset_rejectsNullKey() {
+        assertThatThrownBy(() -> profileImageService.assertValidParentPreset(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+    }
+
+    @Test
+    void assertValidChildPreset_passesForChildPreset() {
+        profileImageService.assertValidChildPreset(PRESET_KEY);
+    }
+
+    // 반대 방향. 자녀 프로필에 부모 아바타를 붙이는 것도 막는다.
+    @Test
+    void assertValidChildPreset_rejectsParentPreset() {
+        assertThatThrownBy(() -> profileImageService.assertValidChildPreset("profile-presets/parent-avatar"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+    }
+
+    @Test
+    void assertValidChildPreset_rejectsUnknownKey() {
+        assertThatThrownBy(() -> profileImageService.assertValidChildPreset("profile-presets/unknown-avatar"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+    }
+
+    @Test
+    void assertValidChildPreset_rejectsNullKey() {
+        assertThatThrownBy(() -> profileImageService.assertValidChildPreset(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ImageErrorCode.INVALID_IMAGE_KEY));
+    }
+
+    @Test
     void isUpload_distinguishesUploadKeyFromPresetKey() {
         assertThat(profileImageService.isUpload("profile-uploads/1/parent/abc")).isTrue();
         assertThat(profileImageService.isUpload(PRESET_KEY)).isFalse();

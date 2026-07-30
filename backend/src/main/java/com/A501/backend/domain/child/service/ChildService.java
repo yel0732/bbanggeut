@@ -91,7 +91,7 @@ public class ChildService {
     public ChildResponse updateChild(Long parentId, Long childId, String name, String imageKey) {
         parentFinder.assertActive(parentId);
         // 키 검증을 먼저 한다 — 거절될 요청 때문에 이전 이미지를 지우는 일이 없도록.
-        profileImageService.assertValidPreset(imageKey);
+        profileImageService.assertValidChildPreset(imageKey);
 
         Child child = findOwnedChild(parentId, childId);
         if (!child.getName().equals(name) && childRepository.existsByParentIdAndNameAndDeletedAtIsNull(parentId, name)) {
@@ -156,7 +156,7 @@ public class ChildService {
         if (imageKey == null || imageKey.isBlank()) {
             return profileImageService.defaultChildPresetKey();
         }
-        profileImageService.assertValidPreset(imageKey);
+        profileImageService.assertValidChildPreset(imageKey);
         return imageKey;
     }
 

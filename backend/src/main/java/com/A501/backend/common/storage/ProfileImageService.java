@@ -71,6 +71,24 @@ public class ProfileImageService {
         }
     }
 
+    // 부모가 고를 수 있는 프리셋은 기본 아바타 하나뿐이다 — 그 외의 부모 사진은 웹캠 업로드다.
+    // 화이트리스트 전체(assertValidPreset)를 쓰면 자녀용 아바타가 부모 프로필에 붙는다.
+    public void assertValidParentPreset(String key) {
+        if (!storageProperties.defaultParentPresetKey().equals(key)) {
+            throw new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY);
+        }
+    }
+
+    // 자녀는 자녀용 프리셋만 고를 수 있다. 부모 아바타를 제외한 나머지 화이트리스트가 대상이며,
+    // 목록을 따로 두지 않고 부모 키만 빼는 이유는 프리셋이 추가될 때 설정 한 곳만 고치면 되도록
+    // 하기 위함이다.
+    public void assertValidChildPreset(String key) {
+        assertValidPreset(key);
+        if (storageProperties.defaultParentPresetKey().equals(key)) {
+            throw new BusinessException(ImageErrorCode.INVALID_IMAGE_KEY);
+        }
+    }
+
     public boolean isUpload(String key) {
         return storageProperties.isUpload(key);
     }

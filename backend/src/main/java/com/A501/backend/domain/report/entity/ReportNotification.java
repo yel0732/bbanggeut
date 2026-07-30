@@ -64,6 +64,9 @@ public class ReportNotification extends BaseTimeEntity {
     @Column(name = "delivered_at")
     private LocalDateTime deliveredAt;
 
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
+
     private ReportNotification(
             Long parentId,
             Long reportId,
@@ -126,6 +129,16 @@ public class ReportNotification extends BaseTimeEntity {
     public void reschedule(LocalDateTime scheduledAt) {
         if (deliveredAt == null) {
             this.scheduledAt = scheduledAt;
+        }
+    }
+
+    public void markRead(LocalDateTime readAt) {
+        if (readAt == null) {
+            throw new IllegalArgumentException("Read time is required.");
+        }
+        if (notificationStatus == ReportNotificationStatus.UNREAD) {
+            notificationStatus = ReportNotificationStatus.READ;
+            this.readAt = readAt;
         }
     }
 }

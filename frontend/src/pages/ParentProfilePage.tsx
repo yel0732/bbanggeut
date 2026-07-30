@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { completeNewSignupOnboarding, getStoredAccessToken } from '@/api/auth'
 import {
   createChildProfile as createBackendChildProfile,
+  getChildProfiles as getBackendChildProfiles,
   setParentPin,
   uploadChildProfileImage,
   uploadParentProfileImage,
@@ -83,7 +84,7 @@ export function ParentProfilePage() {
   const [childPhotoUrl, setChildPhotoUrl] = useState<string | null>(null)
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [childFormMessage, setChildFormMessage] = useState('')
-  const childProfileCount = loadChildProfiles().length
+  const [childProfileCount, setChildProfileCount] = useState(0)
   const isChildProfileLimitReached = childProfileCount >= MAX_CHILD_PROFILES
   const [pin, setPin] = useState(() => loadOnboardingPinDraft() ?? '')
   const [firstPin, setFirstPin] = useState<string | null>(() =>
@@ -99,6 +100,38 @@ export function ParentProfilePage() {
     return () => {
       parentStreamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current?.getTracks().forEach((track) => track.stop())
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!getStoredAccessToken()) {
+      setChildProfileCount(loadChildProfiles().length)
+      return
+    }
+
+    let active = true
+    void getBackendChildProfiles()
+      .then((children) => {
+        if (!active) return
+        setChildProfileCount(children.length)
+        saveChildProfiles(
+          children.map((child) => ({
+            id: String(child.childId),
+            name: child.name,
+            photoUrl:
+              child.profileImageUrl ??
+              childPhotoFromImageKey(child.profileImageKey),
+            profileImageKey: child.profileImageKey,
+            profileImageUrl: child.profileImageUrl,
+          })),
+        )
+      })
+      .catch(() => {
+        if (active) setChildProfileCount(0)
+      })
+
+    return () => {
+      active = false
     }
   }, [])
 
@@ -312,7 +345,36 @@ export function ParentProfilePage() {
   }
 
   const createChildProfile = async () => {
-    const profiles = loadChildProfiles()
+    const name = childName.trim()
+    if (!name) {
+      setChildFormMessage('?꾩씠 ?대쫫???낅젰??二쇱꽭??')
+      return
+    }
+
+    const hasAccessToken = Boolean(getStoredAccessToken())
+    let profiles: ChildProfile[]
+    try {
+      profiles = hasAccessToken
+        ? await getBackendChildProfiles().then((children) =>
+            children.map((child) => ({
+              id: String(child.childId),
+              name: child.name,
+              photoUrl:
+                child.profileImageUrl ??
+                childPhotoFromImageKey(child.profileImageKey),
+              profileImageKey: child.profileImageKey,
+              profileImageUrl: child.profileImageUrl,
+            })),
+          )
+        : loadChildProfiles()
+    } catch (error) {
+      setChildFormMessage(
+        error instanceof Error
+          ? error.message
+          : '아이 프로필 목록을 불러오지 못했어요.',
+      )
+      return
+    }
     if (profiles.length >= MAX_CHILD_PROFILES) {
       setChildFormMessage(
         `아이 프로필은 최대 ${MAX_CHILD_PROFILES}개까지 만들 수 있어요.`,
@@ -320,11 +382,6 @@ export function ParentProfilePage() {
       return
     }
 
-    const name = childName.trim()
-    if (!name) {
-      setChildFormMessage('아이 이름을 입력해 주세요.')
-      return
-    }
     if (
       profiles.some(
         (profile) =>
@@ -347,7 +404,7 @@ export function ParentProfilePage() {
     }
 
     try {
-      if (getStoredAccessToken()) {
+      if (hasAccessToken) {
         const created = await createBackendChildProfile(
           name,
           localProfile.profileImageKey,
@@ -374,6 +431,7 @@ export function ParentProfilePage() {
     }
 
     saveChildProfiles([...profiles, localProfile])
+    setChildProfileCount(profiles.length + 1)
     stopCamera()
     navigate('/profiles/children')
   }

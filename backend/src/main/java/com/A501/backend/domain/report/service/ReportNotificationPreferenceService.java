@@ -11,7 +11,6 @@ import com.A501.backend.domain.report.dto.response.ReportNotificationPreferenceR
 import com.A501.backend.domain.report.entity.ReportNotificationPreference;
 import com.A501.backend.domain.report.exception.ReportApiErrorCode;
 import com.A501.backend.domain.report.repository.ReportNotificationPreferenceRepository;
-import com.A501.backend.domain.report.repository.ReportNotificationRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,8 +19,6 @@ import lombok.RequiredArgsConstructor;
 public class ReportNotificationPreferenceService {
 
     private final ReportNotificationPreferenceRepository preferenceRepository;
-    private final ReportNotificationRepository notificationRepository;
-    private final ReportNotificationScheduleCalculator scheduleCalculator;
 
     @Transactional
     public ReportNotificationPreferenceResponse getOrCreate(Long parentId) {
@@ -48,10 +45,6 @@ public class ReportNotificationPreferenceService {
                     ReportApiErrorCode.INVALID_NOTIFICATION_PREFERENCE);
         }
         ReportNotificationPreference saved = preferenceRepository.save(preference);
-        var plan = scheduleCalculator.calculate(saved);
-        notificationRepository.findByParentIdAndDeliveredAtIsNull(parentId)
-                .forEach(notification ->
-                        notification.reschedule(plan.scheduledAt()));
         return ReportNotificationPreferenceResponse.from(saved);
     }
 }

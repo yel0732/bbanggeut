@@ -12,6 +12,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.A501.backend.domain.report.model.ReportPeriod;
+import com.A501.backend.domain.report.model.ReportDeliverySchedule;
+import com.A501.backend.domain.report.port.ChildReportQueryPort;
 import com.A501.backend.domain.report.service.ReportPeriodCalculator;
 
 import lombok.extern.slf4j.Slf4j;
@@ -27,21 +29,38 @@ public class DailyReportJobScheduler {
     private final JobLauncher jobLauncher;
     private final Job dailyReportJob;
     private final ReportPeriodCalculator periodCalculator;
+    private final ChildReportQueryPort childReportQueryPort;
+    private final java.time.Clock clock;
 
     public DailyReportJobScheduler(
             JobLauncher jobLauncher,
             @Qualifier("dailyReportJob") Job dailyReportJob,
-            ReportPeriodCalculator periodCalculator) {
+            ReportPeriodCalculator periodCalculator,
+            ChildReportQueryPort childReportQueryPort,
+            @Qualifier("utcClock") java.time.Clock clock) {
         this.jobLauncher = jobLauncher;
         this.dailyReportJob = dailyReportJob;
         this.periodCalculator = periodCalculator;
+        this.childReportQueryPort = childReportQueryPort;
+        this.clock = clock;
     }
 
     @Scheduled(
             cron = "${report.schedule.cron}",
             zone = "${report.schedule.zone}")
     public void run() throws Exception {
-        ReportPeriod period = periodCalculator.calculate();
+        java.time.Instant now = clock.instant();
+        for (ReportDeliverySchedule schedule
+                : childReportQueryPort.findActiveDeliverySchedules()) {
+            if (periodCalculator.isGenerationDue(schedule, now)) {
+                launch(schedule, periodCalculator.calculate(schedule, now));
+            }
+        }
+    }
+
+    private void launch(
+            ReportDeliverySchedule schedule,
+            ReportPeriod period) throws Exception {
 
         JobParameters parameters = new JobParametersBuilder()
                 .addString(
@@ -56,6 +75,14 @@ public class DailyReportJobScheduler {
                         "endedAt",
                         period.endedAt().toString(),
                         false)
+                .addString(
+                        "deliveryTime",
+                        schedule.deliveryTime().toString(),
+                        true)
+                .addString(
+                        "timezone",
+                        schedule.timezone(),
+                        true)
                 .toJobParameters();
 
         try {
@@ -63,8 +90,10 @@ public class DailyReportJobScheduler {
         } catch (JobExecutionAlreadyRunningException
                 | JobInstanceAlreadyCompleteException exception) {
             log.info(
-                    "Daily report job skipped because reportDate={} is already running or completed.",
-                    period.reportDate());
+                    "Daily report job skipped because reportDate={}, deliveryTime={}, timezone={} is already running or completed.",
+                    period.reportDate(),
+                    schedule.deliveryTime(),
+                    schedule.timezone());
         }
     }
 }

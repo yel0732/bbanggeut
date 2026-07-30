@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import com.A501.backend.domain.report.entity.ReportNotification;
 import com.A501.backend.domain.report.entity.ReportNotificationType;
+import com.A501.backend.domain.report.entity.ReportNotificationStatus;
 
 public interface ReportNotificationRepository
         extends JpaRepository<ReportNotification, Long> {
@@ -29,6 +30,20 @@ public interface ReportNotificationRepository
             LocalDateTime now);
 
     List<ReportNotification> findByParentIdAndDeliveredAtIsNull(Long parentId);
+
+    List<ReportNotification> findAllByParentIdAndNotificationStatusAndScheduledAtIsNotNullAndScheduledAtLessThanEqualOrderByScheduledAtDescIdDesc(
+            Long parentId,
+            ReportNotificationStatus notificationStatus,
+            LocalDateTime now);
+
+    java.util.Optional<ReportNotification> findByIdAndParentId(
+            Long id,
+            Long parentId);
+
+    java.util.Optional<ReportNotification> findByReportIdAndParentIdAndNotificationStatus(
+            Long reportId,
+            Long parentId,
+            ReportNotificationStatus notificationStatus);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

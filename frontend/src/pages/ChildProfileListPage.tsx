@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -40,7 +40,6 @@ import {
   childPhotoFromImageKey,
   loadChildProfiles,
   MAX_CHILD_PROFILES,
-  saveActiveChildProfileId,
   saveChildProfiles,
   type ChildProfile,
 } from '@/lib/childProfiles'
@@ -64,7 +63,6 @@ function formatPinLockTime(totalSeconds: number): string {
 }
 
 export function ChildProfileListPage() {
-  const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
   const editVideoRef = useRef<HTMLVideoElement>(null)
@@ -464,14 +462,7 @@ export function ChildProfileListPage() {
                     className="pointer-events-none absolute inset-0 size-full"
                     src={kidCellUrl}
                   />
-                  <button
-                    className="relative z-10 flex min-w-0 flex-1 -translate-y-0.5 items-center bg-transparent text-left"
-                    onClick={() => {
-                      saveActiveChildProfileId(profile.id)
-                      navigate('/child')
-                    }}
-                    type="button"
-                  >
+                  <div className="relative z-10 flex min-w-0 flex-1 -translate-y-0.5 items-center text-left">
                     <img
                       alt=""
                       className="ml-[54px] size-[92px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_3px_#d9c79a]"
@@ -483,7 +474,7 @@ export function ChildProfileListPage() {
                     >
                       {profile.name}
                     </span>
-                  </button>
+                  </div>
                   <div className="relative z-10 mr-[50px] flex -translate-y-0.5 flex-col">
                     <button
                       className="h-[50px] w-[150px] bg-[length:100%_100%] bg-center bg-no-repeat pt-[3px] text-[25px] text-[#7a5a1e] transition hover:scale-105"

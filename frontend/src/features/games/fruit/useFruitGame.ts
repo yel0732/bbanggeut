@@ -288,6 +288,8 @@ export function useFruitGame(
   ruleRef.current = rule
   const engineRef = useRef<Engine | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null)
+  const renderFruitsRef = useRef<RenderFruit[]>([])
 
   const onEndRef = useRef(onEnd)
   onEndRef.current = onEnd
@@ -486,26 +488,52 @@ export function useFruitGame(
     }
 
     const paint = (engine: Engine, now: number): void => {
-      const ctx = canvasRef.current?.getContext('2d')
+      let ctx = canvasContextRef.current
+      const canvas = canvasRef.current
+      if (!ctx && canvas) {
+        ctx = canvas.getContext('2d')
+        canvasContextRef.current = ctx
+      }
       if (!ctx) {
         return
       }
 
-      const fruits: RenderFruit[] = engine.fruits.map((fruit) => ({
-        imageUrl: fruit.imageUrl,
-        x: fruit.x,
-        y: fruit.y,
-        w: fruit.w,
-        h: fruit.h,
-        rotation: fruit.rotation,
-        sliced: fruit.sliced,
-        sliceProgress: fruit.sliced
+      const fruits = renderFruitsRef.current
+      fruits.length = engine.fruits.length
+      for (let i = 0; i < engine.fruits.length; i++) {
+        const fruit = engine.fruits[i]
+        const renderFruit = fruits[i]
+        const sliceProgress = fruit.sliced
           ? Math.min(1, (now - fruit.slicedAt) / CFG.slicedLingerMs)
-          : 0,
-        cutAngle: fruit.cutAngle,
-        gained: fruit.gained,
-        bomb: fruit.bomb,
-      }))
+          : 0
+        if (renderFruit) {
+          renderFruit.imageUrl = fruit.imageUrl
+          renderFruit.x = fruit.x
+          renderFruit.y = fruit.y
+          renderFruit.w = fruit.w
+          renderFruit.h = fruit.h
+          renderFruit.rotation = fruit.rotation
+          renderFruit.sliced = fruit.sliced
+          renderFruit.sliceProgress = sliceProgress
+          renderFruit.cutAngle = fruit.cutAngle
+          renderFruit.gained = fruit.gained
+          renderFruit.bomb = fruit.bomb
+        } else {
+          fruits[i] = {
+            imageUrl: fruit.imageUrl,
+            x: fruit.x,
+            y: fruit.y,
+            w: fruit.w,
+            h: fruit.h,
+            rotation: fruit.rotation,
+            sliced: fruit.sliced,
+            sliceProgress,
+            cutAngle: fruit.cutAngle,
+            gained: fruit.gained,
+            bomb: fruit.bomb,
+          }
+        }
+      }
 
       let blade: RenderBlade | null = null
       if (engine.tracker.blade) {
@@ -700,6 +728,8 @@ export function useFruitGame(
     return () => {
       cancelAnimationFrame(rafId)
       engineRef.current = null
+      canvasContextRef.current = null
+      renderFruitsRef.current.length = 0
     }
   }, [active, handRef])
 

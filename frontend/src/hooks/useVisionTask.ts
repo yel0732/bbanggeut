@@ -20,6 +20,8 @@ export type VisionTaskState = {
   error: string | null
 }
 
+const DETECTION_INTERVAL_MS = 33
+
 /**
  * MediaPipe Vision 태스크 실행 루프 공통 훅.
  *
@@ -51,17 +53,23 @@ export function useVisionTask<TResult>(
     let rafId = 0
     let cancelled = false
     let lastVideoTime = -1
+    let lastDetectAt = 0
 
     const detectLoop = () => {
       if (cancelled) {
         return
       }
       const video = videoRef.current
+      const frameNow = performance.now()
       if (task && video && video.readyState >= 2 && video.videoWidth > 0) {
         // 같은 프레임을 두 번 추론하지 않는다.
-        if (video.currentTime !== lastVideoTime) {
+        if (
+          video.currentTime !== lastVideoTime &&
+          frameNow - lastDetectAt >= DETECTION_INTERVAL_MS
+        ) {
           lastVideoTime = video.currentTime
-          onResultRef.current(task.detectForVideo(video, performance.now()))
+          lastDetectAt = frameNow
+          onResultRef.current(task.detectForVideo(video, frameNow))
         }
       }
       rafId = requestAnimationFrame(detectLoop)

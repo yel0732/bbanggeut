@@ -64,6 +64,9 @@ public class ReportNotificationStreamService {
     public void deliver(ReportNotificationCreatedEvent event) {
         ReportNotificationEventPayload payload =
                 new ReportNotificationEventPayload(
+                        event.notificationId(),
+                        event.reportId(),
+                        event.childId(),
                         event.reportDate(),
                         event.message());
         for (ManagedEmitter managed : registry.findByParent(event.parentId())) {
@@ -125,6 +128,9 @@ public class ReportNotificationStreamService {
                     notification.getId(),
                     notification.getNotificationType(),
                     new ReportNotificationEventPayload(
+                            notification.getId(),
+                            notification.getReportId(),
+                            notification.getChildId(),
                             notification.getReportDate(),
                             notification.getMessage())));
             if (!sent) {

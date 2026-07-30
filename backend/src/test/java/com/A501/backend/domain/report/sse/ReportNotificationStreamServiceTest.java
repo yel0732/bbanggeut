@@ -116,6 +116,8 @@ class ReportNotificationStreamServiceTest {
         streamService.deliver(new ReportNotificationCreatedEvent(
                 10L,
                 1L,
+                20L,
+                30L,
                 ReportNotificationType.REPORT_COMPLETED,
                 REPORT_DATE,
                 MESSAGE));
@@ -140,6 +142,8 @@ class ReportNotificationStreamServiceTest {
         streamService.deliver(new ReportNotificationCreatedEvent(
                 10L,
                 1L,
+                20L,
+                30L,
                 ReportNotificationType.REPORT_COMPLETED,
                 REPORT_DATE,
                 MESSAGE));

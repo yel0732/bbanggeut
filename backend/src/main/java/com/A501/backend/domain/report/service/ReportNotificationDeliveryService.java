@@ -47,6 +47,8 @@ public class ReportNotificationDeliveryService {
         return new ReportNotificationCreatedEvent(
                 notification.getId(),
                 notification.getParentId(),
+                notification.getReportId(),
+                notification.getChildId(),
                 notification.getNotificationType(),
                 notification.getReportDate(),
                 notification.getMessage());

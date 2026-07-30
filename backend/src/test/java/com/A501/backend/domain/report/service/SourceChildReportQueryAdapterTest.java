@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.A501.backend.domain.report.model.ReportDeliverySchedule;
 
 @SpringBootTest(properties = {
         "report.schedule.enabled=false",
@@ -39,7 +40,10 @@ class SourceChildReportQueryAdapterTest {
         saveChild(11L, null);
         saveChild(33L, "2026-07-23 10:00:00");
 
-        var children = adapter.findActiveChildIds(PageRequest.of(0, 10));
+        var children = adapter.findActiveChildIds(
+                new ReportDeliverySchedule(
+                        java.time.LocalTime.of(20, 0), "Asia/Seoul"),
+                PageRequest.of(0, 10));
 
         assertThat(children.getContent()).containsExactly(11L, 22L);
         assertThat(children.hasNext()).isFalse();

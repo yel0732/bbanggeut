@@ -7,6 +7,9 @@ import java.time.LocalDate;
  * 담지 않는다.
  */
 public record ReportNotificationEventPayload(
+        Long notificationId,
+        Long reportId,
+        Long childId,
         LocalDate reportDate,
         String message
 ) {

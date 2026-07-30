@@ -100,6 +100,33 @@ class DialogueTopicContext(BaseModel):
     games: tuple[GameSessionContext, ...] = ()
 
 
+class DialogueTopicHistoryItem(BaseModel):
+    """One completed question-and-answer pair from the active topic."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        hide_input_in_errors=True,
+        populate_by_name=True,
+        frozen=True,
+    )
+
+    assistant_message: str = Field(alias="assistantMessage", repr=False)
+    assistant_question: str = Field(alias="assistantQuestion", repr=False)
+    child_answer: str = Field(alias="childAnswer", repr=False)
+
+    @field_validator(
+        "assistant_message",
+        "assistant_question",
+        "child_answer",
+    )
+    @classmethod
+    def normalize_history_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("topic history text must contain text")
+        return normalized
+
+
 class DiaryAnswerAnalysisRequest(BaseModel):
     """Minimal context required to extract diary slots from one final answer."""
 

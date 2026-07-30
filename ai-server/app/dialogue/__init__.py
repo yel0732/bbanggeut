@@ -6,6 +6,16 @@ from app.dialogue.analysis.parser import (
     SlotValidationIssue,
     parse_diary_slots,
 )
+from app.dialogue.analysis.answer_relevance import (
+    TurnControlAction,
+    TurnIntent,
+)
+from app.dialogue.question.candidate import (
+    GeneratedDialogueTurnCandidate,
+    GeneratedDialogueTurnParseError,
+    GeneratedDialogueTurnParseErrorCode,
+    parse_generated_dialogue_turn,
+)
 from app.dialogue.question.judge import (
     SEMANTIC_QUESTION_VALIDATION_CODES,
     QuestionJudgeParseError,
@@ -52,6 +62,7 @@ from app.dialogue.question.validator import (
     QuestionValidationResult,
     combine_question_validation_results,
     validate_question_rules,
+    validate_target_assertion_grounding,
 )
 from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
@@ -74,6 +85,7 @@ from app.dialogue.analysis.prompts import (
 from app.dialogue.schemas import (
     DialogueTopic,
     DialogueTopicContext,
+    DialogueTopicHistoryItem,
     DiaryAnswerAnalysisRequest,
     DiarySlots,
     GameContext,
@@ -116,12 +128,16 @@ __all__ = [
     "DialogueTerminationReason",
     "DialogueTopic",
     "DialogueTopicContext",
+    "DialogueTopicHistoryItem",
     "DiaryAnswerAnalysisRequest",
     "DiaryQuestionGenerationRequest",
     "DiarySlots",
     "FallbackQuestion",
     "GameContext",
     "GameSessionContext",
+    "GeneratedDialogueTurnCandidate",
+    "GeneratedDialogueTurnParseError",
+    "GeneratedDialogueTurnParseErrorCode",
     "GeneratedQuestionValidator",
     "NoResponseRecoveryAction",
     "NoResponseRecoveryPolicy",
@@ -153,6 +169,8 @@ __all__ = [
     "SlotParseError",
     "SlotParseErrorCode",
     "SlotValidationIssue",
+    "TurnControlAction",
+    "TurnIntent",
     "are_required_targets_filled",
     "build_question_generation_prompt",
     "build_fallback_question",
@@ -168,8 +186,10 @@ __all__ = [
     "merge_diary_slots",
     "next_consecutive_no_response_count",
     "parse_semantic_question_decision",
+    "parse_generated_dialogue_turn",
     "parse_diary_slots",
     "semantic_question_validation_json_schema",
     "select_next_question_target",
     "validate_question_rules",
+    "validate_target_assertion_grounding",
 ]

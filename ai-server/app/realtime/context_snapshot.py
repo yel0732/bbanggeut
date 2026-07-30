@@ -24,7 +24,13 @@ import logging
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from redis.exceptions import RedisError
 
-from app.dialogue.schemas import DialogueTopic, DiarySlots, GameSessionContext
+from app.dialogue.schemas import (
+    DialogueTopic,
+    DialogueTopicHistoryItem,
+    DiarySlots,
+    GameSessionContext,
+)
+from app.dialogue.policy.target import QuestionTarget
 
 _CONTEXT_KEY_PREFIX = "realtime:context:"
 
@@ -63,12 +69,43 @@ class TopicSnapshot(BaseModel):
     max_question_count: int = Field(alias="maxQuestionCount", gt=0)
     question_count: int = Field(default=0, alias="questionCount", ge=0)
     games: tuple[GameSessionContext, ...] = ()
+    topic_history: tuple[DialogueTopicHistoryItem, ...] = Field(
+        default_factory=tuple,
+        alias="topicHistory",
+        repr=False,
+    )
+    current_assistant_message: str | None = Field(
+        default=None,
+        alias="currentAssistantMessage",
+        repr=False,
+    )
+    current_question: str | None = Field(
+        default=None,
+        alias="currentQuestion",
+        repr=False,
+    )
+    current_target: QuestionTarget | None = Field(
+        default=None,
+        alias="currentTarget",
+    )
+    skipped_targets: frozenset[QuestionTarget] = Field(
+        default_factory=frozenset,
+        alias="skippedTargets",
+    )
     initial_slots: DiarySlots = Field(alias="initialSlots", repr=False)
 
     @model_validator(mode="after")
     def validate_question_count(self) -> "TopicSnapshot":
         if self.question_count > self.max_question_count:
             raise ValueError("questionCount cannot exceed maxQuestionCount")
+        if (self.current_question is None) != (
+            self.current_assistant_message is None
+        ):
+            raise ValueError(
+                "currentQuestion and currentAssistantMessage must appear together"
+            )
+        if self.current_question is None and self.current_target is not None:
+            raise ValueError("currentTarget requires currentQuestion")
         return self
 
 

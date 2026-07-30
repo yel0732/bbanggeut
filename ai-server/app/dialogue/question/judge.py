@@ -17,7 +17,7 @@ from pydantic import (
 
 from app.dialogue.question.validator import QuestionValidationCode
 from app.dialogue.question.prompts import QuestionRedirectContext
-from app.dialogue.schemas import DiarySlots
+from app.dialogue.schemas import DialogueTopicHistoryItem, DiarySlots
 from app.dialogue.policy.target import QuestionTarget
 
 
@@ -46,7 +46,12 @@ SEMANTIC_QUESTION_VALIDATION_SYSTEM_PROMPT = """\
 - recentQuestions와 의미상 같은 질문이면 tooSimilar
 - redirectContext가 있을 때 target 질문이나 요청을 두 번 표현하면 물음표가 하나여도 invalidQuestionCount
 - redirectContext.childQuestion이 true인데 아이의 질문에 먼저 직접 답하지 않으면 targetMismatch
+- redirectContext.childQuestion이 true이고 직접 답변 뒤에 화제를 잇는 짧은 연결 절 없이 target 질문을 바로 붙이면 targetMismatch
 - redirectContext.previousQuestion은 참고용이며 응답 앞부분에서 다시 질문하면 invalidQuestionCount
+- childAnswer, currentSlots, topicHistory에 없는 사실이나 감정을 단정하면 bannedExpression
+- currentSlots의 한 슬롯을 target의 의미로 바꾸어 단정하면 bannedExpression
+- 최신 childAnswer를 짧게 받아 주는 반응은 target 슬롯이 비어 있어도 허용한다
+- target 슬롯이 비어 있고 최신 childAnswer에도 근거가 없는데 그 내용을 이미 확인한 것처럼 반응하면 bannedExpression
 하나 이상의 문제가 있으면 valid는 false이고 해당하는 모든 issues를 반환한다.
 문제가 없으면 valid는 true이고 issues는 빈 배열이다.
 currentSlots에는 아이가 명시적으로 확인한 내용만 있다고 가정한다.
@@ -69,6 +74,21 @@ class SemanticQuestionValidationRequest(BaseModel):
     target: QuestionTarget
     question: str = Field(repr=False)
     current_slots: DiarySlots = Field(alias="currentSlots", repr=False)
+    child_answer: str | None = Field(
+        default=None,
+        alias="childAnswer",
+        repr=False,
+    )
+    current_question: str | None = Field(
+        default=None,
+        alias="currentQuestion",
+        repr=False,
+    )
+    topic_history: tuple[DialogueTopicHistoryItem, ...] = Field(
+        default_factory=tuple,
+        alias="topicHistory",
+        repr=False,
+    )
     recent_questions: tuple[str, ...] = Field(
         default_factory=tuple,
         alias="recentQuestions",
@@ -189,7 +209,10 @@ def build_semantic_question_validation_prompt(
     payload = {
         "target": request_payload["target"],
         "question": request_payload["question"],
+        "childAnswer": request_payload["childAnswer"],
+        "currentQuestion": request_payload["currentQuestion"],
         "currentSlots": request_payload["currentSlots"],
+        "topicHistory": request_payload["topicHistory"],
         "recentQuestions": request_payload["recentQuestions"],
         "redirectContext": request_payload["redirectContext"],
     }

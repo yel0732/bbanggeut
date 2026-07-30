@@ -32,20 +32,22 @@ public class ConversationHarnessService {
             EnumSet.of(ConversationStatus.READY, ConversationStatus.IN_PROGRESS);
 
     private final ConversationSessionService conversationSessionService;
+    private final ConversationTextTurnService conversationTextTurnService;
     private final ConversationSessionRepository conversationSessionRepository;
     private final ConversationTopicStateRepository topicStateRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CreateConversationResponse createOrResume(Long childId) {
+        CreateConversationResponse conversation;
         try {
-            return conversationSessionService.create(childId);
+            conversation = conversationSessionService.create(childId);
         } catch (ConversationException exception) {
             if (exception.getErrorCode()
                     != ConversationErrorCode.ACTIVE_CONVERSATION_EXISTS) {
                 throw exception;
             }
-            return conversationSessionRepository
+            conversation = conversationSessionRepository
                     .findFirstByChildIdAndStatusInOrderByCreatedAtDesc(
                             childId,
                             ACTIVE_STATUSES)
@@ -56,6 +58,18 @@ public class ConversationHarnessService {
                                             session.getConversationId())))
                     .orElseThrow(() -> exception);
         }
+        String conversationId = conversation.conversationId();
+        conversationTextTurnService.ensureConversationOpened(
+                conversationId);
+        return conversationSessionRepository
+                .findById(conversationId)
+                .map(session -> CreateConversationResponse.from(
+                        session,
+                        topicStateRepository
+                                .findAllByConversationIdOrderByTopicOrderAsc(
+                                        conversationId)))
+                .orElseThrow(() -> new ConversationException(
+                        ConversationErrorCode.CONVERSATION_NOT_FOUND));
     }
 
     public ConversationHarnessStateResponse getState(String conversationId) {

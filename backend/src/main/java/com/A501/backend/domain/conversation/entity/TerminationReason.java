@@ -16,6 +16,7 @@ public enum TerminationReason {
     USER_FINISHED(ConversationStatus.ABORTED),
     USER_ABANDONED(ConversationStatus.ABORTED),
     CHILD_REQUESTED_STOP(ConversationStatus.ABORTED),
+    CHILD_REQUESTED_TOPIC_SWITCH(ConversationStatus.ABORTED),
     // 연결이 끊기거나 응답이 없어 중단된 경우.
     CONNECTION_LOST(ConversationStatus.ABORTED),
     PAGE_CLOSED(ConversationStatus.ABORTED),

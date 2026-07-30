@@ -147,6 +147,7 @@ class ConversationEventProcessorIntegrationTest {
         assertThat(turn.getSpeaker()).isEqualTo(Speaker.AI);
         assertThat(turn.getStatus()).isEqualTo(TurnStatus.COMPLETED);
         assertThat(turn.getResponseId()).isEqualTo("resp-ai-1");
+        assertThat(turn.getQuestionTarget()).isEqualTo("emotion");
         assertThat(turn.getCompletedAt()).isEqualTo("2026-07-28T01:00:08");
         assertThat(turn.getVersion()).isEqualTo(1L);
         ConversationTopicState topic = topicStateRepository
@@ -373,6 +374,7 @@ class ConversationEventProcessorIntegrationTest {
                   },
                   "topicQuestionCount": 1,
                   "sessionQuestionCount": 1,
+                  "skippedTargets": ["emotionReason"],
                   "topicCompletionReason": "REQUIRED_SLOTS_FILLED"
                 }
                 """);
@@ -395,6 +397,7 @@ class ConversationEventProcessorIntegrationTest {
         assertThat(session.getQuestionCount()).isEqualTo(1);
         assertThat(game.getStatus()).isEqualTo(ConversationTopicStatus.COMPLETED);
         assertThat(game.getCompletionReason()).isEqualTo(TerminationReason.REQUIRED_SLOTS_FILLED);
+        assertThat(game.getSkippedTargetsJson()).isEqualTo("[\"emotionReason\"]");
         assertThat(game.getSlotsJson()).contains("\"event\":\"과일 게임\"");
         assertThat(daily.getStatus()).isEqualTo(ConversationTopicStatus.IN_PROGRESS);
         assertThat(daily.getQuestionCount()).isEqualTo(1);

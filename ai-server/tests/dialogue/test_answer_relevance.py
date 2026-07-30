@@ -10,10 +10,13 @@ from app.dialogue.analysis.answer_relevance import (
     AnswerRelevanceDecision,
     AnswerRelevanceLogContext,
     AnswerRelevanceRequest,
+    TurnControlAction,
+    TurnIntent,
     build_answer_relevance_prompt,
     classify_answer_relevance_with_retry,
     parse_answer_relevance,
 )
+from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.question.fallback import QuestionGenerationExecutionPolicy
 from app.dialogue.schemas import DiarySlots
 
@@ -106,6 +109,48 @@ def test_parses_strict_relevance_decision(
     assert decision.answered is expected_answered
     assert decision.child_question is expected_child_question
     assert decision.bridge_response == expected_bridge
+
+
+def test_parses_stop_intent_with_grounded_evidence() -> None:
+    decision = parse_answer_relevance(
+        (
+            '{"intent":"STOP","answered":false,"childQuestion":false,'
+            '"controlAction":"END_SESSION","bridgeResponse":null,'
+            '"suggestedTarget":null,"evidenceText":"오늘은 여기까지"}'
+        ),
+        child_answer="응, 오늘은 여기까지 할래",
+        available_targets=(QuestionTarget.EVENT,),
+    )
+
+    assert decision.intent is TurnIntent.STOP
+    assert decision.control_action is TurnControlAction.END_SESSION
+    assert decision.suggested_target is None
+
+
+def test_rejects_control_intent_without_child_evidence() -> None:
+    with pytest.raises(ValueError, match="output rejected"):
+        parse_answer_relevance(
+            (
+                '{"intent":"STOP","answered":false,"childQuestion":false,'
+                '"controlAction":"END_SESSION","bridgeResponse":null,'
+                '"suggestedTarget":null,"evidenceText":"그만할래"}'
+            ),
+            child_answer="오늘 최고 점수를 받았어",
+            available_targets=(QuestionTarget.EVENT,),
+        )
+
+
+def test_rejects_suggested_target_outside_available_targets() -> None:
+    with pytest.raises(ValueError, match="output rejected"):
+        parse_answer_relevance(
+            (
+                '{"intent":"ANSWER","answered":true,"childQuestion":false,'
+                '"controlAction":"CONTINUE","bridgeResponse":null,'
+                '"suggestedTarget":"emotion","evidenceText":null}'
+            ),
+            child_answer="수박이 세 개 나왔어",
+            available_targets=(QuestionTarget.MEMORABLE_MOMENT,),
+        )
 
 
 @pytest.mark.parametrize(

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.dialogue.policy.target import QuestionTarget
 from app.dialogue.schemas import DiarySlots
 from app.events.stream import ConversationStreamProducer, StreamEventType
 
@@ -111,6 +112,7 @@ class TestPayloads:
                 target_slot="emotion",
                 topic_type="GAME",
                 topic_slots=DiarySlots(event="과일 자르기", emotion=None),
+                skipped_targets=frozenset({QuestionTarget.MEMORABLE_MOMENT}),
                 topic_question_count=2,
                 session_question_count=2,
             )
@@ -128,6 +130,7 @@ class TestPayloads:
         assert event["payload"]["topicSlots"]["event"] == "과일 자르기"
         assert event["payload"]["topicSlots"]["emotion"] is None
         assert event["payload"]["topicSlots"]["people"] == []
+        assert event["payload"]["skippedTargets"] == ["memorableMoment"]
 
     @pytest.mark.asyncio
     async def test_ai_turn_generated_null_target(self) -> None:

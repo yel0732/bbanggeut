@@ -7,6 +7,8 @@ import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,9 +36,12 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.mockito.ArgumentCaptor;
 
 import com.A501.backend.domain.conversation.dto.internal.DialogueAiDecision;
+import com.A501.backend.domain.conversation.dto.internal.DialogueAiRequest;
 import com.A501.backend.domain.conversation.dto.internal.DialogueAiResponse;
+import com.A501.backend.domain.conversation.dto.internal.DialogueOpeningResponse;
 import com.A501.backend.domain.conversation.dto.internal.DialogueSlotsPayload;
 import com.A501.backend.domain.conversation.entity.ContextType;
 import com.A501.backend.domain.conversation.entity.ConversationGoal;
@@ -45,6 +50,7 @@ import com.A501.backend.domain.conversation.entity.ConversationStatus;
 import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.ConversationTopicState;
 import com.A501.backend.domain.conversation.entity.ConversationTopicStatus;
+import com.A501.backend.domain.conversation.entity.ConversationTurn;
 import com.A501.backend.domain.conversation.entity.Speaker;
 import com.A501.backend.domain.conversation.entity.TerminationReason;
 import com.A501.backend.domain.conversation.exception.ConversationErrorCode;
@@ -105,10 +111,12 @@ class ConversationTextTurnIntegrationTest {
         when(dialogueAiClient.processTurn(any())).thenReturn(
                 new DialogueAiResponse(
                         updatedSlots,
+                        List.of("memorableMoment"),
                         DialogueAiDecision.CONTINUE,
                         null,
                         "친구와 블록을 만들었구나! 왜 신나는 마음이 들었어?",
                         "왜 신나는 마음이 들었어?",
+                        "emotionReason",
                         "generated",
                         "llm",
                         null));
@@ -147,12 +155,16 @@ class ConversationTextTurnIntegrationTest {
                         Speaker.AI,
                         com.A501.backend.domain.conversation.entity.TurnStatus.COMPLETED)
                 .get(0)
-                .getQuestionText())
-                .isEqualTo("왜 신나는 마음이 들었어?");
+                .getQuestionTarget())
+                .isEqualTo("emotionReason");
         PreparedTextTurn nextPrepared = persistenceService.prepare(
                 "conv_text_continue");
         assertThat(nextPrepared.currentQuestion())
                 .isEqualTo("왜 신나는 마음이 들었어?");
+        assertThat(nextPrepared.currentTarget())
+                .isEqualTo("emotionReason");
+        assertThat(nextPrepared.skippedTargets())
+                .containsExactly("memorableMoment");
         assertThat(nextPrepared.recentQuestions())
                 .containsExactly("왜 신나는 마음이 들었어?");
         assertThat(topicRepository.findByConversationIdAndTopicType(
@@ -187,12 +199,16 @@ class ConversationTextTurnIntegrationTest {
         when(dialogueAiClient.processTurn(any())).thenReturn(
                 new DialogueAiResponse(
                         completedSlots,
+                        null,
                         DialogueAiDecision.TERMINATE,
                         TerminationReason.REQUIRED_SLOTS_FILLED,
                         null,
                         null,
                         null,
-                        null));
+                        null,
+                        null,
+                        null,
+                        "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."));
 
         mockMvc.perform(post(
                         "/api/v1/conversations/conv_text_terminal/text-turns")
@@ -201,7 +217,8 @@ class ConversationTextTurnIntegrationTest {
                                 {"text":"마지막에는 같이 정리했어."}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assistantTurn").doesNotExist())
+                .andExpect(jsonPath("$.assistantTurn.content")
+                        .value("오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."))
                 .andExpect(jsonPath("$.conversationState")
                         .value("COMPLETED"));
 
@@ -277,20 +294,70 @@ class ConversationTextTurnIntegrationTest {
                 .andExpect(content().string(
                         containsString("data-auto-create-session=\"true\"")))
                 .andExpect(content().string(not(containsString("GMS_KEY"))));
+        mockMvc.perform(get("/harness"))
+                .andExpect(content().string(not(containsString("getUserMedia"))))
+                .andExpect(content().string(not(containsString("RTCPeerConnection"))))
+                .andExpect(content().string(not(containsString("speechSynthesis"))));
     }
 
     @Test
     void 로컬_Harness는_활성_세션이_있으면_새로_만들지_않고_재개한다()
             throws Exception {
         saveReadySession("conv_harness_active");
+        when(dialogueAiClient.openConversation(any())).thenReturn(
+                new DialogueOpeningResponse(
+                        "오늘 가장 기억에 남는 일은 무엇이었어?",
+                        "오늘 가장 기억에 남는 일은 무엇이었어?",
+                        "event"));
 
         mockMvc.perform(post("/harness/api/children/15/conversations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.conversationId")
                         .value("conv_harness_active"))
-                .andExpect(jsonPath("$.status").value("READY"));
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.totalQuestionCount").value(1));
 
         assertThat(sessionRepository.count()).isEqualTo(1);
+        assertThat(turnRepository.findByConversationIdAndTurnSeq(
+                        "conv_harness_active",
+                        1))
+                .get()
+                .extracting(ConversationTurn::getContent)
+                .isEqualTo("오늘 가장 기억에 남는 일은 무엇이었어?");
+
+        when(dialogueAiClient.processTurn(any())).thenReturn(
+                new DialogueAiResponse(
+                        DialogueSlotsPayload.empty(),
+                        DialogueAiDecision.CONTINUE,
+                        null,
+                        "친구와 놀았구나! 그때 어떤 기분이었어?",
+                        "그때 어떤 기분이었어?",
+                        "emotion",
+                        "generated",
+                        "llm",
+                        null));
+
+        mockMvc.perform(post(
+                        "/api/v1/conversations/conv_harness_active/text-turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"친구와 놀았어.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.childTurn.turnSeq").value(2))
+                .andExpect(jsonPath("$.assistantTurn.turnSeq").value(3));
+
+        ArgumentCaptor<DialogueAiRequest> requestCaptor =
+                ArgumentCaptor.forClass(DialogueAiRequest.class);
+        verify(dialogueAiClient).processTurn(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().currentQuestion())
+                .isEqualTo("오늘 가장 기억에 남는 일은 무엇이었어?");
+        assertThat(requestCaptor.getValue().currentTarget())
+                .isEqualTo("event");
+        assertThat(requestCaptor.getValue().questionCount()).isEqualTo(1);
+
+        mockMvc.perform(post("/harness/api/children/15/conversations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalQuestionCount").value(2));
+        verify(dialogueAiClient, times(1)).openConversation(any());
     }
 
     @Test

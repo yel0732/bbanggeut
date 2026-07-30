@@ -121,6 +121,7 @@ class ContextSnapshotBuilderTest {
                 serialize(DialogueSlotsPayload.empty()),
                 serialize(DialogueTopicContextPayload.empty(ConversationTopic.DAILY)));
         topic.synchronizeQuestionCount(3);
+        topic.updateSkippedTargets("[\"emotionReason\"]");
         when(childProfileProvider.getProfile(15L)).thenReturn(new RealtimeChildContext("하준"));
         when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc(
                         "conv_question_progress"))
@@ -130,6 +131,8 @@ class ContextSnapshotBuilderTest {
 
         assertThat(snapshot.conversation().questionCount()).isEqualTo(3);
         assertThat(snapshot.topics().get(0).questionCount()).isEqualTo(3);
+        assertThat(snapshot.topics().get(0).skippedTargets())
+                .containsExactly("emotionReason");
     }
 
     @Test
@@ -179,6 +182,54 @@ class ContextSnapshotBuilderTest {
 
         assertThat(snapshot.topics().get(0).initialSlots().event()).isEqualTo("놀이공원");
         assertThat(snapshot.topics().get(0).initialSlots().people()).containsExactly("엄마");
+    }
+
+    @Test
+    void 재연결_스냅숏에_현재_주제의_완료된_대화와_마지막_질문을_담는다() {
+        ConversationSession session = ConversationSession.create(
+                "conv_snapshot_test", 15L, ConversationTopic.GAME, 12);
+        when(childProfileProvider.getProfile(15L))
+                .thenReturn(new RealtimeChildContext("하준"));
+        when(topicStateRepository.findAllByConversationIdOrderByTopicOrderAsc(
+                        "conv_snapshot_test"))
+                .thenReturn(List.of(gameTopic(), dailyTopic()));
+        ConversationTurn firstQuestion = aiTurn(
+                "conv_snapshot_test",
+                1,
+                "과일을 잘랐구나! 기분이 어땠어?",
+                "기분이 어땠어?",
+                ConversationTopic.GAME,
+                "emotion");
+        ConversationTurn firstAnswer = childTurn(
+                "conv_snapshot_test",
+                2,
+                "신났어",
+                ConversationTopic.GAME);
+        ConversationTurn currentQuestion = aiTurn(
+                "conv_snapshot_test",
+                3,
+                "정말 신났구나! 어떤 점 때문에 신났어?",
+                "어떤 점 때문에 신났어?",
+                ConversationTopic.GAME,
+                "emotionReason");
+        when(conversationTurnRepository
+                .findByConversationIdAndTopicTypeAndStatusOrderByTurnSeqAsc(
+                        "conv_snapshot_test",
+                        ConversationTopic.GAME,
+                        TurnStatus.COMPLETED))
+                .thenReturn(List.of(firstQuestion, firstAnswer, currentQuestion));
+
+        ContextSnapshot snapshot = builder.build(session);
+
+        assertThat(snapshot.topics().get(0).topicHistory()).hasSize(1);
+        assertThat(snapshot.topics().get(0).topicHistory().get(0).childAnswer())
+                .isEqualTo("신났어");
+        assertThat(snapshot.topics().get(0).currentAssistantMessage())
+                .isEqualTo(currentQuestion.getContent());
+        assertThat(snapshot.topics().get(0).currentQuestion())
+                .isEqualTo(currentQuestion.getQuestionText());
+        assertThat(snapshot.topics().get(0).currentTarget())
+                .isEqualTo("emotionReason");
     }
 
     @Test
@@ -288,6 +339,53 @@ class ContextSnapshotBuilderTest {
                 (BigDecimal) null,
                 LocalDateTime.of(2026, 7, 20, 9, 0),
                 LocalDateTime.of(2026, 7, 20, 9, 1));
+    }
+
+    private ConversationTurn childTurn(
+            String conversationId,
+            int turnSeq,
+            String content,
+            ConversationTopic topic) {
+        return ConversationTurn.createChildCompleted(
+                "turn_" + conversationId + "_" + turnSeq,
+                conversationId,
+                turnSeq,
+                content,
+                null,
+                LocalDateTime.of(2026, 7, 20, 9, 0),
+                LocalDateTime.of(2026, 7, 20, 9, 1),
+                topic);
+    }
+
+    private ConversationTurn aiTurn(
+            String conversationId,
+            int turnSeq,
+            String content,
+            String question,
+            ConversationTopic topic) {
+        return aiTurn(conversationId, turnSeq, content, question, topic, null);
+    }
+
+    private ConversationTurn aiTurn(
+            String conversationId,
+            int turnSeq,
+            String content,
+            String question,
+            ConversationTopic topic,
+            String questionTarget) {
+        LocalDateTime now = LocalDateTime.of(2026, 7, 20, 9, 0);
+        ConversationTurn turn = ConversationTurn.createAiGenerating(
+                "turn_" + conversationId + "_" + turnSeq,
+                conversationId,
+                turnSeq,
+                content,
+                question,
+                questionTarget,
+                "resp_" + turnSeq,
+                now,
+                topic);
+        turn.complete(now);
+        return turn;
     }
 
     private String serialize(Object value) {

@@ -58,7 +58,7 @@ public class ContextSnapshotBuilder {
                 .findAllByConversationIdOrderByTopicOrderAsc(session.getConversationId());
 
         List<RealtimeTopicSnapshot> topics = topicStates.stream()
-                .map(this::toTopicSnapshot)
+                .map(topic -> toTopicSnapshot(session.getConversationId(), topic))
                 .toList();
         int totalMaxQuestionCount = topicStates.stream()
                 .mapToInt(ConversationTopicState::getMaxQuestionCount)
@@ -110,11 +110,20 @@ public class ContextSnapshotBuilder {
                 : joined;
     }
 
-    private RealtimeTopicSnapshot toTopicSnapshot(ConversationTopicState topicState) {
+    private RealtimeTopicSnapshot toTopicSnapshot(
+            String conversationId,
+            ConversationTopicState topicState) {
         DialogueSlotsPayload slots = deserialize(
                 topicState.getSlotsJson(), DialogueSlotsPayload.class);
         DialogueTopicContextPayload context = deserialize(
                 topicState.getContextJson(), DialogueTopicContextPayload.class);
+        List<ConversationTurn> completedTurns = conversationTurnRepository
+                .findByConversationIdAndTopicTypeAndStatusOrderByTurnSeqAsc(
+                        conversationId,
+                        topicState.getTopicType(),
+                        TurnStatus.COMPLETED);
+        ConversationTurn currentAssistant =
+                DialogueTopicHistoryAssembler.currentAssistantTurn(completedTurns);
 
         return new RealtimeTopicSnapshot(
                 topicState.getTopicType(),
@@ -122,7 +131,27 @@ public class ContextSnapshotBuilder {
                 topicState.getMaxQuestionCount(),
                 topicState.getQuestionCount(),
                 context.games(),
+                DialogueTopicHistoryAssembler.completedExchanges(completedTurns),
+                currentAssistant == null ? null : currentAssistant.getContent(),
+                currentAssistant == null
+                        ? null
+                        : DialogueTopicHistoryAssembler.resolveQuestionText(
+                                currentAssistant),
+                currentAssistant == null
+                        ? null
+                        : DialogueTopicHistoryAssembler.resolveSupportedQuestionTarget(
+                                currentAssistant),
+                deserializeSkippedTargets(topicState.getSkippedTargetsJson()),
                 slots);
+    }
+
+    private List<String> deserializeSkippedTargets(String json) {
+        try {
+            return DialogueTopicHistoryAssembler.normalizeSupportedQuestionTargets(
+                    List.of(objectMapper.readValue(json, String[].class)));
+        } catch (JacksonException | IllegalArgumentException exception) {
+            throw new ConversationException(ConversationErrorCode.DIALOGUE_STATE_INVALID);
+        }
     }
 
     private <T> T deserialize(String json, Class<T> type) {

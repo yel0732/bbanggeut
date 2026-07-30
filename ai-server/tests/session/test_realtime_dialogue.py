@@ -88,6 +88,7 @@ def _continue_response(question: str = "그때 기분이 어땠어?") -> Dialogu
         decision=DialogueTurnDecision.CONTINUE_TOPIC,
         assistant_message=f"재미있었구나! {question}",
         assistant_question=question,
+        assistant_target=QuestionTarget.EMOTION,
         question_generation_status=QuestionGenerationStatus.GENERATED,
         question_generation_source=QuestionGenerationSource.LLM,
     )
@@ -100,6 +101,7 @@ def _switch_response(question: str = "오늘 있었던 다른 일도 이야기�
         termination_reason=DialogueTerminationReason.REQUIRED_SLOTS_FILLED,
         assistant_message=f"게임 이야기 고마워! {question}",
         assistant_question=question,
+        assistant_target=QuestionTarget.EVENT,
         question_generation_status=QuestionGenerationStatus.TEMPLATE_USED,
         question_generation_source=QuestionGenerationSource.RULE_BASED_TEMPLATE,
     )
@@ -191,6 +193,43 @@ def test_dialogue_state_restores_persisted_question_counts() -> None:
 
     assert state.current_topic.question_count == 4
     assert state.total_question_count == 4
+
+
+@pytest.mark.asyncio
+async def test_reconnect_restores_topic_history_and_current_question() -> None:
+    raw = _TWO_TOPIC_SNAPSHOT.model_dump(mode="json", by_alias=True)
+    raw["conversation"]["questionCount"] = 2
+    raw["topics"][0]["questionCount"] = 2
+    raw["topics"][0]["topicHistory"] = [
+        {
+            "assistantMessage": "과일을 잘랐구나! 기분이 어땠어?",
+            "assistantQuestion": "기분이 어땠어?",
+            "childAnswer": "정말 신났어",
+        }
+    ]
+    raw["topics"][0]["currentAssistantMessage"] = (
+        "정말 신났구나! 어떤 점 때문에 신났어?"
+    )
+    raw["topics"][0]["currentQuestion"] = "어떤 점 때문에 신났어?"
+    raw["topics"][0]["currentTarget"] = "emotionReason"
+    snapshot = ContextSnapshot.model_validate(raw)
+    pipeline = _FakeDialoguePipeline()
+    manager, state, _, _, _, sequencer = _build_manager(
+        pipeline,
+        snapshot,
+    )
+
+    await manager.handle_child_turn(
+        _child_turn(sequencer),
+        _stt_result("수박을 한 번에 잘라서"),
+    )
+
+    request = pipeline.requests[0]
+    assert state.last_question == "그때 기분이 어땠어?"
+    assert request.current_question == "어떤 점 때문에 신났어?"
+    assert request.current_target is QuestionTarget.EMOTION_REASON
+    assert len(request.topic_history) == 1
+    assert request.topic_history[0].child_answer == "정말 신났어"
 
 
 class TestChildTurn:
@@ -554,6 +593,29 @@ class TestNoSpeechLadder:
             {QuestionTarget.EMOTION}
         )
 
+    @pytest.mark.asyncio
+    async def test_pipeline_skipped_targets_are_kept_for_the_next_turn(self) -> None:
+        response = _continue_response()
+        response = response.model_copy(
+            update={
+                "updated_skipped_targets": frozenset(
+                    {QuestionTarget.MEMORABLE_MOMENT}
+                )
+            }
+        )
+        pipeline = _FakeDialoguePipeline([response, _continue_response()])
+        manager, state, _, _, _, sequencer = _build_manager(pipeline)
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+
+        assert state.current_topic.skipped_targets == frozenset(
+            {QuestionTarget.MEMORABLE_MOMENT}
+        )
+        assert pipeline.requests[1].skipped_targets == frozenset(
+            {QuestionTarget.MEMORABLE_MOMENT}
+        )
+
     def test_no_speech_after_termination_is_ignored(self) -> None:
         manager, state, channel, _, _, _ = _build_manager()
         state.terminated = True
@@ -597,7 +659,7 @@ class TestConversationOpening:
         manager.open_conversation()
 
         assert channel.sent[1]["payload"]["text"] == (
-            "오늘 과일 자르기 했구나! 어떤 점이 제일 재미있었어?"
+            "오늘 과일 자르기 했구나! 어떤 순간이 제일 재미있었어?"
         )
 
     def test_opening_stays_generic_when_several_games_were_played(self) -> None:
@@ -899,12 +961,13 @@ class _RecordingStreamProducer:
 
     def publish_ai_turn_generated(self, *, turn_id, turn_seq, response_id, text,
                                   question_text, target_slot, topic_type, topic_slots,
-                                  slots_topic_type, topic_question_count,
+                                  skipped_targets, slots_topic_type, topic_question_count,
                                   session_question_count, topic_completion_reason) -> None:
         self.calls.append(("AI_TURN_GENERATED", turn_id, turn_seq, response_id,
                            target_slot, topic_type, topic_slots.event, question_text,
                            slots_topic_type, topic_question_count,
-                           session_question_count, topic_completion_reason))
+                           session_question_count, topic_completion_reason,
+                           skipped_targets))
 
     def publish_ai_turn_completed(self, *, turn_id, turn_seq, response_id, text,
                                   audio_started_at, audio_completed_at) -> None:
@@ -967,7 +1030,7 @@ class TestStreamPublishing:
         assert ai[6] == "과일 게임"  # topic_slots.event
 
     @pytest.mark.asyncio
-    async def test_switch_topic_publishes_null_target(self) -> None:
+    async def test_switch_topic_publishes_opening_event_target(self) -> None:
         manager, _, _, stream, sequencer = _build_manager_with_stream(
             _FakeDialoguePipeline([_switch_response()])
         )
@@ -975,7 +1038,7 @@ class TestStreamPublishing:
         await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
 
         ai = next(c for c in stream.calls if c[0] == "AI_TURN_GENERATED")
-        assert ai[4] is None  # 전환 질문은 목표 없음
+        assert ai[4] == "event"
         assert ai[5] == "DAILY"
         assert ai[8] == "GAME"
         assert ai[9] == 1

@@ -827,6 +827,18 @@
       renderSlots(state.slots);
     }
 
+    async function refreshMessages() {
+      const history = await requestJson(
+        `/api/v1/conversations/${encodeURIComponent(state.conversationId)}/turns?page=0&size=100`
+      );
+      state.messages = history.turns.map(turn => ({
+        role: turn.speaker === "CHILD" ? "child" : "ai",
+        content: turn.content,
+        label: `${turn.speaker} · #${turn.turnSeq}`
+      }));
+      renderMessages();
+    }
+
     async function createConversation({focusInput = true} = {}) {
       const childId = Number(elements.childId.value);
       if (!Number.isInteger(childId) || childId < 1) {
@@ -849,11 +861,9 @@
         elements.fastApiBadge.textContent = "FastAPI 확인 전";
         elements.latency.textContent = "—";
         elements.conversationIdInput.value = created.conversationId;
-        addMessage(
-          "system",
-          "대화가 준비되었습니다. 오늘 있었던 일을 입력해 보세요.",
-          "SPRING"
-        );
+        elements.fastApiBadge.dataset.status = "online";
+        elements.fastApiBadge.textContent = "FastAPI 오프닝 성공";
+        await refreshMessages();
         await refreshDiagnostics();
         if (focusInput) {
           elements.answer.focus();
@@ -876,15 +886,7 @@
       setBusy(true);
       try {
         state.conversationId = conversationId;
-        const history = await requestJson(
-          `/api/v1/conversations/${encodeURIComponent(conversationId)}/turns?page=0&size=100`
-        );
-        state.messages = history.turns.map(turn => ({
-          role: turn.speaker === "CHILD" ? "child" : "ai",
-          content: turn.content,
-          label: `${turn.speaker} · #${turn.turnSeq}`
-        }));
-        renderMessages();
+        await refreshMessages();
         await refreshDiagnostics();
         showToast("기존 대화를 불러왔습니다.");
       } catch (error) {

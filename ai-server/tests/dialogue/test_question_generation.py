@@ -1,6 +1,7 @@
 """Async tests for timeout, retry, validation, fallback, and cancellation."""
 
 import asyncio
+import json
 import logging
 from collections import deque
 from collections.abc import Sequence
@@ -183,7 +184,7 @@ async def test_retries_timeout_then_returns_generated_question() -> None:
 
 
 @pytest.mark.asyncio
-async def test_retries_rejected_question_with_unchanged_prompt() -> None:
+async def test_retries_rejected_question_with_safe_repair_codes() -> None:
     provider = FakeProvider(["유도된 질문?", "어떤 마음이 들었어?"])
     validator = FakeValidator(
         [_invalid("유도된 질문?"), _valid("어떤 마음이 들었어?")]
@@ -200,7 +201,12 @@ async def test_retries_rejected_question_with_unchanged_prompt() -> None:
 
     assert result.status is QuestionGenerationStatus.GENERATED
     assert result.question == "어떤 마음이 들었어?"
-    assert provider.prompts[0] is provider.prompts[1]
+    assert provider.prompts[0] != provider.prompts[1]
+    assert "retryIssues" not in json.loads(provider.prompts[0].user)
+    assert json.loads(provider.prompts[1].user)["retryIssues"] == [
+        "targetMismatch"
+    ]
+    assert "유도된 질문" not in provider.prompts[1].user
 
 
 @pytest.mark.asyncio
@@ -449,12 +455,27 @@ async def test_logs_only_safe_metadata(
     assert private_error not in serialized_records
     assert private_candidate not in serialized_records
     assert "PRIVATE_RECENT_QUESTION" not in serialized_records
+    assert (
+        "stage=validation code=generatedQuestionRejected "
+        "issues=targetMismatch attempt=1/2"
+        in caplog.text
+    )
+    assert (
+        "stage=generation code=unexpectedProviderFailure "
+        "issues=- attempt=2/2"
+        in caplog.text
+    )
+    assert "target=emotion" in caplog.text
+    assert "elapsedMs=" in caplog.text
     assert caplog.records[0].failure_stage == "validation"
     assert caplog.records[0].failure_code == "generatedQuestionRejected"
+    assert caplog.records[0].validation_issues == ("targetMismatch",)
+    assert caplog.records[0].elapsed_ms >= 0
     assert caplog.records[1].failure_stage == "generation"
     assert caplog.records[1].failure_code == "unexpectedProviderFailure"
     fallback_record = caplog.records[2]
     assert fallback_record.conversation_id == "conversation-1"
     assert fallback_record.failure_stage == "fallback"
     assert fallback_record.failure_code == "unexpectedProviderFailure"
+    assert fallback_record.elapsed_ms >= 0
     assert fallback_record.fallback_used is True

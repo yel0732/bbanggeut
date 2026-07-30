@@ -21,6 +21,14 @@ from app.dialogue.policy.stop_intent import is_stop_request
         "그만 얘기할래",
         "음 그만할래",
         "어… 이제 그만",
+        "대화 그만할래",
+        "오늘은 여기까지",
+        "질문하지 마",
+        "그만 물어봐",
+        "말 걸지 마",
+        "나 이제 대화 안 할래",
+        "이야기하기 싫어",
+        "꺼져",
     ],
 )
 def test_detects_whole_utterance_stop_phrases(utterance: str) -> None:
@@ -36,6 +44,8 @@ def test_detects_whole_utterance_stop_phrases(utterance: str) -> None:
         "그만 웃겨서 배가 아팠어",
         "게임을 끝까지 다 했어",
         "숙제 끝나고 놀았어",
+        "게임 이야기에서 친구가 꺼져라고 했어",
+        "게임 질문에서 정답을 맞혔어",
         # 피로 표현은 종료 단정이 과하다 — 1차 범위에서 제외.
         "쉬고 싶어",
         "졸려",

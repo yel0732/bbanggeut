@@ -12,9 +12,34 @@ public record TextTurnResponse(
             ConversationTurn childTurn,
             ConversationTurn assistantTurn,
             ConversationStatus conversationState) {
+        return of(childTurn, assistantTurn, conversationState, null);
+    }
+
+    public static TextTurnResponse of(
+            ConversationTurn childTurn,
+            ConversationTurn assistantTurn,
+            ConversationStatus conversationState,
+            String closingMessage) {
+        TextTurnItemResponse assistantResponse = assistantTurn == null
+                ? closingResponse(childTurn, closingMessage)
+                : TextTurnItemResponse.from(assistantTurn);
         return new TextTurnResponse(
                 TextTurnItemResponse.from(childTurn),
-                assistantTurn == null ? null : TextTurnItemResponse.from(assistantTurn),
+                assistantResponse,
                 conversationState);
+    }
+
+    private static TextTurnItemResponse closingResponse(
+            ConversationTurn childTurn,
+            String closingMessage) {
+        if (closingMessage == null || closingMessage.isBlank()) {
+            return null;
+        }
+        return new TextTurnItemResponse(
+                null,
+                childTurn.getTurnSeq() + 1,
+                null,
+                childTurn.getTopicType(),
+                closingMessage);
     }
 }

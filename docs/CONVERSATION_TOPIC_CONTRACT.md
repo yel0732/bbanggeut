@@ -51,6 +51,22 @@ PENDING → IN_PROGRESS → COMPLETED
 
 `SWITCH_TOPIC` 응답의 AI 턴은 다음 주제에 속하며, 해당 주제의 첫 질문으로 계산한다.
 
+## 질문 목표 저장
+
+AI 질문은 문장과 함께 정책이 선택한 질문 목표를 저장한다.
+
+- FastAPI 요청: `currentTarget`
+- FastAPI 응답: `assistantTarget`
+- `conversation_turn.question_target`: 해당 AI 턴 질문의 목표
+- Realtime Stream: 기존 `targetSlot` 필드를 같은 값으로 사용
+- Context Snapshot: `topics[].currentTarget`
+
+새로 생성하는 목표의 허용 값은 `event`, `emotion`, `emotionReason`,
+`memorableMoment`다. 기존 WebRTC 이벤트의 `place` 같은 레거시 `targetSlot`은
+이력 보존을 위해 저장할 수 있지만 FastAPI 요청과 Context Snapshot에서는 `null`로
+정규화한다. 목표가 `null`이면 현재 슬롯으로 추정하는 하위 호환 경로를 사용하며,
+새로 생성되는 오프닝·일반·주제 전환 질문은 목표를 명시한다.
+
 ## 수동 종료
 
 사용자가 종료하면 다음 주제로 넘어가지 않는다. 현재 주제와 전체 세션을 동일한 종료 사유와 시각으로 완료한다. 아직 시작하지 않은 다음 주제는 `PENDING`으로 남는다.

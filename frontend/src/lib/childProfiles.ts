@@ -76,6 +76,10 @@ export function saveActiveChildProfileId(profileId: string) {
   window.localStorage.setItem(ACTIVE_PROFILE_KEY, profileId)
 }
 
+export function clearActiveChildProfileId() {
+  window.localStorage.removeItem(ACTIVE_PROFILE_KEY)
+}
+
 function isChildProfile(value: unknown): value is ChildProfile {
   if (!value || typeof value !== 'object') return false
   const profile = value as Partial<ChildProfile>

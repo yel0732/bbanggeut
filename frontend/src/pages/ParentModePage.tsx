@@ -17,7 +17,6 @@ import {
   subscribeToReportNotifications,
   updateReportNotificationPreference,
 } from '@/api/parentMode'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
 import deleteButtonUrl from '@/assets/images/parent-profile/btn-delete.webp'
@@ -43,8 +42,8 @@ import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { useParentBgm } from '@/hooks/useParentBgm'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreateDialog'
 import { PinInputDialog } from '@/components/profile/PinInputDialog'
@@ -109,6 +108,31 @@ const TIME_PICKER_MINUTES = Array.from({ length: 12 }, (_, index) =>
   String(index * 5).padStart(2, '0'),
 )
 
+function detectSystemTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul'
+  } catch {
+    return 'Asia/Seoul'
+  }
+}
+
+function listTimezoneOptions(): string[] {
+  try {
+    const supportedValuesOf = (
+      Intl as unknown as {
+        supportedValuesOf?: (key: string) => string[]
+      }
+    ).supportedValuesOf
+    const values = supportedValuesOf?.('timeZone')
+    if (values?.length) return values
+  } catch {
+    // 지원하지 않는 브라우저는 아래 기본 목록으로 대체한다.
+  }
+  return ['Asia/Seoul', 'UTC']
+}
+
+const TIMEZONE_OPTIONS = listTimezoneOptions()
+
 const DEMO_PROFILES: ChildProfile[] = [
   { id: 'demo-1', name: '아이1', photoUrl: null },
   { id: 'demo-2', name: '아이2', photoUrl: null },
@@ -122,19 +146,20 @@ function formatPinLockTime(totalSeconds: number): string {
 }
 
 function loadNotificationSettings(): NotificationSettings {
+  const systemTimezone = detectSystemTimezone()
   try {
     const stored = window.localStorage.getItem(NOTIFICATION_KEY)
     if (!stored) {
-      return { enabled: true, time: '20:00', timezone: 'Asia/Seoul' }
+      return { enabled: true, time: '20:00', timezone: systemTimezone }
     }
     const parsed = JSON.parse(stored) as Partial<NotificationSettings>
     return {
       enabled: parsed.enabled ?? true,
       time: parsed.time ?? '20:00',
-      timezone: parsed.timezone ?? 'Asia/Seoul',
+      timezone: parsed.timezone ?? systemTimezone,
     }
   } catch {
-    return { enabled: true, time: '20:00', timezone: 'Asia/Seoul' }
+    return { enabled: true, time: '20:00', timezone: systemTimezone }
   }
 }
 
@@ -241,7 +266,7 @@ async function dataImageUrlToBlob(dataUrl: string) {
 export function ParentModePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useParentBgm()
   const isGoogleAccount = getStoredLoginMethod() === 'google'
   const parentVideoRef = useRef<HTMLVideoElement>(null)
   const parentStreamRef = useRef<MediaStream | null>(null)
@@ -288,6 +313,7 @@ export function ParentModePage() {
     () => loadNotificationSettings().time,
   )
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false)
+  const [isTimezonePickerOpen, setIsTimezonePickerOpen] = useState(false)
   const [savedMessage, setSavedMessage] = useState('')
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({})
   const [notificationToast, setNotificationToast] = useState('')
@@ -542,6 +568,7 @@ export function ParentModePage() {
   const openPopup = (nextPopup: Exclude<PopupType, null>) => {
     setSavedMessage('')
     setIsTimePickerOpen(false)
+    setIsTimezonePickerOpen(false)
     if (nextPopup === 'profile') setProfileView('menu')
     if (nextPopup === 'children') setChildListPage(0)
     setPopup(nextPopup)
@@ -940,6 +967,7 @@ export function ParentModePage() {
         setNotification(saved)
         setSavedNotificationTime(saved.time)
         setIsTimePickerOpen(false)
+        setIsTimezonePickerOpen(false)
         window.localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(saved))
         setSavedMessage('알림 설정을 저장했어요.')
         if (timeChanged) {
@@ -960,6 +988,7 @@ export function ParentModePage() {
     setPopup(null)
     setProfileView('menu')
     setIsTimePickerOpen(false)
+    setIsTimezonePickerOpen(false)
     setSavedMessage('')
   }
 
@@ -1083,13 +1112,6 @@ export function ParentModePage() {
         className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
         ref={canvasRef}
       >
-        <audio
-          aria-label="부모 모드 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"
@@ -2053,7 +2075,7 @@ export function ParentModePage() {
                 리포트 받을 시각
                 <button
                   aria-expanded={isTimePickerOpen}
-                  className="relative -mt-1 block h-[70px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-left text-[25px] text-[#5a4a2a] disabled:opacity-55"
+                  className="relative -mt-1 -ml-4 block h-[70px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-left text-[25px] text-[#5a4a2a] disabled:opacity-55"
                   disabled={!notification.enabled}
                   onClick={() => setIsTimePickerOpen((open) => !open)}
                   style={{
@@ -2156,28 +2178,51 @@ export function ParentModePage() {
                 </p>
               </div>
 
-              <label
+              <div
                 className="absolute top-[51.5%] right-[16.5%] left-[16.5%] text-[19px] text-[#8a7a55]"
                 style={jua}
               >
                 기준 시간대
-                <span
-                  className="relative -mt-1 block h-[70px] bg-[length:100%_100%] bg-center bg-no-repeat"
-                  style={{ backgroundImage: `url(${inputBarUrl})` }}
+                <button
+                  aria-expanded={isTimezonePickerOpen}
+                  className="relative -ml-4 -mt-1 block h-[70px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-left text-[20px] text-[#5a4a2a]"
+                  onClick={() => setIsTimezonePickerOpen((open) => !open)}
+                  style={{
+                    ...jua,
+                    backgroundImage: `url(${inputBarUrl})`,
+                  }}
+                  type="button"
                 >
-                  <input
-                    className="absolute inset-y-1.5 right-5 left-8 bg-transparent text-[20px] text-[#5a4a2a] outline-none"
-                    onChange={(event) =>
-                      setNotification((current) => ({
-                        ...current,
-                        timezone: event.target.value,
-                      }))
-                    }
-                    style={jua}
-                    value={notification.timezone}
-                  />
-                </span>
-              </label>
+                  <span className="absolute inset-y-1.5 right-5 left-8 flex items-center truncate">
+                    {notification.timezone}
+                  </span>
+                </button>
+                {isTimezonePickerOpen ? (
+                  <div className="absolute top-[72px] right-0 left-0 z-50 h-[154px] overflow-y-auto rounded-[8px] border-[3px] border-[#d9c79a] bg-[#fffaf0] p-3 shadow-[0_14px_24px_rgba(80,60,28,.22)]">
+                    {TIMEZONE_OPTIONS.map((timezone) => (
+                      <button
+                        className={`mb-1 block h-8 w-full rounded-[6px] px-3 text-left text-[16px] ${
+                          notification.timezone === timezone
+                            ? 'bg-[#7ec850] text-white'
+                            : 'bg-[#f4ead2] text-[#5a4a2a]'
+                        }`}
+                        key={timezone}
+                        onClick={() => {
+                          setNotification((current) => ({
+                            ...current,
+                            timezone,
+                          }))
+                          setIsTimezonePickerOpen(false)
+                        }}
+                        style={jua}
+                        type="button"
+                      >
+                        {timezone}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
 
               <div className="absolute top-[65.5%] right-[16.5%] left-[16.5%] rounded-[14px] bg-[rgba(126,200,80,.14)] px-4 py-3">
                 <h3 className="text-[16px] text-[#5a7d3a]" style={jua}>

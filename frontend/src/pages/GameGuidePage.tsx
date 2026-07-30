@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type RefObject } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
+import dobbleBgmUrl from '@/assets/audio/dobble-game/dobble-bgm.mp3'
 import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
 import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
@@ -153,11 +153,11 @@ export function GameGuidePage() {
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
         <audio
-          aria-label="초록 모험 시작 배경 음악"
+          aria-label="게임 배경 음악"
           loop
           preload="auto"
           ref={audioRef}
-          src={game.id === 'fruit' ? fruitBgmUrl : bgmUrl}
+          src={tutorialGameId === 'fruit' ? fruitBgmUrl : dobbleBgmUrl}
         />
 
         <img
@@ -186,7 +186,7 @@ export function GameGuidePage() {
 
         <button
           aria-label="게임 방법 닫기"
-          className="absolute top-[25px] right-[25px] z-30 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+          className="absolute top-[25px] right-[230px] z-30 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
           onClick={backToSelect}
           type="button"
         >

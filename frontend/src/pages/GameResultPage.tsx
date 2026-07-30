@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/fruit-game/result-bg.webp'
-import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
+import gameResultButtonUrl from '@/assets/images/game-entry/game-result-button.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import type { FruitGameResult } from '@/features/games/fruit/useFruitGame'
 import { getGameById } from '@/features/games/games'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -17,7 +16,7 @@ export function GameResultPage() {
   const location = useLocation()
   const { gameId } = useParams()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying } = useBgmPlayer()
+  const { isBgmPlaying } = useAdventureBgm()
 
   const game = getGameById(gameId)
   const result = location.state as
@@ -35,13 +34,6 @@ export function GameResultPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
         {/* isBgmPlaying는 재생 상태 추적용 (음소거 버튼은 이 화면에서 생략) */}
         <span className="sr-only">
           {isBgmPlaying ? '음악 켜짐' : '음악 꺼짐'}
@@ -148,10 +140,10 @@ function ResultButton({
         className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_12px_rgba(55,30,10,0.28)]"
         decoding="async"
         draggable={false}
-        src={gameMenuButtonUrl}
+        src={gameResultButtonUrl}
       />
       <span
-        className="absolute inset-0 flex items-center justify-center pb-1 text-[24px] leading-none text-white [text-shadow:0_3px_0_#744514,0_6px_9px_rgba(55,30,10,0.24)]"
+        className="absolute inset-0 flex items-center justify-center pb-0 text-[28px] leading-none text-[#5a4a2a] [text-shadow:0_1px_0_rgba(255,255,255,0.5)]"
         style={jua}
       >
         {label}

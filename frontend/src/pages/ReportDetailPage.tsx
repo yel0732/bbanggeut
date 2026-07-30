@@ -7,14 +7,13 @@ import {
   regenerateChildReport,
 } from '@/api/parentMode'
 import type { ReportDetailResponse, ReportGameResult } from '@/api/parentMode'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import backButtonUrl from '@/assets/images/report/left-btn.webp'
 import reportPaperUrl from '@/assets/images/report/report-paper.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { useParentBgm } from '@/hooks/useParentBgm'
 import { makeDemoReportDetail } from '@/lib/reportDemo'
 import { removeReadReportArrival } from '@/lib/reportArrivals'
 
@@ -22,7 +21,7 @@ const jua = { fontFamily: "'Jua', sans-serif" } as const
 
 export function ReportDetailPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useParentBgm()
   const { reportDate = '' } = useParams()
   const [searchParams] = useSearchParams()
   const childId = searchParams.get('childId') ?? ''
@@ -109,7 +108,6 @@ export function ReportDetailPage() {
         className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
         ref={canvasRef}
       >
-        <audio loop preload="auto" ref={audioRef} src={bgmUrl} />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"

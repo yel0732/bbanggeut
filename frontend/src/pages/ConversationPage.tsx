@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { isCompletedTerminationReason } from '@/api/conversations'
-import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
 import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
 import diaryListButtonUrl from '@/assets/images/conversation/diary-list-btn.webp'
@@ -24,7 +23,7 @@ import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useConversationBgm } from '@/hooks/useConversationBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
   type VoiceStatus,
@@ -79,9 +78,11 @@ export function ConversationPage() {
 
   const conversationBgmVolume =
     state.voice === 'listening' || state.voice === 'speaking' ? 0.055 : 0.22
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer({
-    volume: conversationBgmVolume,
-  })
+  const { isBgmPlaying, setVolume, toggleBgm } = useConversationBgm()
+
+  useEffect(() => {
+    setVolume(conversationBgmVolume)
+  }, [conversationBgmVolume, setVolume])
 
   const [micLevel, setMicLevel] = useState(0)
   const [dinoFrameStep, setDinoFrameStep] = useState(0)
@@ -190,13 +191,6 @@ export function ConversationPage() {
         className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
-        <audio
-          aria-label="대화방 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={conversationBgmUrl}
-        />
         <audio aria-label="빵긋이 목소리" autoPlay ref={remoteAudioRef} />
         <img
           alt=""
@@ -327,7 +321,7 @@ export function ConversationPage() {
                 빵긋
               </span>
               <p
-                className="absolute top-[48%] right-[8%] left-[9%] -translate-y-1/2 text-[30px] leading-[1.35] text-[#6a4a1e]"
+                className="absolute top-[48%] right-[8%] left-[9%] -translate-y-1/2 text-[30px] leading-[1.35] break-keep text-[#6a4a1e]"
                 style={jua}
               >
                 {state.assistantText}

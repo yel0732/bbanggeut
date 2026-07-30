@@ -8,7 +8,6 @@ import {
   regenerateChildReport,
 } from '@/api/parentMode'
 import type { ReportDetailResponse, ReportListItem } from '@/api/parentMode'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
 import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
@@ -22,8 +21,8 @@ import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
+import { useParentBgm } from '@/hooks/useParentBgm'
 import { loadChildProfiles } from '@/lib/childProfiles'
 import { makeDemoReportDetail } from '@/lib/reportDemo'
 import { removeReadReportArrival } from '@/lib/reportArrivals'
@@ -42,7 +41,7 @@ const DEMO_REPORTS: ReportListItem[] = [
 
 export function ReportListPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useParentBgm()
   const [searchParams] = useSearchParams()
   const childId = searchParams.get('childId') ?? ''
   const maxReportDate = useMemo(() => new Date(), [])
@@ -207,7 +206,6 @@ export function ReportListPage() {
           className="absolute inset-0 size-full object-cover"
           src={backgroundUrl}
         />
-        <audio loop preload="auto" ref={audioRef} src={bgmUrl} />
         <Link
           aria-label="부모 홈으로 돌아가기"
           className="absolute top-[25px] left-[25px] z-30 size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"

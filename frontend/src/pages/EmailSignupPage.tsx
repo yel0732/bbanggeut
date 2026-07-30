@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
 import signupCompleteButtonUrl from '@/assets/images/auth/btn-go-login.webp'
 import signupCompleteFrameUrl from '@/assets/images/auth/signup-complete-frame.webp'
@@ -12,7 +11,7 @@ import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
   checkEmailAvailability,
@@ -72,7 +71,7 @@ function passwordValidationMessage(password: string) {
 export function EmailSignupPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
 
   const [email, setEmail] = useState('')
   const [emailChecked, setEmailChecked] = useState(false)
@@ -186,14 +185,6 @@ export function EmailSignupPage() {
         ref={canvasRef}
         className="relative flex h-[720px] w-[1280px] items-center justify-center overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
-
         <img
           alt=""
           className="absolute inset-0 z-0 h-full w-full object-cover"

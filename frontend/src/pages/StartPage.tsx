@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { hasPendingNewSignupOnboarding, restoreSession } from '@/api/auth'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import greenButtonUrl from '@/assets/images/start/light-green-button.webp'
@@ -12,7 +11,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import whiteButtonUrl from '@/assets/images/start/light-white-button.webp'
 import popupUrl from '@/assets/images/start/wood-popup.webp'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import { cn } from '@/lib/utils'
 
@@ -24,7 +23,7 @@ export function StartPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, playBgm, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, playBgm, toggleBgm } = useAdventureBgm()
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(
     Boolean((location.state as StartPageLocationState | null)?.openLoginModal),
   )
@@ -55,14 +54,6 @@ export function StartPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
-
         <img
           alt=""
           className="absolute inset-0 z-0 h-full w-full object-cover"

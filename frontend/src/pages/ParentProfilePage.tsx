@@ -10,7 +10,6 @@ import {
   uploadParentProfileImage,
 } from '@/api/profiles'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import childTigerAvatarUrl from '@/assets/images/profile/child-avatar-tiger.webp'
@@ -27,7 +26,7 @@ import frameUrl from '@/assets/images/parent-profile/frame-square.webp'
 import keypadButtonUrl from '@/assets/images/parent-profile/keypad-panel.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
   childImageKeyFromPhoto,
@@ -70,7 +69,7 @@ export function ParentProfilePage() {
   const [searchParams] = useSearchParams()
   const isOnboardingChildFlow = searchParams.get('source') === 'onboarding'
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const parentVideoRef = useRef<HTMLVideoElement>(null)
   const parentStreamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -479,13 +478,6 @@ export function ParentProfilePage() {
         className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
         <img
           alt=""
           className="absolute inset-0 h-full w-full object-cover"

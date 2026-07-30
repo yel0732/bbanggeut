@@ -1,8 +1,11 @@
 import { createBrowserRouter } from 'react-router-dom'
 
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
+import { AdventureBgmLayout } from '@/components/adventure/AdventureBgmLayout'
 import { ChildRouteGuard } from '@/components/auth/ChildRouteGuard'
 import { ParentRouteGuard } from '@/components/auth/ParentRouteGuard'
+import { ConversationBgmLayout } from '@/components/conversation/ConversationBgmLayout'
+import { ParentBgmLayout } from '@/components/parent/ParentBgmLayout'
 import {
   ChildHomePage,
   ChildProfileListPage,
@@ -27,24 +30,70 @@ import {
 
 export const router = createBrowserRouter([
   {
-    path: '/',
-    element: <StartPage />,
-  },
-  {
-    path: '/profiles',
-    element: <ProfileSelectPage />,
+    // 시작·인증·프로필·아이 홈·게임 결과 화면은 여기 묶여 하나의 배경 음악을
+    // 끊김 없이 이어 재생한다. 실제 게임 플레이·대화·일기장·부모 모드는
+    // 각자 다른 음악을 쓰므로 이 레이아웃 밖에 둔다.
+    element: <AdventureBgmLayout />,
+    children: [
+      {
+        path: '/',
+        element: <StartPage />,
+      },
+      {
+        path: '/profiles',
+        element: <ProfileSelectPage />,
+      },
+      {
+        path: '/auth/google',
+        element: <GoogleBirthdatePage />,
+      },
+      {
+        path: '/auth/login',
+        element: <EmailLoginPage />,
+      },
+      {
+        path: '/auth/signup',
+        element: <EmailSignupPage />,
+      },
+      {
+        element: <ChildRouteGuard />,
+        children: [
+          {
+            path: '/child',
+            element: <ChildHomePage />,
+          },
+          {
+            path: '/games',
+            element: <GameEntryPage />,
+          },
+          {
+            path: '/games/dobble/result',
+            element: <DobbleResultPage />,
+          },
+          {
+            path: '/games/:gameId/result',
+            element: <GameResultPage />,
+          },
+        ],
+      },
+      {
+        element: <ParentRouteGuard allowOnboarding />,
+        children: [
+          {
+            path: '/profiles/new',
+            element: <ParentProfilePage />,
+          },
+          {
+            path: '/profiles/children',
+            element: <ChildProfileListPage />,
+          },
+        ],
+      },
+    ],
   },
   {
     element: <ChildRouteGuard />,
     children: [
-      {
-        path: '/child',
-        element: <ChildHomePage />,
-      },
-      {
-        path: '/games',
-        element: <GameEntryPage />,
-      },
       {
         path: '/games/:gameId/guide',
         element: <GameGuidePage />,
@@ -55,24 +104,21 @@ export const router = createBrowserRouter([
         element: <DobblePlayPage />,
       },
       {
-        path: '/games/dobble/result',
-        element: <DobbleResultPage />,
-      },
-      {
         path: '/games/:gameId/play',
         element: <GamePlayPage />,
       },
       {
-        path: '/games/:gameId/result',
-        element: <GameResultPage />,
-      },
-      {
-        path: '/conversation',
-        element: <ConversationPage />,
-      },
-      {
-        path: '/diaries',
-        element: <DiaryListPage />,
+        element: <ConversationBgmLayout />,
+        children: [
+          {
+            path: '/conversation',
+            element: <ConversationPage />,
+          },
+          {
+            path: '/diaries',
+            element: <DiaryListPage />,
+          },
+        ],
       },
     ],
   },
@@ -87,44 +133,24 @@ export const router = createBrowserRouter([
     ),
   },
   {
-    path: '/auth/google',
-    element: <GoogleBirthdatePage />,
-  },
-  {
-    path: '/auth/login',
-    element: <EmailLoginPage />,
-  },
-  {
-    path: '/auth/signup',
-    element: <EmailSignupPage />,
-  },
-  {
-    element: <ParentRouteGuard allowOnboarding />,
-    children: [
-      {
-        path: '/profiles/new',
-        element: <ParentProfilePage />,
-      },
-      {
-        path: '/profiles/children',
-        element: <ChildProfileListPage />,
-      },
-    ],
-  },
-  {
     element: <ParentRouteGuard />,
     children: [
       {
-        path: '/parent',
-        element: <ParentModePage />,
-      },
-      {
-        path: '/reports',
-        element: <ReportListPage />,
-      },
-      {
-        path: '/reports/:reportDate',
-        element: <ReportDetailPage />,
+        element: <ParentBgmLayout />,
+        children: [
+          {
+            path: '/parent',
+            element: <ParentModePage />,
+          },
+          {
+            path: '/reports',
+            element: <ReportListPage />,
+          },
+          {
+            path: '/reports/:reportDate',
+            element: <ReportDetailPage />,
+          },
+        ],
       },
     ],
   },

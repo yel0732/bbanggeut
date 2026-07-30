@@ -9,7 +9,6 @@ import {
   markNewSignup,
   storeLoginSession,
 } from '@/api/auth'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import signupCompleteButtonUrl from '@/assets/images/auth/btn-go-login.webp'
 import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
 import signupCompleteFrameUrl from '@/assets/images/auth/signup-complete-frame.webp'
@@ -18,7 +17,7 @@ import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 type GoogleCredentialResponse = { credential: string }
@@ -94,7 +93,7 @@ export function GoogleBirthdatePage() {
   const initialCredentialRef = useRef(
     (location.state as GooglePageLocationState | null)?.googleCredential ?? '',
   )
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<Stage>(
     initialCredentialRef.current ? 'connecting' : 'signin',
@@ -269,7 +268,6 @@ export function GoogleBirthdatePage() {
         ref={canvasRef}
         className="relative flex h-[720px] w-[1280px] items-center justify-center overflow-hidden text-white"
       >
-        <audio loop preload="auto" ref={audioRef} src={bgmUrl} />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"

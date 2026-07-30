@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -12,14 +11,14 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { DinoCharacter } from '@/components/character/DinoCharacter'
 import { GAMES } from '@/features/games/games'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 export function GameEntryPage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const [hoveredGameId, setHoveredGameId] = useState<string>()
 
   return (
@@ -28,14 +27,6 @@ export function GameEntryPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
-
         <img
           alt=""
           className="absolute inset-0 h-full w-full object-cover"

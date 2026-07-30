@@ -3,14 +3,13 @@ import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { consumeNewSignup, loginWithEmail, storeLoginSession } from '@/api/auth'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
 import loginBoardUrl from '@/assets/images/auth/login-board.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -23,7 +22,7 @@ export function EmailLoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const [email, setEmail] = useState(
     () => (location.state as { email?: string } | null)?.email ?? '',
   )
@@ -68,14 +67,6 @@ export function EmailLoginPage() {
         ref={canvasRef}
         className="relative flex h-[720px] w-[1280px] items-center justify-center overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
-
         <img
           alt=""
           className="absolute inset-0 z-0 h-full w-full object-cover"

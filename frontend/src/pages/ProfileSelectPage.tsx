@@ -10,7 +10,6 @@ import {
   verifyParentPin,
 } from '@/api/auth'
 import { getChildProfiles as getBackendChildProfiles } from '@/api/profiles'
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
@@ -18,7 +17,7 @@ import logoutButtonUrl from '@/assets/images/profile/profile-switch-button.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { PinInputDialog } from '@/components/profile/PinInputDialog'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
   childPhotoFromImageKey,
@@ -55,7 +54,7 @@ export function ProfileSelectPage() {
   const location = useLocation()
   const locationState = location.state as ProfileSelectLocationState | null
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const [childProfiles, setChildProfiles] = useState(() => {
     const storedProfiles = loadChildProfiles()
     return storedProfiles.length ? storedProfiles : DEMO_CHILD_PROFILES
@@ -294,14 +293,6 @@ export function ProfileSelectPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
-
         <img
           alt=""
           className="absolute inset-0 h-full w-full object-cover"

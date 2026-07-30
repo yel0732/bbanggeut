@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import revisePopupUrl from '@/assets/images/parent-profile/child-profile-revise-popup.webp'
 import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
@@ -21,7 +20,7 @@ import backgroundUrl from '@/assets/images/profile/background.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { PinInputDialog } from '@/components/profile/PinInputDialog'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import {
@@ -64,7 +63,7 @@ function formatPinLockTime(totalSeconds: number): string {
 
 export function ChildProfileListPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const editVideoRef = useRef<HTMLVideoElement>(null)
   const editStreamRef = useRef<MediaStream | null>(null)
   const deletionPinKeyHandlerRef = useRef<(key: string) => void>(
@@ -392,13 +391,6 @@ export function ChildProfileListPage() {
         className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"

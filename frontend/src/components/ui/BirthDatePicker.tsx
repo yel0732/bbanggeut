@@ -153,6 +153,7 @@ export function BirthDatePicker({
                 aria-modal="true"
                 className="w-full max-w-[390px] overflow-hidden rounded-[30px] border-[5px] border-[#79552d] bg-[#fff8dc] shadow-[0_24px_70px_rgba(7,24,12,0.45),inset_0_0_0_3px_#e8c879]"
                 role="dialog"
+                style={{ fontFamily: "'Jua', sans-serif" }}
               >
                 <header className="relative bg-[linear-gradient(135deg,#6fa844,#4f8132)] px-6 pt-5 pb-4 text-white">
                   <div className="pointer-events-none absolute -top-5 -right-3 size-20 rounded-full bg-[#a9d66f]/35" />

@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 // 결과 배경은 게임 공통 정글 배경이라 과일 게임 에셋을 함께 쓴다.
 import backgroundUrl from '@/assets/images/fruit-game/result-bg.webp'
-import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
+import gameResultButtonUrl from '@/assets/images/game-entry/game-result-button.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import type { DobbleGameResult } from '@/features/games/dobble/useDobbleGame'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -22,7 +21,7 @@ export function DobbleResultPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying } = useBgmPlayer()
+  const { isBgmPlaying } = useAdventureBgm()
 
   const result = location.state as
     (DobbleGameResult & { recordError?: string }) | null
@@ -39,13 +38,6 @@ export function DobbleResultPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
         <span className="sr-only">
           {isBgmPlaying ? '음악 켜짐' : '음악 꺼짐'}
         </span>
@@ -137,10 +129,10 @@ function ResultButton({
         className="absolute inset-0 h-full w-full object-fill drop-shadow-[0_8px_12px_rgba(55,30,10,0.28)]"
         decoding="async"
         draggable={false}
-        src={gameMenuButtonUrl}
+        src={gameResultButtonUrl}
       />
       <span
-        className="absolute inset-0 flex items-center justify-center pb-1 text-[24px] leading-none text-white [text-shadow:0_3px_0_#744514,0_6px_9px_rgba(55,30,10,0.24)]"
+        className="absolute inset-0 flex items-center justify-center pb-0 text-[28px] leading-none text-[#5a4a2a] [text-shadow:0_1px_0_rgba(255,255,255,0.5)]"
         style={jua}
       >
         {label}

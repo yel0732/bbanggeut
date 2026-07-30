@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import bgmUrl from '@/assets/audio/start/green-adventure-start.mp3'
 import backgroundUrl from '@/assets/images/child-home/background.webp'
 import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
 import bubbleMediumUrl from '@/assets/images/child-home/bubble-medium.webp'
@@ -15,14 +14,14 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { DinoCharacter } from '@/components/character/DinoCharacter'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 export function ChildHomePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer()
+  const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const [isGateHovered, setIsGateHovered] = useState(false)
   const [isCaveHovered, setIsCaveHovered] = useState(false)
 
@@ -32,14 +31,6 @@ export function ChildHomePage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio
-          aria-label="초록 모험 시작 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={bgmUrl}
-        />
-
         <img
           alt=""
           className="absolute inset-0 h-full w-full object-cover"

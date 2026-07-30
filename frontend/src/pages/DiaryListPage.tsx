@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import conversationBgmUrl from '@/assets/audio/conversation/todak-room.mp3'
 import dateCircleUrl from '@/assets/images/diary-list/date-circle.webp'
 import dateRectUrl from '@/assets/images/diary-list/date-rect.webp'
 import diaryBookUrl from '@/assets/images/diary-list/diary-open-book.webp'
@@ -16,7 +15,7 @@ import { getVisiblePageIndices } from '@/utils/pagination'
 import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { getChildDiaries } from '@/api/diaries'
-import { useBgmPlayer } from '@/hooks/useBgmPlayer'
+import { useConversationBgm } from '@/hooks/useConversationBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 import { loadActiveChildProfileId } from '@/lib/childProfiles'
 
@@ -145,12 +144,17 @@ function formatDiaryDate(date: string) {
 
 export function DiaryListPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef } = useBgmPlayer({ volume: 0.22 })
+  const { setVolume } = useConversationBgm()
   const [year, setYear] = useState(2026)
   const [month, setMonth] = useState(7)
   const [page, setPage] = useState(0)
   const [diaries, setDiaries] = useState<DiaryEntry[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  useEffect(() => {
+    // 대화 화면에서 목소리에 맞춰 낮춰 둔 볼륨을 이 화면의 기본값으로 되돌린다.
+    setVolume(0.22)
+  }, [setVolume])
 
   useEffect(() => {
     // Keep the old design fixture out of the rendered flow; diaries always come
@@ -216,14 +220,6 @@ export function DiaryListPage() {
         className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
         ref={canvasRef}
       >
-        <audio
-          aria-label="대화방 배경 음악"
-          loop
-          preload="auto"
-          ref={audioRef}
-          src={conversationBgmUrl}
-        />
-
         <img
           alt=""
           className="absolute -top-[40px] left-0 h-[760px] w-full object-cover"

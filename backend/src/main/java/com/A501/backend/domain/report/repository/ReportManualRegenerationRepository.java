@@ -43,4 +43,8 @@ public interface ReportManualRegenerationRepository
             where regeneration.parentId = :parentId
             """)
     int deleteByParentId(@Param("parentId") Long parentId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from ReportManualRegeneration regeneration where regeneration.childId in :childIds")
+    int deleteByChildIds(@Param("childIds") Collection<Long> childIds);
 }

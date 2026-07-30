@@ -17,6 +17,10 @@ import com.A501.backend.domain.child.entity.Child;
 import com.A501.backend.domain.child.exception.ChildErrorCode;
 import com.A501.backend.domain.child.repository.ChildRepository;
 import com.A501.backend.domain.child.security.ChildProperties;
+import com.A501.backend.domain.childdiary.service.ChildDiaryPurgeService;
+import com.A501.backend.domain.conversation.service.ConversationPurgeService;
+import com.A501.backend.domain.game.service.GamePurgeService;
+import com.A501.backend.domain.report.service.ReportPurgeService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -31,6 +35,10 @@ public class ChildService {
     private final ChildProperties childProperties;
     private final PinService pinService;
     private final ProfileImageService profileImageService;
+    private final ChildDiaryPurgeService childDiaryPurgeService;
+    private final ReportPurgeService reportPurgeService;
+    private final ConversationPurgeService conversationPurgeService;
+    private final GamePurgeService gamePurgeService;
 
     public boolean isNameAvailable(Long parentId, String name) {
         return !childRepository.existsByParentIdAndNameAndDeletedAtIsNull(parentId, name);
@@ -115,12 +123,16 @@ public class ChildService {
         // 본인 계정만 보므로, 순서를 바꿔도 자녀 존재 여부가 새어나가지는 않는다.
         Child child = findOwnedChild(parentId, childId);
         pinService.verifyPin(parentId, pin);
-        child.softDelete(LocalDateTime.now(KST));
+        List<Long> childIds = List.of(childId);
+        childDiaryPurgeService.purgeByChildIds(childIds);
+        reportPurgeService.purgeByChildIds(childIds);
+        conversationPurgeService.purgeByChildIds(childIds);
+        gamePurgeService.purgeByChildIds(childIds);
         purgeUploadedImage(child);
+        childRepository.delete(child);
     }
 
-    // 소프트 삭제라 DB 행은 남지만 아이 실물 사진은 즉시 파기한다. 대화·게임·리포트 등 타 도메인의
-    // hard-delete purge는 팀 논의 대기 중이지만, 이 사진은 child 도메인 소유 리소스라 지금 처리한다.
+    // 아이 행을 hard delete하기 전에 업로드된 실물 사진도 함께 파기한다.
     private void purgeUploadedImage(Child child) {
         child.changeProfileImage(profileImageService.purgeUploadedImage(
                 child.getProfileImageKey(), profileImageService.defaultChildPresetKey()));

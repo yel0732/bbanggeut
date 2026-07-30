@@ -46,4 +46,8 @@ public interface ReportNotificationRepository
             where notification.parentId = :parentId
             """)
     int deleteByParentId(@Param("parentId") Long parentId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from ReportNotification notification where notification.childId in :childIds")
+    int deleteByChildIds(@Param("childIds") Collection<Long> childIds);
 }

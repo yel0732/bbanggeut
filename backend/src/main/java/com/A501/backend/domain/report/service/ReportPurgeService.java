@@ -30,6 +30,24 @@ public class ReportPurgeService {
     private final ReportManualRegenerationRepository reportManualRegenerationRepository;
 
     @Transactional
+    public void purgeByChildIds(List<Long> childIds) {
+        if (childIds == null || childIds.isEmpty()) {
+            return;
+        }
+
+        List<Long> reportIds = dailyReportRepository.findIdsByChildIds(childIds);
+        if (!reportIds.isEmpty()) {
+            reportGameResultRepository.deleteByReportIds(reportIds);
+            reportConversationSummaryRepository.deleteByReportIds(reportIds);
+            reportGenerationAttemptRepository.deleteByReportIds(reportIds);
+            reportNotificationFailureRepository.deleteByReportIds(reportIds);
+        }
+        reportNotificationRepository.deleteByChildIds(childIds);
+        reportManualRegenerationRepository.deleteByChildIds(childIds);
+        dailyReportRepository.deleteByChildIds(childIds);
+    }
+
+    @Transactional
     public void purgeByParentIdAndChildIds(Long parentId, List<Long> childIds) {
         if (parentId == null || parentId < 1) {
             throw new IllegalArgumentException("Parent ID must be positive.");

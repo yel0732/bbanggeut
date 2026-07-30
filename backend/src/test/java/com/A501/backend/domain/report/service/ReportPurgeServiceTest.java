@@ -49,6 +49,32 @@ class ReportPurgeServiceTest {
     private ReportPurgeService reportPurgeService;
 
     @Test
+    void deletesOnlyChildScopedReportRowsForChildProfileDeletion() {
+        List<Long> childIds = List.of(1L);
+        List<Long> reportIds = List.of(100L);
+        when(dailyReportRepository.findIdsByChildIds(childIds)).thenReturn(reportIds);
+
+        reportPurgeService.purgeByChildIds(childIds);
+
+        InOrder deletionOrder = inOrder(
+                reportGameResultRepository,
+                reportConversationSummaryRepository,
+                reportGenerationAttemptRepository,
+                reportNotificationFailureRepository,
+                reportNotificationRepository,
+                reportManualRegenerationRepository,
+                dailyReportRepository);
+        deletionOrder.verify(reportGameResultRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportConversationSummaryRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportGenerationAttemptRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportNotificationFailureRepository).deleteByReportIds(reportIds);
+        deletionOrder.verify(reportNotificationRepository).deleteByChildIds(childIds);
+        deletionOrder.verify(reportManualRegenerationRepository).deleteByChildIds(childIds);
+        deletionOrder.verify(dailyReportRepository).deleteByChildIds(childIds);
+        verifyNoInteractions(reportNotificationPreferenceRepository);
+    }
+
+    @Test
     void skipsPurgeWhenChildIdsAreEmpty() {
         reportPurgeService.purgeByParentIdAndChildIds(10L, List.of());
 

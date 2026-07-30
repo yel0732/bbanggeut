@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import time
+from dataclasses import dataclass
 
 from app.dialogue.question.fallback import (
     QuestionGenerationExecutionPolicy,
@@ -26,6 +28,17 @@ from app.dialogue.question.validator import (
     QuestionValidationResult,
     validate_question_rules,
 )
+from app.dialogue.question.candidate import (
+    GeneratedDialogueTurnParseError,
+    parse_generated_dialogue_turn,
+)
+
+
+@dataclass(frozen=True)
+class _CandidateValidationFailure:
+    failure_code: QuestionGenerationFailureCode
+    retryable: bool
+    issues: tuple[str, ...] = ()
 
 
 async def generate_question_with_fallback(
@@ -35,15 +48,19 @@ async def generate_question_with_fallback(
     policy: QuestionGenerationExecutionPolicy,
     log_context: QuestionGenerationLogContext,
     logger: logging.Logger,
+    *,
+    fallback_text: str | None = None,
 ) -> QuestionGenerationExecutionResult:
     """Generate and validate one question, then use a trusted fallback."""
 
+    execution_started = time.perf_counter()
     prompt = build_question_generation_prompt(request)
     failure_code = QuestionGenerationFailureCode.UNEXPECTED_PROVIDER_FAILURE
     attempts = 0
 
     for attempt in range(1, policy.max_attempts + 1):
         attempts = attempt
+        generation_started = time.perf_counter()
         try:
             async with asyncio.timeout(policy.timeout_seconds):
                 candidate = await provider.generate_question(prompt)
@@ -59,6 +76,7 @@ async def generate_question_with_fallback(
                 policy,
                 "generation",
                 failure_code,
+                elapsed_ms=_elapsed_ms(generation_started),
             )
         except QuestionProviderError as error:
             failure_code = _provider_failure_code(error)
@@ -70,6 +88,7 @@ async def generate_question_with_fallback(
                 policy,
                 "generation",
                 failure_code,
+                elapsed_ms=_elapsed_ms(generation_started),
             )
             if not error.retryable:
                 break
@@ -85,6 +104,7 @@ async def generate_question_with_fallback(
                 policy,
                 "generation",
                 failure_code,
+                elapsed_ms=_elapsed_ms(generation_started),
             )
             break
         else:
@@ -106,17 +126,26 @@ async def generate_question_with_fallback(
                     failure_code=None,
                 )
 
-            failure_code, retryable = validation_outcome
-            if not retryable:
+            failure_code = validation_outcome.failure_code
+            if validation_outcome.issues:
+                prompt = build_question_generation_prompt(
+                    request,
+                    retry_issues=validation_outcome.issues,
+                )
+            if not validation_outcome.retryable:
                 break
 
         if attempt >= policy.max_attempts:
             break
 
-    fallback = build_fallback_question(request.target)
+    fallback = (
+        fallback_text.strip()
+        if fallback_text is not None and fallback_text.strip()
+        else build_fallback_question(request.target).text
+    )
     fallback_validation = validate_question_rules(
         QuestionRuleValidationRequest(
-            question=fallback.text,
+            question=fallback,
             recent_questions=request.recent_questions,
         )
     )
@@ -128,6 +157,7 @@ async def generate_question_with_fallback(
             attempts,
             policy,
             failure_code,
+            elapsed_ms=_elapsed_ms(execution_started),
         )
         return QuestionGenerationExecutionResult(
             status=QuestionGenerationStatus.FALLBACK_USED,
@@ -145,6 +175,7 @@ async def generate_question_with_fallback(
         policy,
         "fallbackValidation",
         QuestionGenerationFailureCode.FALLBACK_VALIDATION_FAILED,
+        elapsed_ms=_elapsed_ms(execution_started),
         level=logging.ERROR,
     )
     return QuestionGenerationExecutionResult(
@@ -169,19 +200,41 @@ async def _validate_candidate(
     attempt: int,
 ) -> (
     QuestionValidationResult
-    | tuple[QuestionGenerationFailureCode, bool]
+    | _CandidateValidationFailure
 ):
+    validation_started = time.perf_counter()
     try:
+        parsed_candidate = parse_generated_dialogue_turn(
+            candidate,
+            expected_target=request.target,
+            child_answer=request.child_answer,
+            bridge_required=request.redirect_context is not None,
+        )
         async with asyncio.timeout(policy.timeout_seconds):
-            result = await validator.validate_question(request, candidate)
+            result = await validator.validate_question(
+                request,
+                parsed_candidate.message,
+            )
     except asyncio.CancelledError:
         raise
+    except GeneratedDialogueTurnParseError as error:
+        outcome = _CandidateValidationFailure(
+            QuestionGenerationFailureCode.GENERATED_QUESTION_REJECTED,
+            True,
+            (error.code.value,),
+        )
     except TimeoutError:
-        outcome = (QuestionGenerationFailureCode.TIMEOUT, True)
+        outcome = _CandidateValidationFailure(
+            QuestionGenerationFailureCode.TIMEOUT,
+            True,
+        )
     except QuestionProviderError as error:
-        outcome = (_provider_failure_code(error), error.retryable)
+        outcome = _CandidateValidationFailure(
+            _provider_failure_code(error),
+            error.retryable,
+        )
     except Exception:
-        outcome = (
+        outcome = _CandidateValidationFailure(
             QuestionGenerationFailureCode.UNEXPECTED_PROVIDER_FAILURE,
             False,
         )
@@ -193,12 +246,13 @@ async def _validate_candidate(
         ):
             return result
         if isinstance(result, QuestionValidationResult):
-            outcome = (
+            outcome = _CandidateValidationFailure(
                 QuestionGenerationFailureCode.GENERATED_QUESTION_REJECTED,
                 True,
+                tuple(issue.code.value for issue in result.issues),
             )
         else:
-            outcome = (
+            outcome = _CandidateValidationFailure(
                 QuestionGenerationFailureCode.UNEXPECTED_PROVIDER_FAILURE,
                 False,
             )
@@ -210,7 +264,9 @@ async def _validate_candidate(
         attempt,
         policy,
         "validation",
-        outcome[0],
+        outcome.failure_code,
+        elapsed_ms=_elapsed_ms(validation_started),
+        validation_issues=outcome.issues,
     )
     return outcome
 
@@ -232,11 +288,25 @@ def _log_failure(
     stage: str,
     failure_code: QuestionGenerationFailureCode,
     *,
+    elapsed_ms: int,
+    validation_issues: tuple[str, ...] = (),
     level: int = logging.WARNING,
 ) -> None:
+    issue_summary = ",".join(validation_issues) if validation_issues else "-"
     logger.log(
         level,
-        "question generation attempt failed",
+        (
+            "question generation attempt failed: "
+            "stage=%s code=%s issues=%s attempt=%d/%d "
+            "target=%s elapsedMs=%d"
+        ),
+        stage,
+        failure_code.value,
+        issue_summary,
+        attempt,
+        policy.max_attempts,
+        request.target.value,
+        elapsed_ms,
         extra={
             "conversation_id": context.conversation_id,
             "turn_id": context.turn_id,
@@ -247,6 +317,8 @@ def _log_failure(
             "max_attempts": policy.max_attempts,
             "failure_stage": stage,
             "failure_code": failure_code.value,
+            "validation_issues": validation_issues,
+            "elapsed_ms": elapsed_ms,
             "fallback_used": stage == "fallbackValidation",
         },
     )
@@ -259,9 +331,19 @@ def _log_fallback_used(
     attempts: int,
     policy: QuestionGenerationExecutionPolicy,
     failure_code: QuestionGenerationFailureCode,
+    *,
+    elapsed_ms: int,
 ) -> None:
     logger.warning(
-        "question generation fallback used",
+        (
+            "question generation fallback used: "
+            "code=%s attempts=%d/%d target=%s elapsedMs=%d"
+        ),
+        failure_code.value,
+        attempts,
+        policy.max_attempts,
+        request.target.value,
+        elapsed_ms,
         extra={
             "conversation_id": context.conversation_id,
             "turn_id": context.turn_id,
@@ -272,6 +354,11 @@ def _log_fallback_used(
             "max_attempts": policy.max_attempts,
             "failure_stage": "fallback",
             "failure_code": failure_code.value,
+            "elapsed_ms": elapsed_ms,
             "fallback_used": True,
         },
     )
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, round((time.perf_counter() - started) * 1000))

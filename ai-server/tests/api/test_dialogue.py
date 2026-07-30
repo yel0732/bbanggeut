@@ -20,12 +20,81 @@ def _gms_handler(request: httpx.Request) -> httpx.Response:
         )
     elif "판정하는 분류기" in developer_prompt:
         content = '{"valid":true,"issues":[]}'
+    elif "대화 의도, 제어 요청" in developer_prompt:
+        content = json.dumps(
+            {
+                "intent": "ANSWER",
+                "answered": True,
+                "childQuestion": False,
+                "controlAction": "CONTINUE",
+                "bridgeResponse": None,
+                "suggestedTarget": "emotion",
+                "evidenceText": None,
+            },
+            ensure_ascii=False,
+        )
     else:
-        content = "그때 어떤 기분이었어?"
+        generation_input = json.loads(payload["messages"][1]["content"])
+        content = json.dumps(
+            {
+                "acknowledgement": "블록 놀이를 했구나!",
+                "question": "놀 때 기분이 어땠어?",
+                "target": generation_input["target"],
+                "acknowledgementEvidence": {
+                    "source": "childAnswer",
+                    "text": generation_input["childAnswer"],
+                },
+            },
+            ensure_ascii=False,
+        )
     return httpx.Response(
         200,
         json={"choices": [{"message": {"content": content}}]},
     )
+
+
+@pytest.mark.asyncio
+async def test_returns_realtime_equivalent_text_only_opening() -> None:
+    app = create_app(
+        AppSettings(gms_key="test-key"),
+        transport=httpx.MockTransport(_gms_handler),
+    )
+
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/internal/v1/dialogue/opening",
+                json={
+                    "currentTopic": "GAME",
+                    "topicContext": {
+                        "topic": "GAME",
+                        "games": [
+                            {
+                                "gameSessionId": "00000000-0000-0000-0000-000000000001",
+                                "gameId": 1,
+                                "gameName": "과일 자르기",
+                                "score": 10,
+                                "playDurationSeconds": 30,
+                                "completedAt": "2026-07-30T00:00:00Z",
+                            }
+                        ],
+                    },
+                },
+            )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "assistantMessage": (
+            "오늘 과일 자르기 했구나! 어떤 순간이 제일 재미있었어?"
+        ),
+        "assistantQuestion": (
+            "오늘 과일 자르기 했구나! 어떤 순간이 제일 재미있었어?"
+        ),
+        "assistantTarget": "memorableMoment",
+    }
 
 
 @pytest.mark.asyncio
@@ -57,16 +126,13 @@ async def test_processes_internal_dialogue_request() -> None:
 
     assert response.status_code == 200
     assert response.json()["decision"] == "CONTINUE_TOPIC"
-    assert response.json()["assistantQuestion"] == (
-        "그때 마음이 어땠는지 말해 줄래?"
-    )
+    assert response.json()["assistantQuestion"] == "놀 때 기분이 어땠어?"
     assert response.json()["assistantMessage"] == (
-        "합성 답변구나. 그때 마음이 어땠는지 말해 줄래?"
+        "블록 놀이를 했구나! 놀 때 기분이 어땠어?"
     )
-    assert response.json()["questionGenerationStatus"] == "templateUsed"
-    assert response.json()["questionGenerationSource"] == (
-        "ruleBasedTemplate"
-    )
+    assert response.json()["assistantTarget"] == "emotion"
+    assert response.json()["questionGenerationStatus"] == "generated"
+    assert response.json()["questionGenerationSource"] == "llm"
 
 
 @pytest.mark.asyncio

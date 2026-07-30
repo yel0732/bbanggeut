@@ -12,6 +12,8 @@ import re
 # "쉬고 싶어", "졸려" 같은 피로 표현은 종료 단정이 과해 제외한다.
 _STOP_PHRASES: frozenset[str] = frozenset(
     {
+        "꺼져",
+        "저리가",
         "그만",
         "그만해",
         "그만할래",
@@ -24,6 +26,21 @@ _STOP_PHRASES: frozenset[str] = frozenset(
         "그만말할래",
         "그만얘기할래",
         "그만이야기할래",
+        "그만물어봐",
+        "그만질문해",
+        "대화그만",
+        "대화그만해",
+        "대화그만할래",
+        "대화그만할게",
+        "이야기그만",
+        "이야기그만할래",
+        "얘기그만",
+        "얘기그만할래",
+        "질문그만",
+        "질문그만해",
+        "질문하지마",
+        "더묻지마",
+        "말걸지마",
         "이제그만",
         "이제그만할래",
         "이제그만할래요",
@@ -35,6 +52,12 @@ _STOP_PHRASES: frozenset[str] = frozenset(
         "끝낼래",
         "끝낼래요",
         "끝내자",
+        "오늘은여기까지",
+        "여기까지",
+        "여기까지할래",
+        "대화하기싫어",
+        "이야기하기싫어",
+        "말하기싫어",
     }
 )
 
@@ -42,6 +65,14 @@ _STOP_PHRASES: frozenset[str] = frozenset(
 _LEADING_FILLERS: tuple[str, ...] = ("음", "어", "아", "흠")
 
 _STRIP_PATTERN = re.compile(r"[\s.,!?~…\"'‥·]+")
+_STRUCTURED_STOP_PATTERN = re.compile(
+    r"^(?:나|나는|난|이제|나이제|오늘은)?"
+    r"(?:(?:대화|이야기|얘기|말|질문)(?:를|은|는|도)?)?"
+    r"(?:그만(?:해|할래|할게|하자|하고싶어)?|"
+    r"끝(?:낼래|낼게|내자)?|"
+    r"안(?:할래|할게)|"
+    r"하기싫어|하지마)$"
+)
 
 
 def is_stop_request(child_answer: str) -> bool:
@@ -51,6 +82,8 @@ def is_stop_request(child_answer: str) -> bool:
     if not normalized:
         return False
     if normalized in _STOP_PHRASES:
+        return True
+    if _STRUCTURED_STOP_PATTERN.fullmatch(normalized):
         return True
     for filler in _LEADING_FILLERS:
         if normalized.startswith(filler) and normalized[len(filler):] in _STOP_PHRASES:

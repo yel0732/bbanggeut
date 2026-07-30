@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.dialogue.policy.target import QUESTION_TARGET_SLOT_FIELDS, QuestionTarget
+from app.dialogue.schemas import DiarySlots
+
 if TYPE_CHECKING:
     from app.dialogue.question.judge import SemanticQuestionValidationDecision
 
@@ -115,6 +118,96 @@ class QuestionValidationResult:
     @property
     def is_valid(self) -> bool:
         return not self.issues
+
+
+_UNGROUNDED_TARGET_ASSERTION_CUES: dict[
+    QuestionTarget,
+    tuple[str, ...],
+] = {
+    QuestionTarget.EMOTION: (
+        "기분이었구나",
+        "마음이었구나",
+    ),
+    QuestionTarget.EMOTION_REASON: (
+        "이유였구나",
+        "이유였네",
+        "때문이었구나",
+        "때문이구나",
+    ),
+    QuestionTarget.MEMORABLE_MOMENT: (
+        "기억에 남았구나",
+        "기억에 남았네",
+        "가장 기억에 남았구나",
+        "제일 기억에 남았구나",
+    ),
+}
+
+_CHILD_TARGET_EVIDENCE_CUES: dict[
+    QuestionTarget,
+    tuple[str, ...],
+] = {
+    QuestionTarget.EMOTION: ("기분", "마음"),
+    QuestionTarget.EMOTION_REASON: ("이유", "때문"),
+    QuestionTarget.MEMORABLE_MOMENT: ("기억", "기억에 남"),
+}
+
+
+def validate_target_assertion_grounding(
+    *,
+    target: QuestionTarget,
+    question: str,
+    current_slots: DiarySlots,
+    child_answer: str | None,
+) -> QuestionValidationResult:
+    """Reject a response that claims the unanswered target is already known.
+
+    The semantic judge remains useful for flexible language, but this narrow
+    invariant must not depend on a probabilistic decision. A candidate may
+    acknowledge target information when the latest child answer explicitly
+    supplied it, even if slot extraction missed it.
+    """
+
+    normalized_question = question.strip()
+    field_name = QUESTION_TARGET_SLOT_FIELDS[target]
+    current_value = getattr(current_slots, field_name)
+    if current_value is not None and current_value.strip():
+        return QuestionValidationResult(
+            normalized_question=normalized_question,
+            issues=(),
+        )
+
+    assertion_cues = _UNGROUNDED_TARGET_ASSERTION_CUES.get(target, ())
+    comparison_question = _normalize_for_comparison(normalized_question)
+    asserts_unanswered_target = any(
+        _normalize_for_comparison(cue) in comparison_question
+        for cue in assertion_cues
+    )
+    if not asserts_unanswered_target:
+        return QuestionValidationResult(
+            normalized_question=normalized_question,
+            issues=(),
+        )
+
+    comparison_answer = _normalize_for_comparison(child_answer or "")
+    answer_evidence_cues = _CHILD_TARGET_EVIDENCE_CUES.get(target, ())
+    latest_answer_supplied_target = any(
+        _normalize_for_comparison(cue) in comparison_answer
+        for cue in answer_evidence_cues
+    )
+    if latest_answer_supplied_target:
+        return QuestionValidationResult(
+            normalized_question=normalized_question,
+            issues=(),
+        )
+
+    return QuestionValidationResult(
+        normalized_question=normalized_question,
+        issues=(
+            QuestionValidationIssue(
+                QuestionValidationCode.BANNED_EXPRESSION,
+            ),
+        ),
+    )
 
 
 def validate_question_rules(

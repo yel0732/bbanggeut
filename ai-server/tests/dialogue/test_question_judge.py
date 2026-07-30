@@ -97,6 +97,9 @@ def test_prompt_contains_only_required_context_and_is_deterministic() -> None:
             "emotionReason": None,
             "memorableMoment": None,
         },
+        "childAnswer": None,
+        "currentQuestion": None,
+        "topicHistory": [],
         "recentQuestions": ["오늘 무슨 일이 있었어?"],
         "redirectContext": None,
     }
@@ -135,6 +138,10 @@ def test_system_prompt_defines_classifier_and_injection_boundary() -> None:
     assert "JSON 객체만" in system
     assert "직접 답하지 않으면" in system
     assert "물음표가 하나여도" in system
+    assert "한 슬롯을 target의 의미로 바꾸어 단정하면" in system
+    assert "최신 childAnswer를 짧게 받아 주는 반응" in system
+    assert "최신 childAnswer에도 근거가 없는데" in system
+    assert "화제를 잇는 짧은 연결 절 없이" in system
 
 
 def test_prompt_includes_redirect_context_for_semantic_validation() -> None:

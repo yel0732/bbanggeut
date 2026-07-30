@@ -6,8 +6,14 @@ from collections import deque
 
 import pytest
 
-from app.dialogue import DialogueTopic, DiarySlots, QuestionTarget
+from app.dialogue import (
+    DialogueTopic,
+    DialogueTopicHistoryItem,
+    DiarySlots,
+    QuestionTarget,
+)
 from app.dialogue.pipeline import (
+    CONVERSATION_CLOSING_MESSAGE,
     DialogueTurnDecision,
     DialogueTurnPipeline,
     DialogueTurnRequest,
@@ -83,7 +89,7 @@ async def test_first_turn_uses_child_text_when_slot_analysis_fails() -> None:
     client = FakeClient(
         [
             RuntimeError("temporary analysis failure"),
-            "그때 어떤 기분이었어?",
+            "친구랑 영화를 봤구나! 영화를 볼 때 기분이 어땠어?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -97,10 +103,9 @@ async def test_first_turn_uses_child_text_when_slot_analysis_fails() -> None:
     assert result.updated_slots.event == "오늘 친구랑 영화를 봤어"
     assert result.updated_slots.people == ["친구"]
     assert result.assistant_message == (
-        "오늘 친구랑 영화를 봤구나. "
-        "그때 마음이 어땠는지 말해 줄래?"
+        "친구랑 영화를 봤구나! 영화를 볼 때 기분이 어땠어?"
     )
-    assert result.assistant_question == "그때 마음이 어땠는지 말해 줄래?"
+    assert result.assistant_question == "영화를 볼 때 기분이 어땠어?"
 
 
 @pytest.mark.asyncio
@@ -114,7 +119,7 @@ async def test_stt_confidence_reaches_the_slot_analysis_payload() -> None:
                 '"emotion":null,"emotionReason":null,'
                 '"memorableMoment":null}'
             ),
-            "그때 어떤 기분이었어?",
+            "블록 놀이를 했구나! 놀 때 기분이 어땠어?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -137,7 +142,7 @@ async def test_text_turn_leaves_stt_confidence_null_in_the_payload() -> None:
                 '"emotion":null,"emotionReason":null,'
                 '"memorableMoment":null}'
             ),
-            "그때 어떤 기분이었어?",
+            "블록 놀이를 했구나! 놀 때 기분이 어땠어?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -159,7 +164,7 @@ async def test_updates_slots_and_generates_next_question() -> None:
                 '"emotion":null,"emotionReason":null,'
                 '"memorableMoment":null}'
             ),
-            "그때 어떤 기분이었어?",
+            "블록 놀이를 했구나! 놀 때 기분이 어땠어?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -168,17 +173,13 @@ async def test_updates_slots_and_generates_next_question() -> None:
 
     assert result.decision is DialogueTurnDecision.CONTINUE
     assert result.updated_slots.event == "블록 놀이"
-    assert result.assistant_question == "그때 마음이 어땠는지 말해 줄래?"
-    assert result.assistant_message == (
-        "합성 답변구나. 그때 마음이 어땠는지 말해 줄래?"
-    )
+    assert result.assistant_question == "놀 때 기분이 어땠어?"
+    assert result.assistant_message == "블록 놀이를 했구나! 놀 때 기분이 어땠어?"
     assert result.question_generation_status is (
-        QuestionGenerationStatus.TEMPLATE_USED
+        QuestionGenerationStatus.GENERATED
     )
-    assert result.question_generation_source is (
-        QuestionGenerationSource.RULE_BASED_TEMPLATE
-    )
-    assert client.call_count == 1
+    assert result.question_generation_source is QuestionGenerationSource.LLM
+    assert client.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -260,7 +261,7 @@ async def test_first_turn_still_discards_misclassified_extraction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_standard_question_does_not_call_response_model() -> None:
+async def test_standard_question_uses_response_model() -> None:
     analysis_client = FakeClient(
         [
             (
@@ -268,22 +269,207 @@ async def test_standard_question_does_not_call_response_model() -> None:
                 '"emotion":null,"emotionReason":null,'
                 '"memorableMoment":null}'
             ),
+        ]
+    )
+    response_client = FakeClient(
+        [
+            "블록 놀이를 했구나! 놀 때 기분이 어땠어?",
             '{"valid":true,"issues":[]}',
         ]
     )
-    response_client = FakeClient(["그때 어떤 기분이었어?"])
 
     result = await _pipeline_with_clients(
         analysis_client,
         response_client,
     ).process(_request())
 
-    assert result.assistant_question == "그때 마음이 어땠는지 말해 줄래?"
-    assert result.assistant_message == (
-        "합성 답변구나. 그때 마음이 어땠는지 말해 줄래?"
-    )
+    assert result.assistant_question == "놀 때 기분이 어땠어?"
+    assert result.assistant_message == "블록 놀이를 했구나! 놀 때 기분이 어땠어?"
     assert analysis_client.call_count == 1
-    assert response_client.call_count == 0
+    assert response_client.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_structured_generation_builds_full_turn_without_semantic_judge() -> None:
+    analysis_client = FakeClient(
+        [
+            (
+                '{"event":"과일을 여러 개 자르기","people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+        ]
+    )
+    response_client = FakeClient(
+        [
+            json.dumps(
+                {
+                    "acknowledgement": (
+                        "여러 개를 한 번에 자르는 게 재미있었구나!"
+                    ),
+                    "question": "그 순간에는 어떤 기분이 들었어?",
+                    "target": "emotion",
+                    "acknowledgementEvidence": {
+                        "source": "childAnswer",
+                        "text": "여러 개를 한 번에 자르는 게 재미있었어",
+                    },
+                },
+                ensure_ascii=False,
+            )
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "child_answer": "여러 개를 한 번에 자르는 게 재미있었어",
+            "current_topic": DialogueTopic.GAME,
+        }
+    )
+
+    result = await _pipeline_with_clients(
+        analysis_client,
+        response_client,
+    ).process(request)
+
+    assert result.assistant_message == (
+        "여러 개를 한 번에 자르는 게 재미있었구나! "
+        "그 순간에는 어떤 기분이 들었어?"
+    )
+    assert result.assistant_question == "그 순간에는 어떤 기분이 들었어?"
+    assert result.assistant_target is QuestionTarget.EMOTION
+    assert response_client.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_standard_question_receives_completed_topic_history() -> None:
+    analysis_client = FakeClient(
+        [
+            (
+                '{"event":"수박을 한 번에 자름","people":[],"place":null,'
+                '"emotion":"신남","emotionReason":null,'
+                '"memorableMoment":null}'
+            )
+        ]
+    )
+    response_client = FakeClient(
+        [
+            "정말 신났구나! 어떤 점 때문에 그렇게 신났어?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    history = DialogueTopicHistoryItem(
+        assistantMessage="수박을 한 번에 잘랐구나! 기분이 어땠어?",
+        assistantQuestion="기분이 어땠어?",
+        childAnswer="정말 신났어",
+    )
+    request = _request().model_copy(
+        update={"topic_history": (history,)}
+    )
+
+    await _pipeline_with_clients(
+        analysis_client,
+        response_client,
+    ).process(request)
+
+    generation_payload = json.loads(response_client.calls[0][1].content)
+    assert generation_payload["topicHistory"] == [
+        {
+            "assistantMessage": history.assistant_message,
+            "assistantQuestion": history.assistant_question,
+            "childAnswer": history.child_answer,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retries_when_event_is_claimed_as_unanswered_memorable_moment() -> None:
+    analysis_client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":"짜릿했어","emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            '{"answered":true,"childQuestion":false,"bridgeResponse":null}',
+        ]
+    )
+    response_client = FakeClient(
+        [
+            (
+                "그 여러 개를 한 번에 자른 순간이 가장 기억에 남았구나. "
+                "가장 기억에 남는 순간은 언제였어?"
+            ),
+            "짜릿했구나! 게임에서 어떤 순간이 제일 기억나?",
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = DialogueTurnRequest(
+        request_id="request-1",
+        conversation_id="conversation-1",
+        child_answer="짜릿했어",
+        current_question="그때 기분은 어땠어?",
+        current_topic=DialogueTopic.GAME,
+        current_slots=DiarySlots(
+            event="과일을 한 번에 여러 개 자르기",
+            emotion_reason="여러 개를 한 번에 자르는 게 재미있었어",
+        ),
+        question_count=2,
+        max_question_count=6,
+    )
+
+    result = await _pipeline_with_clients(
+        analysis_client,
+        response_client,
+    ).process(request)
+
+    assert result.assistant_message == (
+        "짜릿했구나! 게임에서 어떤 순간이 제일 기억나?"
+    )
+    assert result.updated_slots.emotion == "짜릿했어"
+    assert response_client.call_count == 2
+    assert "retryIssues" not in json.loads(
+        response_client.calls[0][1].content
+    )
+    assert json.loads(response_client.calls[1][1].content)["retryIssues"] == [
+        "bannedExpression"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_game_generation_failure_uses_game_specific_fallback() -> None:
+    analysis_client = FakeClient(
+        [
+            (
+                '{"event":"과일 자르기","people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            )
+        ]
+    )
+    response_client = FakeClient(
+        [
+            RuntimeError("generation unavailable"),
+            RuntimeError("generation unavailable"),
+        ]
+    )
+    request = _request().model_copy(
+        update={"current_topic": DialogueTopic.GAME}
+    )
+
+    result = await _pipeline_with_clients(
+        analysis_client,
+        response_client,
+    ).process(request)
+
+    assert result.assistant_question == "게임할 때 어떤 기분이었어?"
+    assert result.assistant_message == (
+        "그랬구나! 게임할 때 어떤 기분이었어?"
+    )
+    assert result.question_generation_status is (
+        QuestionGenerationStatus.FALLBACK_USED
+    )
+    assert result.question_generation_source is (
+        QuestionGenerationSource.RULE_BASED_FALLBACK
+    )
 
 
 @pytest.mark.asyncio
@@ -299,6 +485,8 @@ async def test_redirects_off_topic_answer_with_brief_acknowledgement() -> None:
                 '{"answered":false,"childQuestion":false,'
                 '"bridgeResponse":"배가 많이 고픈가 보구나."}'
             ),
+            "배가 고프구나! 친구와 공놀이할 때는 어떤 기분이었어?",
+            '{"valid":true,"issues":[]}',
         ]
     )
     request = _request().model_copy(
@@ -314,16 +502,16 @@ async def test_redirects_off_topic_answer_with_brief_acknowledgement() -> None:
     relevance_payload = json.loads(client.calls[1][1].content)
     assert result.decision is DialogueTurnDecision.CONTINUE
     assert result.assistant_message == (
-        "배가 많이 고픈가 보구나! 그때 어떤 기분이었어?"
+        "배가 고프구나! 친구와 공놀이할 때는 어떤 기분이었어?"
     )
-    assert result.assistant_question == "그때 어떤 기분이었어?"
+    assert result.assistant_question == "친구와 공놀이할 때는 어떤 기분이었어?"
     assert result.updated_slots.emotion is None
     assert result.assistant_message.count("?") == 1
     assert "그나저나" not in result.assistant_message
     assert len(result.assistant_message) <= 90
     assert relevance_payload["currentQuestion"] == "그때 어떤 기분이었어?"
     assert relevance_payload["childAnswer"] == "그런데 지금은 배가 고파."
-    assert client.call_count == 2
+    assert client.call_count == 4
 
 
 @pytest.mark.asyncio
@@ -344,6 +532,7 @@ async def test_stop_request_terminates_without_llm_calls() -> None:
     assert result.decision is DialogueTurnDecision.TERMINATE_SESSION
     assert result.termination_reason is DialogueTerminationReason.CHILD_REQUESTED_STOP
     assert result.updated_slots == request.current_slots
+    assert result.closing_message == CONVERSATION_CLOSING_MESSAGE
     assert client.call_count == 0
 
 
@@ -367,6 +556,121 @@ async def test_stop_request_never_switches_to_the_next_topic() -> None:
     assert result.termination_reason is DialogueTerminationReason.CHILD_REQUESTED_STOP
     assert result.assistant_message is None
     assert result.assistant_question is None
+
+
+@pytest.mark.asyncio
+async def test_semantic_stop_intent_terminates_after_analysis_stage() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            (
+                '{"intent":"STOP","answered":false,"childQuestion":false,'
+                '"controlAction":"END_SESSION","bridgeResponse":null,'
+                '"suggestedTarget":null,'
+                '"evidenceText":"더 이야기하고 싶은 마음이 없어"}'
+            ),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_question": "오늘 어떤 일이 있었어?",
+            "current_target": QuestionTarget.EVENT,
+            "child_answer": "더 이야기하고 싶은 마음이 없어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.TERMINATE_SESSION
+    assert result.termination_reason is (
+        DialogueTerminationReason.CHILD_REQUESTED_STOP
+    )
+    assert client.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_skip_intent_moves_to_a_different_target() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            (
+                '{"intent":"SKIP","answered":false,"childQuestion":false,'
+                '"controlAction":"SKIP_CURRENT_TARGET",'
+                '"bridgeResponse":"생각나지 않을 수도 있어.",'
+                '"suggestedTarget":"memorableMoment",'
+                '"evidenceText":"잘 모르겠어"}'
+            ),
+            (
+                "생각나지 않을 수도 있어! "
+                "그럼 가장 기억에 남는 순간은 뭐였어?"
+            ),
+            '{"valid":true,"issues":[]}',
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(event="과일 자르기"),
+            "current_question": "그때 어떤 기분이었어?",
+            "current_target": QuestionTarget.EMOTION,
+            "child_answer": "잘 모르겠어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.assistant_target is QuestionTarget.MEMORABLE_MOMENT
+    assert result.updated_skipped_targets == frozenset(
+        {QuestionTarget.EMOTION}
+    )
+    assert "기분이 어땠어" not in result.assistant_question
+
+
+@pytest.mark.asyncio
+async def test_contextual_target_can_override_fixed_slot_priority() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":"수박이 한 번에 세 개 올라옴",'
+                '"people":[],"place":null,"emotion":null,'
+                '"emotionReason":null,"memorableMoment":null}'
+            ),
+            (
+                '{"intent":"ANSWER","answered":true,'
+                '"childQuestion":false,"controlAction":"CONTINUE",'
+                '"bridgeResponse":null,'
+                '"suggestedTarget":"memorableMoment",'
+                '"evidenceText":null}'
+            ),
+            (
+                '{"acknowledgement":"수박이 세 개나 한꺼번에 나왔구나!",'
+                '"question":"그중에서 어떤 순간이 가장 기억에 남아?",'
+                '"target":"memorableMoment",'
+                '"acknowledgementEvidence":{"source":"childAnswer",'
+                '"text":"수박이 한번에 3개 올라왔어"}}'
+            ),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_question": "게임에서 무슨 일이 있었어?",
+            "current_target": QuestionTarget.EVENT,
+            "child_answer": "수박이 한번에 3개 올라왔어",
+        }
+    )
+
+    result = await _pipeline(client).process(request)
+
+    assert result.updated_slots.event == "수박이 한 번에 세 개 올라옴"
+    assert result.assistant_target is QuestionTarget.MEMORABLE_MOMENT
+    assert client.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -474,7 +778,14 @@ async def test_briefly_answers_child_question_before_redirecting() -> None:
                 '{"answered":false,"childQuestion":true,"bridgeResponse":'
                 '"나는 티라노사우루스가 멋진 것 같아."}'
             ),
-            "나는 트리케라톱스가 든든해 보여서 좋아!",
+            (
+                '{"acknowledgement":"나는 트리케라톱스가 든든해 보여서 좋아!",'
+                '"bridge":"공룡 이야기도 재미있네.",'
+                '"question":"공놀이할 때는 어떤 기분이었어?",'
+                '"target":"emotion","acknowledgementEvidence":'
+                '{"source":"childAnswer","text":"공룡"}}'
+            ),
+            '{"valid":true,"issues":[]}',
         ]
     )
     request = _request().model_copy(
@@ -489,18 +800,16 @@ async def test_briefly_answers_child_question_before_redirecting() -> None:
 
     assert result.assistant_message == (
         "나는 트리케라톱스가 든든해 보여서 좋아! "
-        "아까 이야기로 돌아가서, "
-        "친구와 공놀이할 때 마음이 어땠어?"
+        "공룡 이야기도 재미있네. "
+        "공놀이할 때는 어떤 기분이었어?"
     )
-    assert result.assistant_question == (
-        "친구와 공놀이할 때 마음이 어땠어?"
-    )
+    assert result.assistant_question == "공놀이할 때는 어떤 기분이었어?"
     assert result.updated_slots == request.current_slots
     assert result.question_generation_status is (
         QuestionGenerationStatus.GENERATED
     )
     assert result.question_generation_source is QuestionGenerationSource.LLM
-    assert client.call_count == 3
+    assert client.call_count == 4
 
 
 @pytest.mark.asyncio
@@ -532,12 +841,10 @@ async def test_child_question_uses_safe_reply_without_question_fallback() -> Non
 
     assert result.assistant_message == (
         "나는 그 질문에는 딱 하나를 고르기 어려워! "
-        "아까 이야기로 돌아가서, "
-        "친구랑 영화 봤을 때 기분이 어땠어?"
+        "그 얘기도 재미있네. "
+        "그때 마음이 어땠는지 말해 줄래?"
     )
-    assert result.assistant_question == (
-        "친구랑 영화 봤을 때 기분이 어땠어?"
-    )
+    assert result.assistant_question == "그때 마음이 어땠는지 말해 줄래?"
     assert result.question_generation_status is (
         QuestionGenerationStatus.FALLBACK_USED
     )
@@ -563,7 +870,7 @@ async def test_does_not_redirect_when_answer_fills_current_target() -> None:
                 '{"answered":true,"childQuestion":false,'
                 '"bridgeResponse":null}'
             ),
-            "왜 신났는지 말해 줄래?",
+            "정말 신났구나! 어떤 점 때문에 그렇게 신났어?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -579,9 +886,9 @@ async def test_does_not_redirect_when_answer_fills_current_target() -> None:
 
     assert result.decision is DialogueTurnDecision.CONTINUE
     assert result.updated_slots.emotion == "신났어"
-    assert result.assistant_question == "왜 그런 마음이 들었는지 말해 줄래?"
+    assert result.assistant_question == "어떤 점 때문에 그렇게 신났어?"
     assert result.assistant_message == (
-        "정말 신났구나. 왜 그런 마음이 들었는지 말해 줄래?"
+        "정말 신났구나! 어떤 점 때문에 그렇게 신났어?"
     )
 
 
@@ -598,7 +905,7 @@ async def test_backfills_answered_target_when_slot_extraction_misses_it() -> Non
                 '{"answered":true,"childQuestion":false,'
                 '"bridgeResponse":null}'
             ),
-            "가장 기억나는 순간은 언제였어?",
+            "영화가 재미있었구나! 어떤 순간이 제일 기억나?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -617,10 +924,49 @@ async def test_backfills_answered_target_when_slot_extraction_misses_it() -> Non
 
     assert result.updated_slots.emotion_reason == "영화가 재미있었어"
     assert result.assistant_message == (
-        "영화가 재미있었구나. 가장 기억나는 순간을 말해 줄래?"
+        "영화가 재미있었구나! 어떤 순간이 제일 기억나?"
     )
-    assert result.assistant_question == "가장 기억나는 순간을 말해 줄래?"
-    assert client.call_count == 2
+    assert result.assistant_question == "어떤 순간이 제일 기억나?"
+    assert client.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_explicit_current_target_prevents_slot_based_backfill_guess() -> None:
+    analysis_client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":null}'
+            ),
+            '{"answered":true,"childQuestion":false,"bridgeResponse":null}',
+        ]
+    )
+    response_client = FakeClient(
+        ["그 장면이 기억에 남는구나! 그때 어떤 기분이었어?"]
+    )
+    request = DialogueTurnRequest(
+        request_id="request-explicit-target",
+        conversation_id="conversation-1",
+        child_answer="수박 세 개가 한꺼번에 나온 순간",
+        current_question="게임에서 어떤 순간이 제일 기억나?",
+        current_target=QuestionTarget.MEMORABLE_MOMENT,
+        current_topic=DialogueTopic.GAME,
+        current_slots=DiarySlots(event="과일 자르기"),
+        question_count=2,
+        max_question_count=6,
+    )
+
+    result = await _pipeline_with_clients(
+        analysis_client,
+        response_client,
+    ).process(request)
+
+    assert result.updated_slots.memorable_moment == (
+        "수박 세 개가 한꺼번에 나온 순간"
+    )
+    assert result.updated_slots.emotion is None
+    assert result.assistant_target is QuestionTarget.EMOTION
 
 
 @pytest.mark.asyncio
@@ -636,7 +982,7 @@ async def test_reason_answer_does_not_overwrite_existing_emotion() -> None:
                 '{"answered":true,"childQuestion":false,'
                 '"bridgeResponse":null}'
             ),
-            "가장 기억나는 순간은 언제였어?",
+            "영화가 감동적이었구나! 어떤 순간이 제일 기억나?",
             '{"valid":true,"issues":[]}',
         ]
     )
@@ -657,9 +1003,9 @@ async def test_reason_answer_does_not_overwrite_existing_emotion() -> None:
     assert result.updated_slots.emotion == "슬펐어"
     assert result.updated_slots.emotion_reason == "영화가 감동적이었어"
     assert result.assistant_message == (
-        "영화가 감동적이었구나. 가장 기억나는 순간을 말해 줄래?"
+        "영화가 감동적이었구나! 어떤 순간이 제일 기억나?"
     )
-    assert result.assistant_question == "가장 기억나는 순간을 말해 줄래?"
+    assert result.assistant_question == "어떤 순간이 제일 기억나?"
 
 
 @pytest.mark.asyncio
@@ -675,7 +1021,11 @@ async def test_recognizes_child_question_without_question_mark() -> None:
                 '{"answered":false,"childQuestion":false,'
                 '"bridgeResponse":"영화가 궁금하구나."}'
             ),
-            "나는 재미있는 모험 영화를 좋아해!",
+            (
+                "나는 재미있는 모험 영화를 좋아해! "
+                "영화 이야기도 재미있지만, 어떤 순간이 제일 기억나?"
+            ),
+            '{"valid":true,"issues":[]}',
         ]
     )
     request = _request().model_copy(
@@ -696,10 +1046,12 @@ async def test_recognizes_child_question_without_question_mark() -> None:
     assert result.updated_slots == request.current_slots
     assert result.assistant_message == (
         "나는 재미있는 모험 영화를 좋아해! "
-        "아까 이야기로 돌아가서, 가장 기억나는 순간은 언제였어?"
+        "영화 이야기도 재미있지만, 어떤 순간이 제일 기억나?"
     )
-    assert result.assistant_question == "가장 기억나는 순간은 언제였어?"
-    assert client.call_count == 3
+    assert result.assistant_question == (
+        "영화 이야기도 재미있지만, 어떤 순간이 제일 기억나?"
+    )
+    assert client.call_count == 4
 
 
 @pytest.mark.asyncio

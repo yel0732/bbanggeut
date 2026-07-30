@@ -3,14 +3,30 @@
 from fastapi import APIRouter, HTTPException, Request, status
 
 from app.dialogue.pipeline import (
+    DialogueOpeningRequest,
+    DialogueOpeningResponse,
     DialoguePipelineError,
     DialogueTurnPipeline,
     DialogueTurnRequest,
     DialogueTurnResponse,
+    build_dialogue_opening,
 )
 
 
 router = APIRouter(prefix="/internal/v1/dialogue", tags=["Internal Dialogue"])
+
+
+@router.post(
+    "/opening",
+    response_model=DialogueOpeningResponse,
+    response_model_by_alias=True,
+)
+async def open_dialogue(
+    payload: DialogueOpeningRequest,
+) -> DialogueOpeningResponse:
+    """Build the realtime-equivalent first turn without STT, TTS, or an LLM."""
+
+    return build_dialogue_opening(payload)
 
 
 @router.post(

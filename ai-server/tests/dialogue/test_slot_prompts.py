@@ -64,6 +64,10 @@ def test_builds_prompt_with_minimum_camel_case_context() -> None:
     assert "발음이 비슷한 다른 말로 잘못 적혔을 수 있다" in prompt.system
     assert "null이면 정확한 텍스트 입력이므로 그대로 신뢰한다" in prompt.system
     assert "분명하지 않으면 아이의 표현을 그대로 저장" in prompt.system
+    assert "문맥 없이 읽어도 의미가 끝나는 최소 구절" in prompt.system
+    assert '"과일을 한 번에 여러 개 자르는 게"' in prompt.system
+    assert '"과일을 한 번에 여러 개 자르기"' in prompt.system
+    assert "childAnswer에 없는 원인이나 목적을 덧붙여" in prompt.system
 
 
 def test_prompt_carries_stt_confidence_when_present() -> None:

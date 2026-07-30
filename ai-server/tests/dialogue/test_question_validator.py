@@ -8,12 +8,15 @@ from pydantic import ValidationError
 from app.dialogue import (
     DEFAULT_QUESTION_RULE_VALIDATION_POLICY,
     HARD_BANNED_QUESTION_EXPRESSIONS,
+    DiarySlots,
     QuestionRuleValidationPolicy,
     QuestionRuleValidationRequest,
+    QuestionTarget,
     QuestionValidationCode,
     SemanticQuestionValidationDecision,
     combine_question_validation_results,
     validate_question_rules,
+    validate_target_assertion_grounding,
 )
 
 
@@ -289,3 +292,47 @@ def test_requires_semantic_decision_after_hard_rules_pass() -> None:
             _validate("오늘 무슨 일이 있었어?"),
             None,
         )
+
+
+def test_rejects_claim_that_empty_memorable_target_was_already_answered() -> None:
+    result = validate_target_assertion_grounding(
+        target=QuestionTarget.MEMORABLE_MOMENT,
+        question=(
+            "그 여러 개를 한 번에 자른 순간이 가장 기억에 남았구나. "
+            "가장 기억에 남는 순간은 언제였어?"
+        ),
+        current_slots=DiarySlots(
+            event="과일을 한 번에 여러 개 자르기",
+            emotion="짜릿했어",
+        ),
+        child_answer="짜릿했어",
+    )
+
+    assert tuple(issue.code for issue in result.issues) == (
+        QuestionValidationCode.BANNED_EXPRESSION,
+    )
+
+
+def test_allows_memorable_acknowledgement_grounded_in_latest_answer() -> None:
+    result = validate_target_assertion_grounding(
+        target=QuestionTarget.MEMORABLE_MOMENT,
+        question=(
+            "수박 세 개가 나온 게 기억에 남았구나. "
+            "그때 어떤 모습이었어?"
+        ),
+        current_slots=DiarySlots(event="과일 자르기"),
+        child_answer="수박 세 개가 나온 게 기억에 남아",
+    )
+
+    assert result.is_valid
+
+
+def test_allows_acknowledgement_when_target_slot_is_already_filled() -> None:
+    result = validate_target_assertion_grounding(
+        target=QuestionTarget.MEMORABLE_MOMENT,
+        question="수박 세 개가 나온 게 기억에 남았구나. 그때 기분은 어땠어?",
+        current_slots=DiarySlots(memorable_moment="수박 세 개가 나온 순간"),
+        child_answer="짜릿했어",
+    )
+
+    assert result.is_valid

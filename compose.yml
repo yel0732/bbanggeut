@@ -139,6 +139,13 @@ services:
       REPORT_SCHEDULE_ENABLED: ${REPORT_SCHEDULE_ENABLED:-true}
       REPORT_DAILY_CRON: ${REPORT_DAILY_CRON:-0 * * * * *}
       REPORT_RECOVERY_ENABLED: ${REPORT_RECOVERY_ENABLED:-true}
+      # 탈퇴 계정의 실제 데이터 파기 스위치. 꺼져 있으면 탈퇴가 soft delete와 익명화까지만
+      # 진행되는데, 익명화 덕분에 재가입이 정상 동작해 증상이 드러나지 않은 채 데이터만 쌓인다.
+      # 기본값을 false로 두는 이유: 되돌릴 수 없는 물리 삭제라 배포 환경이 명시적으로 켜야 한다.
+      ACCOUNT_PURGE_ENABLED: ${ACCOUNT_PURGE_ENABLED:-false}
+      ACCOUNT_PURGE_CRON: ${ACCOUNT_PURGE_CRON:-0 */5 * * * *}
+      # 탈퇴 후 이 기간이 지나야 파기한다. 0d = 즉시 파기(같은 이메일 재가입을 곧바로 허용).
+      ACCOUNT_PURGE_GRACE_PERIOD: ${ACCOUNT_PURGE_GRACE_PERIOD:-0d}
       # AWS SDK reads credentials from the container OS environment.
       # Keep the real values only in /srv/a501-secrets/.env on EC2.
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:?STORAGE_PROVIDER is required}

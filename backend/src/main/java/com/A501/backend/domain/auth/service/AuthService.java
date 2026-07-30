@@ -167,6 +167,9 @@ public class AuthService {
         }
 
         parent.withdraw(LocalDateTime.now(KST));
+        // 파기 스케줄러가 row를 지울 때까지 기다리지 않고 여기서 unique 제약을 풀어, 같은
+        // 이메일·구글 계정으로 즉시 재가입할 수 있게 한다. 상세는 Parent.anonymize 참고.
+        parent.anonymize();
         // 소프트 삭제라 계정 행은 남지만 업로드한 실물 사진은 즉시 파기한다. 자녀 쪽 파기는
         // childService가 같은 정책으로 처리한다.
         parent.changeProfileImage(profileImageService.purgeUploadedImage(

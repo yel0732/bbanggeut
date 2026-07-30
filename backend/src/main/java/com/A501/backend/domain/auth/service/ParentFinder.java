@@ -31,4 +31,15 @@ public class ParentFinder {
                 .filter(p -> !p.isDeleted())
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.PARENT_NOT_FOUND));
     }
+
+    /**
+     * 계정이 살아 있는지만 확인하고 엔티티는 돌려주지 않는다.
+     *
+     * <p>타 도메인(child)이 탈퇴 게이트를 적용하면서도 Parent 엔티티를 넘겨받지 않도록 하기
+     * 위한 통로다. 엔티티가 도메인 밖으로 나가면 그쪽에서 상태를 바꿀 수 있게 되고,
+     * 도메인 간 결합을 만들지 않는다는 이 프로젝트의 방침과 어긋난다.
+     */
+    public void assertActive(Long parentId) {
+        getActive(parentId);
+    }
 }

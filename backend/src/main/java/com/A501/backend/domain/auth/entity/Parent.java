@@ -99,6 +99,37 @@ public class Parent extends BaseTimeEntity {
         this.deletedAt = now;
     }
 
+    // birth_date는 NOT NULL이라 비울 수 없어 고정값으로 덮는다.
+    private static final LocalDate ANONYMIZED_BIRTH_DATE = LocalDate.of(1900, 1, 1);
+
+    /**
+     * 탈퇴 즉시 식별정보와 자격증명을 제거한다.
+     *
+     * <p>두 가지를 동시에 해결한다.
+     *
+     * <p><b>1. 재가입 차단 해소.</b> email·providerId의 unique 제약은 소프트 삭제된 row에도
+     * 적용된다. 파기 스케줄러가 row를 지울 때까지 기다리면 그 사이 같은 이메일·구글 계정으로
+     * 재가입할 수 없고, 경로마다 다른 에러가 나간다(로컬은 EMAIL_ALREADY_EXISTS, googleAuth는
+     * DB 제약 충돌로 DATA_CONFLICT). 스케줄러를 켜지 않으면 영구 차단된다.
+     *
+     * <p><b>2. 개인정보·자격증명 즉시 파기.</b> 스케줄러가 꺼져 있으면 row가 무기한 남는데,
+     * 익명화 덕에 재가입은 잘 되므로 아무도 이상함을 느끼지 못한다. 그동안 생년월일과
+     * 비밀번호·PIN 해시가 계속 보존되는 것을 막는다.
+     *
+     * <p>파기 경로가 쓰는 값은 건드리지 않는다 — parentId(삭제 키), deletedAt(대상 선정 기준),
+     * profileImageKey(잔여 S3 객체 정리)는 그대로 둔다.
+     *
+     * <p>원래 값은 복구할 수 없다 — 탈퇴 취소 기능을 만들 수 없다는 뜻이다(복구 미제공 방침).
+     */
+    public void anonymize() {
+        this.email = "withdrawn-" + parentId + "@deleted.invalid";
+        this.providerId = null;
+        this.passwordHash = null;
+        this.pinHash = null;
+        this.pinSetAt = null;
+        this.birthDate = ANONYMIZED_BIRTH_DATE;
+    }
+
     public boolean hasPassword() {
         return passwordHash != null;
     }

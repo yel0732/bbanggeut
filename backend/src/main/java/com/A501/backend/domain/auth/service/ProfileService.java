@@ -27,7 +27,7 @@ public class ProfileService {
     @Transactional
     public ProfileImageResponse updateProfileImage(Long parentId, String imageKey) {
         // 키 검증을 먼저 한다 — 거절될 요청 때문에 이전 이미지를 지우는 일이 없도록.
-        profileImageService.assertValidPreset(imageKey);
+        profileImageService.assertValidParentPreset(imageKey);
 
         Parent parent = parentFinder.getActive(parentId);
         // 교체 전 이미지가 업로드(웹캠) 사진이면 즉시 파기한다. 더 이상 참조되지 않는 아이 실물

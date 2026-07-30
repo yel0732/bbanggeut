@@ -137,6 +137,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       REPORT_SCHEDULE_ENABLED: ${REPORT_SCHEDULE_ENABLED:-true}
+      REPORT_DAILY_CRON: ${REPORT_DAILY_CRON:-0 * * * * *}
       REPORT_RECOVERY_ENABLED: ${REPORT_RECOVERY_ENABLED:-true}
       # AWS SDK reads credentials from the container OS environment.
       # Keep the real values only in /srv/a501-secrets/.env on EC2.

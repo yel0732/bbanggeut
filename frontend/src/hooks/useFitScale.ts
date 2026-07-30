@@ -30,8 +30,9 @@ export function useFitScale<T extends HTMLElement>(
       const viewport = window.visualViewport
       const width = viewport?.width ?? window.innerWidth
       const height = viewport?.height ?? window.innerHeight
-      const scaleMethod = mode === 'contain' ? Math.min : Math.max
+      const scaleMethod = mode === 'cover' ? Math.max : Math.min
       const scale = scaleMethod(width / CANVAS_WIDTH, height / CANVAS_HEIGHT)
+      el.style.flexShrink = '0'
       el.style.transform = `scale(${scale})`
     }
 

@@ -488,6 +488,7 @@ function formatDuration(seconds: number) {
 function metricEntries(metrics: Record<string, unknown> | null) {
   if (!metrics) return []
   return Object.entries(metrics)
+    .filter(([key]) => key !== 'rulesVersion')
     .filter(([, value]) =>
       ['string', 'number', 'boolean'].includes(typeof value),
     )
@@ -501,6 +502,7 @@ function formatMetricKey(key: string) {
     correctCount: '정답',
     wrongCount: '오답',
     slicedFruitCount: '자른 과일',
+    totalFruitCount: '전체 과일 수',
   }
   return `${labels[key] ?? key}:`
 }

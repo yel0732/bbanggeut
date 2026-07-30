@@ -232,7 +232,9 @@ export function GameGuidePage() {
               />
             }
             bodyOverflowVisible={
-              step.kind === 'intro' || step.kind === 'demo' || step.kind === 'ready'
+              step.kind === 'intro' ||
+              step.kind === 'demo' ||
+              step.kind === 'ready'
             }
             footer={
               <StepFooter
@@ -386,10 +388,7 @@ function StepBody({
             transform: `translate(${READY_HERO_X}px, ${READY_HERO_Y}px)`,
           }}
         >
-          <CelebrationVideo
-            scale={READY_HERO_SCALE}
-            size={READY_HERO_SIZE}
-          />
+          <CelebrationVideo scale={READY_HERO_SCALE} size={READY_HERO_SIZE} />
         </div>
         <div
           style={{
@@ -477,9 +476,7 @@ function StepBody({
           className="flex items-center justify-center"
           style={{
             width: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_WIDTH : '100%',
-            height: usesCompactGuidePanel
-              ? COMPACT_GUIDE_PANEL_HEIGHT
-              : '100%',
+            height: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_HEIGHT : '100%',
             transform: usesCompactGuidePanel
               ? `translate(${COMPACT_GUIDE_PANEL_X}px, ${COMPACT_GUIDE_PANEL_Y}px)`
               : undefined,

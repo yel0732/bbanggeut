@@ -24,7 +24,6 @@ import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
-import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
@@ -244,8 +243,6 @@ export function ConversationPage() {
           </Link>
         </div>
 
-        <ChildProfileSwitchButton className="right-[100px]" />
-
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
           className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
@@ -289,7 +286,7 @@ export function ConversationPage() {
 
         <div
           aria-label="공룡 친구 빵긋"
-          className="absolute bottom-[260px] left-12/19 size-[400px] -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
+          className="absolute bottom-[215px] left-12/19 size-[400px] -translate-x-1/2 [animation:conversation-dino-breathe_3.4s_ease-in-out_infinite] drop-shadow-[0_22px_22px_rgba(0,0,0,.3)]"
           role="img"
         >
           {DINO_FRAME_POSITIONS.map((backgroundPosition, frameIndex) => {
@@ -317,7 +314,7 @@ export function ConversationPage() {
 
         {!showGuide ? (
           <>
-            <div className="absolute bottom-[90px] left-1/2 z-20 w-[710px] -translate-x-1/2">
+            <div className="absolute bottom-[45px] left-1/2 z-20 w-[710px] -translate-x-1/2">
               <img
                 alt=""
                 className="block w-full drop-shadow-[0_10px_20px_rgba(0,0,0,.28)]"
@@ -346,7 +343,7 @@ export function ConversationPage() {
             </div>
 
             {isConversing ? (
-              <div className="absolute right-[95px] bottom-[94px] z-30 flex w-[170px] flex-col items-center">
+              <div className="absolute right-[95px] bottom-[45px] z-30 flex w-[170px] flex-col items-center">
                 <div
                   className={`-mb-0 rounded-full px-3 py-1.5 text-center text-[15px] text-white shadow-md ${
                     state.notice ? 'bg-[#c85f50]' : 'bg-[#527542]/90'

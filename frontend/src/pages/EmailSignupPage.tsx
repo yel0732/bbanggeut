@@ -80,6 +80,7 @@ export function EmailSignupPage() {
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
   const [birth, setBirth] = useState('')
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -302,8 +303,9 @@ export function EmailSignupPage() {
           />
           <button
             aria-label="비밀번호 보기"
-            className="absolute top-[41.9%] right-[15.8%] z-20 h-[8.5%] w-[10%] border-none bg-none text-[clamp(11px,3vw,15px)] leading-none text-[#6f8a5e]"
+            className="absolute top-[41.9%] right-[17%] z-20 h-[8.5%] w-[10%] border-none bg-none text-[clamp(11px,3vw,19px)] leading-none text-[#6f8a5e]"
             onClick={() => setShowPassword((value) => !value)}
+            style={jua}
             type="button"
           >
             {showPassword ? '숨김' : '보기'}
@@ -324,13 +326,22 @@ export function EmailSignupPage() {
             </p>
           ) : null}
           <input
-            className="auth-transparent-input absolute top-[54.3%] left-[17%] z-20 h-[8.5%] w-[68%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+            className="auth-transparent-input absolute top-[54.3%] left-[17%] z-20 h-[8.5%] w-[57.5%] appearance-none border-none bg-transparent px-[3%] text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
             onChange={(event) => setPasswordConfirm(event.target.value)}
             placeholder="비밀번호 확인"
             style={jua}
-            type={showPassword ? 'text' : 'password'}
+            type={showPasswordConfirm ? 'text' : 'password'}
             value={passwordConfirm}
           />
+          <button
+            aria-label="비밀번호 확인 보기"
+            className="absolute top-[54.3%] right-[17%] z-20 h-[8.5%] w-[10%] border-none bg-none text-[clamp(11px,3vw,19px)] leading-none text-[#6f8a5e]"
+            onClick={() => setShowPasswordConfirm((value) => !value)}
+            style={jua}
+            type="button"
+          >
+            {showPasswordConfirm ? '숨김' : '보기'}
+          </button>
           {passwordConfirmMessage ? (
             <p
               className="absolute top-[63.3%] left-[17%] z-20 w-[67.6%] px-1 text-[clamp(9px,2.4vw,14px)] leading-none"

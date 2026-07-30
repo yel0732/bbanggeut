@@ -26,6 +26,7 @@ import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
 import { loadChildProfiles } from '@/lib/childProfiles'
 import { makeDemoReportDetail } from '@/lib/reportDemo'
+import { removeReadReportArrival } from '@/lib/reportArrivals'
 import { ReportPaperContent } from '@/pages/ReportDetailPage'
 
 const PAGE_SIZE = 4
@@ -127,17 +128,26 @@ export function ReportListPage() {
       setRetryMessage('')
       if (!isBackendChildId(childId)) {
         setSelectedReport(makeDemoReportDetail(selectedDate))
+        removeReadReportArrival({
+          childId,
+          childName,
+          reportDate: selectedDate,
+        })
         setDetailLoading(false)
         return
       }
       try {
-        setSelectedReport(
-          await getChildReport(
-            Number(childId),
-            selectedDate,
-            controller.signal,
-          ),
+        const report = await getChildReport(
+          Number(childId),
+          selectedDate,
+          controller.signal,
         )
+        setSelectedReport(report)
+        removeReadReportArrival({
+          childId,
+          childName,
+          reportDate: selectedDate,
+        })
       } catch (loadError) {
         if (controller.signal.aborted) return
         setDetailError(
@@ -151,7 +161,7 @@ export function ReportListPage() {
     }
     void loadDetail()
     return () => controller.abort()
-  }, [childId, selectedDate])
+  }, [childId, childName, selectedDate])
 
   async function requestRegeneration() {
     if (!selectedDate) return
@@ -313,9 +323,6 @@ export function ReportListPage() {
                             {statusLabel(report.status)}
                           </span>
                         )}
-                        <span className="absolute top-1/2 right-[18px] -translate-y-1/2 text-[30px] text-[#8aa06f]">
-                          ›
-                        </span>
                       </>
                     ) : (
                       <>
@@ -343,9 +350,6 @@ export function ReportListPage() {
                             {statusLabel(report.status)}
                           </span>
                         )}
-                        <span className="ml-auto text-[30px] text-[#8aa06f]">
-                          ›
-                        </span>
                       </>
                     )}
                   </div>

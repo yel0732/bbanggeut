@@ -161,8 +161,9 @@ export function EmailLoginPage() {
           />
           <button
             aria-label="비밀번호 보기"
-            className="absolute top-[51.2%] right-[19.5%] z-20 h-[7.4%] w-[9.5%] border-none bg-none text-[15px] leading-none text-[#6f8a5e]"
+            className="absolute top-[51.2%] right-[19.5%] z-20 h-[7.4%] w-[9.5%] border-none bg-none text-[19px] leading-none text-[#6f8a5e]"
             onClick={() => setShowPassword((value) => !value)}
+            style={jua}
             type="button"
           >
             {showPassword ? '숨김' : '보기'}

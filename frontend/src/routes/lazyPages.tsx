@@ -73,6 +73,11 @@ export const RecyclePlayPage = lazy(() =>
     default: RecyclePlayPage,
   })),
 )
+export const RecycleResultPage = lazy(() =>
+  import('@/pages/RecycleResultPage').then(({ RecycleResultPage }) => ({
+    default: RecycleResultPage,
+  })),
+)
 export const DobbleResultPage = lazy(() =>
   import('@/pages/DobbleResultPage').then(({ DobbleResultPage }) => ({
     default: DobbleResultPage,

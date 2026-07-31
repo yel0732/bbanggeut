@@ -2,7 +2,7 @@ import { authFetch } from '@/api/auth'
 import { resolveBackendChildId } from '@/api/children'
 import { apiUrl } from '@/api/config'
 
-export type CompletedGameId = 'fruit' | 'dobble'
+export type CompletedGameId = 'fruit' | 'dobble' | 'recycle'
 
 export type FruitNinjaRule = {
   rulesVersion: string
@@ -21,6 +21,13 @@ export type FruitNinjaRule = {
 const BACKEND_GAME_IDS: Record<CompletedGameId, number> = {
   dobble: 7,
   fruit: 8,
+  recycle: 9,
+}
+
+const BACKEND_GAME_TYPES: Record<CompletedGameId, string> = {
+  dobble: 'DOBBLE',
+  fruit: 'FRUIT_NINJA',
+  recycle: 'RECYCLING',
 }
 
 type SaveCompletedGameBase = {
@@ -57,6 +64,14 @@ export type SaveCompletedGameInput = SaveCompletedGameBase &
           solveTimeMs: number | null
         }[]
       }
+    | {
+        gameId: 'recycle'
+        recyclingResult: {
+          rulesVersion: string
+          successfulCount: number
+          wrongCount: number
+        }
+      }
   )
 
 export async function saveCompletedGameSession(input: SaveCompletedGameInput) {
@@ -73,10 +88,12 @@ export async function saveCompletedGameSession(input: SaveCompletedGameInput) {
       completedAt: input.completedAt,
       playDurationSeconds: input.playDurationSeconds,
       score: input.score,
-      gameType: input.gameId === 'fruit' ? 'FRUIT_NINJA' : 'DOBBLE',
+      gameType: BACKEND_GAME_TYPES[input.gameId],
       cardResults: input.gameId === 'dobble' ? input.cardResults : null,
       fruitNinjaResult:
         input.gameId === 'fruit' ? input.fruitNinjaResult : null,
+      recyclingResult:
+        input.gameId === 'recycle' ? input.recyclingResult : null,
     }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',

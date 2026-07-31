@@ -25,6 +25,7 @@ import {
   ParentProfilePage,
   ProfileSelectPage,
   RecyclePlayPage,
+  RecycleResultPage,
   ReportListPage,
   ReportDetailPage,
   StartPage,
@@ -76,6 +77,12 @@ export const router = createBrowserRouter([
           {
             path: '/games/dobble/result',
             element: <DobbleResultPage />,
+          },
+          // 분리수거는 점수·정리 개수만 보여 줘서 결과 화면을 따로 쓴다.
+          // 아래 `:gameId` 규칙보다 먼저 와야 이 화면이 잡힌다.
+          {
+            path: '/games/recycle/result',
+            element: <RecycleResultPage />,
           },
           {
             path: '/games/:gameId/result',

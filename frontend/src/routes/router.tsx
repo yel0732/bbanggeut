@@ -20,6 +20,7 @@ import {
   GamePlayPage,
   GameResultPage,
   GoogleBirthdatePage,
+  MoreGamesPage,
   ParentModePage,
   ParentProfilePage,
   ProfileSelectPage,
@@ -65,6 +66,10 @@ export const router = createBrowserRouter([
           {
             path: '/games',
             element: <GameEntryPage />,
+          },
+          {
+            path: '/games/more',
+            element: <MoreGamesPage />,
           },
           {
             path: '/games/dobble/result',

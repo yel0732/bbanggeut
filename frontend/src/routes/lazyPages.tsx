@@ -28,6 +28,11 @@ export const GameEntryPage = lazy(() =>
     default: GameEntryPage,
   })),
 )
+export const MoreGamesPage = lazy(() =>
+  import('@/pages/MoreGamesPage').then(({ MoreGamesPage }) => ({
+    default: MoreGamesPage,
+  })),
+)
 export const GoogleBirthdatePage = lazy(() =>
   import('@/pages/GoogleBirthdatePage').then(({ GoogleBirthdatePage }) => ({
     default: GoogleBirthdatePage,

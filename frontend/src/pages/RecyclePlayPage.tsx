@@ -87,7 +87,9 @@ export function RecyclePlayPage() {
   const { gesturesRef, modelReady } = useHandGestures(
     videoRef,
     status === 'granted',
-    { smoothing: CFG.handSmoothing },
+    // 과일 자르기처럼 한 손만 쓴다. 두 손이 다 잡히면 아이가 어느 손으로
+    // 하고 있는지 헷갈리고, 쓰지 않는 손이 지나가다 쓰레기를 집는다.
+    { maxHands: 1, smoothing: CFG.handSmoothing },
   )
 
   const game = getGameById('recycle')
@@ -121,9 +123,23 @@ export function RecyclePlayPage() {
 
   const handleEnd = useCallback(
     (result: RecycleGameResult) => {
-      // 정합성이 깨진 결과는 저장·표시하지 않고 게임 선택으로 되돌린다.
+      /*
+        정합성이 깨진 결과는 서버에 보내지 않는다. 서버도 같은 값을 검증하므로
+        어차피 거부되고, 틀린 기록을 남기는 것보다 안 남기는 쪽이 낫다.
+
+        그래도 결과 화면은 보여 준다. 여기서 게임 선택으로 되돌리면 아이가 1분
+        동안 한 것이 아무 말 없이 사라진다 — 우리 계산이 틀린 것을 아이가
+        책임질 일은 아니다.
+      */
       if (!result.valid) {
-        navigate('/games/more', { replace: true })
+        navigate('/games/recycle/result', {
+          replace: true,
+          state: {
+            ...result,
+            recordError: '게임 기록을 저장하지 못했어요.',
+            recordSaved: false,
+          },
+        })
         return
       }
 

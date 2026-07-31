@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { isCompletedTerminationReason } from '@/api/conversations'
+import { previewChildDiary, saveChildDiary } from '@/api/diaries'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
-import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
 import diaryListButtonUrl from '@/assets/images/conversation/diary-list-btn.webp'
 import talkListenDinosaurUrl from '@/assets/images/conversation/talk-listen-dinosaur.webp'
 import micOffButtonUrl from '@/assets/images/conversation/mic-off-btn.webp'
@@ -32,12 +32,14 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
-const DIARY_LINES = [
-  '오늘은 과일 자르기에서 과일을 힘차게 잘랐다.',
-  '빵긋이에게 오늘 있었던 재미있는 일도 들려주었다.',
-  '가장 기억에 남는 순간을 이야기해서 기분이 좋았다.',
-  '내일도 신나게 놀고 빵긋이와 이야기하고 싶다.',
-]
+/** preview는 대화가 서버에서 COMPLETED로 확정돼야 성공한다. 종료 이벤트가
+ * Redis Stream을 거쳐 MySQL에 반영되기까지의 지연을 이 창 안에서 재시도로 흡수한다. */
+const PREVIEW_RETRY_WINDOW_MS = 10_000
+const PREVIEW_RETRY_INTERVAL_MS = 800
+
+type DiaryStatus = 'idle' | 'loading' | 'ready' | 'error'
+type DiaryData = { title: string; lines: string[]; previewToken: string }
+
 const DINO_FRAME_SEQUENCE = [0, 1, 2, 1, 0] as const
 const DINO_FRAME_POSITIONS = [
   '0% 0%',
@@ -89,6 +91,10 @@ export function ConversationPage() {
   const [isDiaryOpen, setIsDiaryOpen] = useState(false)
   const [isDiaryAttached, setIsDiaryAttached] = useState(false)
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false)
+  const [diaryStatus, setDiaryStatus] = useState<DiaryStatus>('idle')
+  const [diaryData, setDiaryData] = useState<DiaryData | null>(null)
+  const [isSavingDiary, setIsSavingDiary] = useState(false)
+  const diaryPrefetchedRef = useRef(false)
 
   const isListening = state.voice === 'listening' && state.micEnabled
 
@@ -150,17 +156,91 @@ export function ConversationPage() {
     }
   }, [isListening, state.localStream])
 
+  // 방금 끝낸 대화 하나로 일기를 미리 만들어 둔다. '이야기 완성!'이 뜨는 순간
+  // 백그라운드로 시작해, 아이가 '일기 보기'를 누를 때 대부분 이미 준비돼 있게 한다.
+  const { conversationId, childId } = state
+  useEffect(() => {
+    if (!isEnded || !canMakeDiary) return
+    if (diaryPrefetchedRef.current) return
+    if (conversationId === null || childId === null) return
+    diaryPrefetchedRef.current = true
+
+    let cancelled = false
+    setDiaryStatus('loading')
+
+    void (async () => {
+      const deadline = Date.now() + PREVIEW_RETRY_WINDOW_MS
+      for (;;) {
+        try {
+          const preview = await previewChildDiary(childId, conversationId)
+          if (cancelled) return
+          setDiaryData({
+            lines: preview.lines,
+            previewToken: preview.previewToken,
+            title: preview.title,
+          })
+          setDiaryStatus('ready')
+          return
+        } catch {
+          // 아직 COMPLETED로 반영되기 전이면 잠깐 뒤 다시 시도한다.
+          if (cancelled) return
+          if (Date.now() >= deadline) {
+            setDiaryStatus('error')
+            return
+          }
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, PREVIEW_RETRY_INTERVAL_MS)
+          })
+          if (cancelled) return
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isEnded, canMakeDiary, conversationId, childId])
+
   const openDiary = useCallback(() => {
     setIsDiaryOpen(true)
   }, [])
 
-  const attachDiary = useCallback(() => {
+  const attachDiary = useCallback(async () => {
     if (isDiaryAttached) {
       navigate('/diaries')
       return
     }
-    setIsDiaryAttached(true)
-  }, [isDiaryAttached, navigate])
+    if (diaryStatus !== 'ready' || diaryData === null || isSavingDiary) return
+    if (childId === null) return
+
+    setIsSavingDiary(true)
+    try {
+      await saveChildDiary(childId, diaryData.previewToken)
+    } catch {
+      // 토큰 만료(10분)나 일시 오류면 미리보기를 한 번 다시 받아 저장을 시도한다.
+      // 이미 저장된 대화(중복)면 그대로 일기장으로 보내면 방금 일기가 보인다.
+      if (conversationId !== null) {
+        try {
+          const fresh = await previewChildDiary(childId, conversationId)
+          await saveChildDiary(childId, fresh.previewToken)
+        } catch {
+          // 유아 화면이라 실패를 강조하지 않고 일기장으로 넘어간다.
+        }
+      }
+    } finally {
+      setIsSavingDiary(false)
+      setIsDiaryAttached(true)
+      navigate('/diaries')
+    }
+  }, [
+    childId,
+    conversationId,
+    diaryData,
+    diaryStatus,
+    isDiaryAttached,
+    isSavingDiary,
+    navigate,
+  ])
 
   const leaveConversation = () => {
     if (isConversing) {
@@ -212,18 +292,6 @@ export function ConversationPage() {
           />
         </button>
         <div className="absolute top-4 right-[25px] z-30 flex flex-col gap-2">
-          <button
-            aria-label="오늘의 일기"
-            className="size-[58px] bg-transparent p-0 transition hover:scale-105"
-            onClick={() => void openDiary()}
-            type="button"
-          >
-            <img
-              alt=""
-              className="size-full object-contain"
-              src={diaryButtonUrl}
-            />
-          </button>
           <Link
             aria-label="내 일기장"
             className="size-[58px] transition hover:scale-105"
@@ -537,16 +605,35 @@ export function ConversationPage() {
                 <h2 className="mt-0.5 text-[39px] text-[#7a5220]" style={jua}>
                   오늘의 일기
                 </h2>
-                <div className="mt-3.5 flex max-w-[650px] flex-col gap-2">
-                  {DIARY_LINES.map((line) => (
+                <div
+                  aria-live="polite"
+                  className="mt-3.5 flex max-h-[240px] min-h-[140px] max-w-[650px] flex-col justify-center gap-2 overflow-y-auto"
+                >
+                  {diaryStatus === 'ready' && diaryData ? (
+                    diaryData.lines.map((line) => (
+                      <p
+                        className="text-[23px] leading-[1.38] text-[#5f4626]"
+                        key={line}
+                        style={jua}
+                      >
+                        {line}
+                      </p>
+                    ))
+                  ) : diaryStatus === 'error' ? (
                     <p
-                      className="text-[23px] leading-[1.38] text-[#5f4626]"
-                      key={line}
+                      className="text-[22px] leading-[1.5] text-[#8a6a34]"
                       style={jua}
                     >
-                      {line}
+                      일기는 잠시 뒤에 일기장에서 볼 수 있어.
                     </p>
-                  ))}
+                  ) : (
+                    <p
+                      className="text-[22px] leading-[1.5] text-[#6f8e3f]"
+                      style={jua}
+                    >
+                      빵긋이가 일기를 만들어주고 있어요…
+                    </p>
+                  )}
                 </div>
                 <p
                   aria-live="polite"
@@ -559,8 +646,12 @@ export function ConversationPage() {
                 </p>
                 <div className="-mt-1 flex flex-col items-center">
                   <button
-                    className="translate-x-2.4 relative block w-[320px] transition hover:scale-105 active:scale-[.98]"
-                    onClick={attachDiary}
+                    className="translate-x-2.4 relative block w-[320px] transition hover:scale-105 active:scale-[.98] disabled:pointer-events-none disabled:opacity-50"
+                    disabled={
+                      !isDiaryAttached &&
+                      (diaryStatus !== 'ready' || isSavingDiary)
+                    }
+                    onClick={() => void attachDiary()}
                     type="button"
                   >
                     <img
@@ -574,7 +665,9 @@ export function ConversationPage() {
                     >
                       {isDiaryAttached
                         ? '일기장에 붙였어요!'
-                        : '내 일기장에 붙이기'}
+                        : isSavingDiary
+                          ? '붙이는 중…'
+                          : '내 일기장에 붙이기'}
                     </span>
                   </button>
                   <button

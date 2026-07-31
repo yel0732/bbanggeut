@@ -20,6 +20,8 @@ import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.repository.GameRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
+import com.A501.backend.domain.game.repository.RecyclingRuleVersionRepository;
 
 @ExtendWith(MockitoExtension.class)
 class GameSessionServiceTest {
@@ -29,6 +31,12 @@ class GameSessionServiceTest {
 
     @Mock
     private GameRepository gameRepository;
+
+    @Mock
+    private RecyclingGameResultRepository recyclingGameResultRepository;
+
+    @Mock
+    private RecyclingRuleVersionRepository recyclingRuleVersionRepository;
 
     @Mock
     private GameSessionWriter gameSessionWriter;
@@ -44,7 +52,9 @@ class GameSessionServiceTest {
         GameSession session = createSession(UUID.randomUUID());
         when(gameSessionRepository.findById(session.getGameSessionId())).thenReturn(Optional.of(session));
         GameSessionService service = new GameSessionService(
-                gameSessionRepository, gameRepository, gameSessionWriter,
+                gameSessionRepository, gameRepository,
+                recyclingGameResultRepository, recyclingRuleVersionRepository,
+                gameSessionWriter,
                 currentMemberProvider, childAccessVerifier);
 
         assertThat(service.existsForChild(session.getGameSessionId(), 15L)).isTrue();
@@ -64,7 +74,9 @@ class GameSessionServiceTest {
         when(currentMemberProvider.getCurrentMemberId()).thenReturn(1L);
         doNothing().when(childAccessVerifier).verifyAccess(1L, request.childId());
         GameSessionService service = new GameSessionService(
-                gameSessionRepository, gameRepository, gameSessionWriter,
+                gameSessionRepository, gameRepository,
+                recyclingGameResultRepository, recyclingRuleVersionRepository,
+                gameSessionWriter,
                 currentMemberProvider, childAccessVerifier);
 
         GameSessionResponse response = service.saveCompletedResult(request);

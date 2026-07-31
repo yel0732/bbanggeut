@@ -24,7 +24,8 @@ public record SaveGameResultRequest(
         @PositiveOrZero Integer score,
         GameMetricType gameType,
         @Valid List<SaveDobbleCardResultRequest> cardResults,
-        @Valid SaveFruitNinjaResultRequest fruitNinjaResult
+        @Valid SaveFruitNinjaResultRequest fruitNinjaResult,
+        @Valid SaveRecyclingResultRequest recyclingResult
 ) {
     public SaveGameResultRequest(
             Long childId,
@@ -46,6 +47,7 @@ public record SaveGameResultRequest(
                 completedAt,
                 playDurationSeconds,
                 score,
+                null,
                 null,
                 null,
                 null);

@@ -2,5 +2,6 @@ package com.A501.backend.domain.game.metric;
 
 public enum GameMetricType {
     DOBBLE,
-    FRUIT_NINJA
+    FRUIT_NINJA,
+    RECYCLING
 }

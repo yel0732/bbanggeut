@@ -70,7 +70,7 @@ class GameAccessControlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest(childId)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+                .andExpect(jsonPath("$.error").value("AUTH_UNAUTHORIZED"));
     }
 
     @Test

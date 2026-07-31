@@ -86,9 +86,9 @@ conversation:
 
 account:
   purge:
-    # 탈퇴 계정의 실제 데이터 파기(hard delete) 스케줄러. 기본 false — 운영에서만 켠다.
-    # 켜면 되돌릴 수 없는 물리 삭제가 주기적으로 돈다.
-    enabled: ${ACCOUNT_PURGE_ENABLED:false}
+    # 탈퇴 계정의 실제 데이터 파기(hard delete) 스케줄러. 기본 true이며 환경변수로 끌 수 있다.
+    # 활성화하면 되돌릴 수 없는 물리 삭제가 주기적으로 실행된다.
+    enabled: ${ACCOUNT_PURGE_ENABLED:true}
     cron: ${ACCOUNT_PURGE_CRON:0 */5 * * * *}
     zone: Asia/Seoul
     # 탈퇴 후 이 기간이 지나야 파기한다. 0 = 즉시 파기(현재 정책 — 같은 이메일 재가입을

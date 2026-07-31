@@ -145,16 +145,24 @@ def _parse_generated_diary(
     has_game = ChildDiaryTopicType.GAME in topic_types
     has_daily = ChildDiaryTopicType.DAILY in topic_types
     if has_game and has_daily:
-        if len(generated.game_lines) != 2 or len(generated.daily_lines) != 2:
-            raise ValueError("combined diary requires two lines per topic")
+        total = len(generated.game_lines) + len(generated.daily_lines)
+        if (
+            len(generated.game_lines) < 1
+            or len(generated.daily_lines) < 1
+            or not MIN_DIARY_LINES <= total <= MAX_DIARY_LINES
+        ):
+            raise ValueError(
+                "combined diary requires three to five lines "
+                "with at least one line per topic"
+            )
     elif has_game:
         if not MIN_DIARY_LINES <= len(generated.game_lines) <= MAX_DIARY_LINES:
-            raise ValueError("game diary requires three or four lines")
+            raise ValueError("game diary requires three to five lines")
         if generated.daily_lines:
             raise ValueError("dailyLines must be empty without a DAILY topic")
     else:
         if not MIN_DIARY_LINES <= len(generated.daily_lines) <= MAX_DIARY_LINES:
-            raise ValueError("daily diary requires three or four lines")
+            raise ValueError("daily diary requires three to five lines")
         if generated.game_lines:
             raise ValueError("gameLines must be empty without a GAME topic")
     return generated

@@ -14,8 +14,8 @@ from pydantic import (
 
 DIARY_TITLE = "오늘의 일기"
 MIN_DIARY_LINES = 3
-MAX_DIARY_LINES = 4
-MAX_LINE_LENGTH = 40
+MAX_DIARY_LINES = 5
+MAX_LINE_LENGTH = 60
 
 
 class ChildDiarySlots(BaseModel):
@@ -132,5 +132,5 @@ class ChildDiarySummaryResponse(BaseModel):
     def validate_lines(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         normalized = tuple(value.strip() for value in values)
         if any(not value or len(value) > MAX_LINE_LENGTH for value in normalized):
-            raise ValueError("each diary line must contain 1 to 40 characters")
+            raise ValueError("each diary line must contain 1 to 60 characters")
         return normalized

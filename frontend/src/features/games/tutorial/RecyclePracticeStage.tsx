@@ -96,6 +96,10 @@ export function RecyclePracticeStage({
               style={{
                 left: item.x,
                 top: item.y,
+                // 본 게임과 같은 이유로 크기를 못박는다. 비워 두면 화면 오른쪽
+                // 밖으로 나갈 때 박스가 눌려 쓰레기가 쪼그라든다.
+                width: CFG.itemSize,
+                height: CFG.itemSize,
                 transform: 'translate(-50%, -50%)',
               }}
             >

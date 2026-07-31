@@ -42,10 +42,7 @@ import {
   usesHandGestures,
   type TutorialStepKind,
 } from '@/features/games/tutorial/tutorialSteps'
-import {
-  hasUpcomingDemo,
-  UPCOMING_DEMO_PANEL_HEIGHT,
-} from '@/features/games/tutorial/upcomingDemos'
+import { hasUpcomingDemo } from '@/features/games/tutorial/upcomingDemos'
 import { DobblePracticeStage } from '@/features/games/tutorial/DobblePracticeStage'
 import { RecyclePracticeStage } from '@/features/games/tutorial/RecyclePracticeStage'
 import { RecycleSortingBoard } from '@/features/games/tutorial/RecycleSortingBoard'
@@ -111,10 +108,11 @@ export function GameGuidePage() {
   const gestures = useHandGestures(
     videoRef,
     cameraReady && usesHandGestures(tutorialGameId),
-    // 분리수거는 화면을 크게 오가야 해서 손이 더 즉각 따라와야 한다. 도블은
-    // 제자리 그림을 짚는 게임이라 기본값을 그대로 쓴다.
+    // 분리수거는 한 손만 쓰고(과일 자르기처럼) 화면을 크게 오가서 손이 더
+    // 즉각 따라와야 한다. 도블은 양손으로 제자리 그림을 짚는 게임이라 기본값을
+    // 그대로 쓴다.
     tutorialGameId === 'recycle'
-      ? { smoothing: RECYCLE_CFG.handSmoothing }
+      ? { maxHands: 1, smoothing: RECYCLE_CFG.handSmoothing }
       : undefined,
   )
 
@@ -594,17 +592,18 @@ function StepBody({
           className="flex items-center justify-center"
           style={{
             width: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_WIDTH : '100%',
-            height: usesCompactGuidePanel
-              ? isDemoStep && demoFitsPanel
-                ? UPCOMING_DEMO_PANEL_HEIGHT
-                : COMPACT_GUIDE_PANEL_HEIGHT
-              : '100%',
+            height: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_HEIGHT : '100%',
             transform: usesCompactGuidePanel
               ? `translate(${COMPACT_GUIDE_PANEL_X}px, ${COMPACT_GUIDE_PANEL_Y}px)`
               : undefined,
           }}
         >
-          <TutorialPanel overflowVisible={isDemoStep && !demoFitsPanel}>
+          {/*
+            시범 단계는 판 밖으로 넘치게 둔다. 네 게임 모두 같은 360px 판을
+            쓰는데, 공룡 크기는 게임마다 다르게 잡으므로 판보다 커질 수 있다.
+            넘침을 막으면 그때 공룡이 잘려 나간다.
+          */}
+          <TutorialPanel overflowVisible={isDemoStep}>
             {kind === 'demo' ? (
               demoFitsPanel ? (
                 <UpcomingGameDemo gameId={gameId} />

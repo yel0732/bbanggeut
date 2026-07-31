@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
-import {
-  RECYCLE_GAME_CONFIG as CFG,
-  DESPAWN_X,
-  SPAWN_X,
-} from '@/features/games/recycle/recycleGameConfig'
+import { DESPAWN_X, SPAWN_X } from '@/features/games/recycle/recycleGameConfig'
 import {
   binAt,
   idleAim,
+  riverCenterY,
+  riverHalfSpread,
   riverY,
   screenFromHand,
   stepAim,
@@ -81,7 +79,7 @@ function createPracticeItems(): FloatingItem[] {
 
     // 두 개를 화면 좌우로 벌리고 높이도 갈라 놓아 한 번에 둘 다 보이게 한다.
     const startX = 250 + index * 420
-    const laneOffsetY = index === 0 ? -40 : 34
+    const laneRatio = index === 0 ? -0.7 : 0.6
 
     return [
       {
@@ -91,10 +89,10 @@ function createPracticeItems(): FloatingItem[] {
         category: item.category,
         imageUrl: item.imageUrl,
         x: startX,
-        y: CFG.river.y + laneOffsetY,
+        y: riverCenterY(startX) + laneRatio * riverHalfSpread(startX),
         riverX: startX,
         speedPx: PRACTICE_SPEED_PX,
-        laneOffsetY,
+        laneRatio,
         bobPhaseMs: index * 900,
         heldBy: null,
         judging: false,

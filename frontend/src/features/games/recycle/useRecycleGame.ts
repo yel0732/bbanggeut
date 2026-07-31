@@ -11,6 +11,8 @@ import {
 import {
   binAt,
   idleAim,
+  riverCenterY,
+  riverHalfSpread,
   riverY,
   screenFromHand,
   stepAim,
@@ -164,7 +166,7 @@ function spawnItem(engine: Engine, now: number): void {
   const item: RecycleItem = pickNextItem(engine.recentCodes)
   engine.recentCodes = [...engine.recentCodes.slice(-3), item.code]
 
-  const lanes = CFG.river.lanesY
+  const lanes = CFG.river.lanes
   let lane = Math.floor(Math.random() * lanes.length)
   if (lane === engine.lastLane) {
     lane =
@@ -172,8 +174,9 @@ function spawnItem(engine: Engine, now: number): void {
   }
   engine.lastLane = lane
 
-  const jitter = (Math.random() * 2 - 1) * CFG.river.laneJitterPx
-  const laneOffsetY = lanes[lane] + jitter
+  const jitter = (Math.random() * 2 - 1) * CFG.river.laneJitterRatio
+  // 비율이라 -1~1을 넘으면 물 밖으로 나간다.
+  const laneRatio = Math.min(1, Math.max(-1, lanes[lane] + jitter))
   const speedPx =
     CFG.itemSpeedPx * (1 + (Math.random() * 2 - 1) * CFG.speedJitterRatio)
 
@@ -184,10 +187,10 @@ function spawnItem(engine: Engine, now: number): void {
     category: item.category,
     imageUrl: item.imageUrl,
     x: SPAWN_X,
-    y: CFG.river.y + laneOffsetY,
+    y: riverCenterY(SPAWN_X) + laneRatio * riverHalfSpread(SPAWN_X),
     riverX: SPAWN_X,
     speedPx,
-    laneOffsetY,
+    laneRatio,
     // 위상을 흩어 놓아야 쓰레기들이 한 몸처럼 출렁이지 않는다.
     bobPhaseMs: (now * 0.37 + engine.nextUid * 613) % CFG.river.bobPeriodMs,
     heldBy: null,
@@ -206,6 +209,18 @@ function returnToRiver(engine: Engine, uid: number): void {
   if (!item) return
   item.heldBy = null
   item.x = item.riverX
+}
+
+/**
+ * 타이머를 한 프레임만큼 흘린다.
+ *
+ * 제한 시간을 넘기지 않는 것이 핵심이다. 오답 안내 중에도 타이머는 흐르는데
+ * (RGAME-09) 안내가 끝날 때까지는 종료 판정을 하지 않으므로, 상한을 두지 않으면
+ * 안내 길이만큼 60초를 넘어 버린다. 그러면 서버가 플레이 시간을 0~60초로
+ * 검증하다 결과를 거부하고, 아이가 1분 동안 한 것이 통째로 사라진다.
+ */
+function advanceTimer(engine: Engine, dt: number): number {
+  return Math.min(engine.playElapsedMs + dt * 1000, CFG.durationSec * 1000)
 }
 
 function releaseAllHeld(engine: Engine): void {
@@ -532,7 +547,7 @@ export function useRecycleGame(
             break
           }
 
-          engine.playElapsedMs += dt * 1000
+          engine.playElapsedMs = advanceTimer(engine, dt)
           engine.msUntilNextSpawn -= dt * 1000
           if (engine.msUntilNextSpawn <= 0) {
             spawnItem(engine, now)
@@ -546,7 +561,7 @@ export function useRecycleGame(
           break
         case 'guide':
           // 안내 중에도 타이머는 흐른다(RGAME-09). 생성·이동·입력은 멈춘다.
-          engine.playElapsedMs += dt * 1000
+          engine.playElapsedMs = advanceTimer(engine, dt)
           if (now >= engine.guideUntil) {
             engine.guide = null
             // 안내 중 시간이 끝났으면 재개하지 않고 바로 종료한다(RGAME-10).

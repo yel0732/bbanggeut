@@ -98,12 +98,25 @@ function distance(
 export function useHandGestures(
   videoRef: RefObject<HTMLVideoElement | null>,
   enabled: boolean,
-  { smoothing = DEFAULT_SMOOTHING }: { smoothing?: number } = {},
+  {
+    maxHands = 2,
+    smoothing = DEFAULT_SMOOTHING,
+  }: { maxHands?: 1 | 2; smoothing?: number } = {},
 ): HandGesturesState {
   const gesturesRef = useRef<HandGesturesFrame>({ a: null, b: null })
   // 매 프레임 콜백에서 읽으므로 ref에 담아 콜백을 다시 만들지 않는다.
   const smoothingRef = useRef(smoothing)
   smoothingRef.current = smoothing
+  const maxHandsRef = useRef(maxHands)
+  maxHandsRef.current = maxHands
+  /**
+   * 한 손만 쓸 때 따라가고 있는 손의 직전 위치.
+   *
+   * 두 손이 화면에 있어도 쓰던 손을 계속 따라가야 한다. 매 프레임 인식 점수가
+   * 높은 손을 새로 고르면, 아이가 다른 손을 들었을 때 포인터가 건너뛰면서 들고
+   * 있던 것을 놓친다. 그래서 직전 위치에 가장 가까운 손을 이어서 잡는다.
+   */
+  const followedRef = useRef<{ x: number; y: number } | null>(null)
   const trackedRef = useRef<Record<HandSlot, Tracked | null>>({
     a: null,
     b: null,
@@ -114,16 +127,45 @@ export function useHandGestures(
     const hands = result.landmarks ?? []
     const labels = result.handedness ?? result.handednesses ?? []
 
-    // 라벨로 슬롯을 정하고, 같은 라벨이 두 번 나오면 x 순서로 나눈다.
     const bySlot: Record<HandSlot, number | null> = { a: null, b: null }
-    for (let i = 0; i < hands.length && i < 2; i++) {
-      const label = labels[i]?.[0]?.categoryName === 'Left' ? 'a' : 'b'
-      if (bySlot[label] === null) {
-        bySlot[label] = i
-      } else {
-        const other: HandSlot = label === 'a' ? 'b' : 'a'
-        if (bySlot[other] === null) {
-          bySlot[other] = i
+
+    if (maxHandsRef.current === 1) {
+      /*
+        한 손만 쓴다. 두 손이 화면에 있어도 쓰던 손을 계속 따라간다.
+
+        직전 위치에 가장 가까운 손을 이어서 잡는다. 손은 한 프레임에 순간이동하지
+        않으므로 이 기준이면 안 헷갈린다. 따라가던 손이 사라지면 그때 다시 고른다.
+
+        슬롯은 항상 `a`로 고정한다. 왼손/오른손 라벨에 따라 슬롯이 바뀌면 포인터
+        색이 변하고, 슬롯마다 따로 두는 조준·잡기 상태가 초기화돼 들고 있던 것을
+        놓친다.
+      */
+      const followed = followedRef.current
+      let best = 0
+      if (followed && hands.length > 1) {
+        let bestDist = Infinity
+        for (let i = 0; i < hands.length && i < 2; i++) {
+          const dist = distance(hands[i][LM.middleMcp], followed)
+          if (dist < bestDist) {
+            bestDist = dist
+            best = i
+          }
+        }
+      }
+      if (hands.length > 0) {
+        bySlot.a = best
+      }
+    } else {
+      // 라벨로 슬롯을 정하고, 같은 라벨이 두 번 나오면 x 순서로 나눈다.
+      for (let i = 0; i < hands.length && i < 2; i++) {
+        const label = labels[i]?.[0]?.categoryName === 'Left' ? 'a' : 'b'
+        if (bySlot[label] === null) {
+          bySlot[label] = i
+        } else {
+          const other: HandSlot = label === 'a' ? 'b' : 'a'
+          if (bySlot[other] === null) {
+            bySlot[other] = i
+          }
         }
       }
     }
@@ -182,6 +224,12 @@ export function useHandGestures(
       tracked[slot] = { x, y, angle, fist, lastSeenAt: now }
       gesturesRef.current[slot] = { x, y, angle, fist }
     }
+
+    // 한 손 모드에서 다음 프레임에 같은 손을 이어 잡을 기준점.
+    if (maxHandsRef.current === 1) {
+      const current = gesturesRef.current.a
+      followedRef.current = current ? { x: current.x, y: current.y } : null
+    }
   }, [])
 
   const createTask = useCallback(
@@ -211,6 +259,7 @@ export function useHandGestures(
     }
     trackedRef.current = { a: null, b: null }
     gesturesRef.current = { a: null, b: null }
+    followedRef.current = null
   }, [enabled])
 
   return { gesturesRef, modelReady, error }

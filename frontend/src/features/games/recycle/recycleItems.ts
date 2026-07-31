@@ -59,14 +59,14 @@ export type RecycleBin = {
  * 분리수거 통.
  *
  * 글자·색·대표 그림이 모두 통 이미지 안에 그려져 있어 화면에서 따로 얹지
- * 않는다(RGAME-03). 캔 통은 그림에 "철"이라고 적혀 있어 안내 문구도 그
- * 글자를 쓴다 — 아이가 보는 글자와 듣는 말이 달라지면 어디에 넣으라는
- * 것인지 알 수 없다.
+ * 않는다(RGAME-03). `label`은 통 그림에 실제로 적힌 글자와 같아야 한다 —
+ * 안내 문구가 이 이름을 쓰기 때문에, 아이가 보는 글자와 듣는 말이 달라지면
+ * 어디에 넣으라는 것인지 알 수 없다.
  */
 export const RECYCLE_BINS: RecycleBin[] = [
   {
     category: 'CAN',
-    label: '철',
+    label: '캔',
     imageUrl: canBinUrl,
     centerX: CFG.bin.centersX[0],
   },

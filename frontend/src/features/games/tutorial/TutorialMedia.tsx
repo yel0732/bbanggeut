@@ -11,6 +11,8 @@ import type { GameId } from '@/features/games/games'
 
 import {
   UPCOMING_DEMO_HEIGHT,
+  UPCOMING_DEMO_X,
+  UPCOMING_DEMO_Y,
   UPCOMING_DEMOS,
   upcomingDemoWidth,
 } from './upcomingDemos'
@@ -197,17 +199,23 @@ export const FRUIT_POSE_SOURCE_SIZE = FRUIT_POSE_FRAME
  * 나중에 추가한 게임의 시범 동작 그림.
  *
  * 에셋이 없는 게임이면 `fallback`을 그린다. 부르는 쪽이 에셋 유무를 따로
- * 물어보지 않아도 되게 여기서 갈라 준다. 에셋 목록과 크기는
- * `upcomingDemos.ts`에 있다.
+ * 물어보지 않아도 되게 여기서 갈라 준다.
+ *
+ * 크기와 위치는 `upcomingDemos.ts`의 `UPCOMING_DEMO_HEIGHT`·`_X`·`_Y`로
+ * 조절한다. 위치를 여기서 적용하므로 부르는 쪽은 감싸지 않아도 된다.
  */
 export function UpcomingGameDemo({
   fallback = null,
   gameId,
   height = UPCOMING_DEMO_HEIGHT,
+  x = UPCOMING_DEMO_X,
+  y = UPCOMING_DEMO_Y,
 }: {
   fallback?: ReactNode
   gameId: GameId
   height?: number
+  x?: number
+  y?: number
 }) {
   const demo = UPCOMING_DEMOS[gameId]
 
@@ -222,7 +230,11 @@ export function UpcomingGameDemo({
       decoding="async"
       draggable={false}
       src={demo.url}
-      style={{ height, width: upcomingDemoWidth(height) }}
+      style={{
+        height,
+        width: upcomingDemoWidth(height),
+        transform: `translate(${x}px, ${y}px)`,
+      }}
     />
   )
 }

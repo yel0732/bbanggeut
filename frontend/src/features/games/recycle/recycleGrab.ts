@@ -26,8 +26,12 @@ export type FloatingItem = {
   riverX: number
   /** 이 쓰레기의 이동 속도(px/초). 생길 때 정해지고 바뀌지 않는다. */
   speedPx: number
-  /** 물길 기준 높이에서 벗어난 정도(px). 갈래를 나누는 값이다. */
-  laneOffsetY: number
+  /**
+   * 물 폭 안에서 놓이는 자리 (-1: 물 위쪽 끝, 0: 가운데, 1: 아래쪽 끝).
+   *
+   * 픽셀이 아니라 비율이라 물이 좁아지는 가장자리에서 자동으로 좁아진다.
+   */
+  laneRatio: number
   /** 물결에 흔들리는 위상. 쓰레기마다 달라야 같이 출렁이지 않는다. */
   bobPhaseMs: number
   /** 이 쓰레기를 들고 있는 손. 없으면 물에 떠 있다. */
@@ -90,13 +94,64 @@ export function screenFromHand(hand: { x: number; y: number }): {
   }
 }
 
-/** 자기 갈래 높이에서 물결에 따라 흔들리는 y. 잡히면 흔들리지 않는다. */
+/**
+ * 그 x에서 물이 끝나는 y.
+ *
+ * 아래쪽 둑이 안으로 휘어 가운데가 깊고 양쪽 끝이 얕다. 가운데 구간은 평평하게
+ * 두고 바깥 `edgeRatio`만큼만 부드럽게 올린다 — 배경 그림의 둑 모양이 그렇다.
+ *
+ * 화면 밖 x는 끝값으로 눌러 준다. 쓰레기가 들어오고 나가는 자리가 화면 밖이라
+ * 여기서 물 밖으로 튀면 잔디 위를 떠다니는 것처럼 보인다.
+ */
+function riverBottomAt(x: number): number {
+  const { bottomCenterY, bottomEdgeY, edgeRatio } = CFG.river
+  const t = Math.min(1, Math.max(0, x / CFG.canvasWidth))
+  const fromEdge = Math.min(t, 1 - t)
+  const raw = Math.min(1, fromEdge / edgeRatio)
+  // 끝에서 갑자기 꺾이지 않게 부드럽게 올린다(smoothstep).
+  const eased = raw * raw * (3 - 2 * raw)
+  return bottomEdgeY + (bottomCenterY - bottomEdgeY) * eased
+}
+
+/** 그 x에서 쓰레기 중심이 놓일 수 있는 높이의 가운데. */
+export function riverCenterY(x: number): number {
+  return (CFG.river.topY + riverBottomAt(x)) / 2
+}
+
+/**
+ * 그 x에서 갈래가 벌어질 수 있는 최대 폭(중심에서 위아래로, px).
+ *
+ * 물 폭에서 쓰레기 크기와 출렁임 폭을 함께 뺀다. 출렁임을 빼지 않으면 갈래
+ * 끝(±1)에 놓인 쓰레기가 물결을 타고 그만큼 더 올라가 둑을 넘는다 — 가장
+ * 위·아래 갈래에서만 자꾸 물 밖으로 나가던 이유다.
+ *
+ * 여유를 조금 더해 둑에 살짝 걸치는 것까지는 허용한다. 물이 좁은 가장자리에서는
+ * 0이 될 수도 있어 음수로 내려가지 않게 막는다.
+ */
+export function riverHalfSpread(x: number): number {
+  const water = riverBottomAt(x) - CFG.river.topY
+  return Math.max(
+    0,
+    water / 2 -
+      CFG.itemSize / 2 -
+      CFG.river.bobAmplitude +
+      CFG.river.edgeAllowancePx,
+  )
+}
+
+/**
+ * 자기 갈래에서 물결에 따라 흔들리는 y. 잡히면 흔들리지 않는다.
+ *
+ * 갈래는 비율이라 물이 좁아지면 같이 좁아진다. 그래서 쓰레기가 화면을 건너는
+ * 동안 높이가 조금씩 달라지는데, 강물에 밀려가는 것처럼 보여 자연스럽다.
+ * 크기는 건드리지 않는다 — 멀어지는 것이 아니라 흘러가는 것이다.
+ */
 export function riverY(item: FloatingItem, now: number): number {
   const phase =
     ((now + item.bobPhaseMs) % CFG.river.bobPeriodMs) / CFG.river.bobPeriodMs
   return (
-    CFG.river.y +
-    item.laneOffsetY +
+    riverCenterY(item.riverX) +
+    item.laneRatio * riverHalfSpread(item.riverX) +
     Math.sin(phase * Math.PI * 2) * CFG.river.bobAmplitude
   )
 }

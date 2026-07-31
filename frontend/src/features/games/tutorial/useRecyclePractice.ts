@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 
-import {
-  RECYCLE_GAME_CONFIG as CFG,
-  DESPAWN_X,
-  SPAWN_X,
-} from '@/features/games/recycle/recycleGameConfig'
+import { DESPAWN_X, SPAWN_X } from '@/features/games/recycle/recycleGameConfig'
 import {
   binAt,
   idleAim,
+  riverCenterY,
+  riverHalfSpread,
   riverY,
+  screenFromHand,
   stepAim,
   type FloatingItem,
   type HandAim,
@@ -30,7 +29,6 @@ import type { HandGesturesFrame, HandSlot } from '@/hooks/useHandGestures'
  * 들어온다 — 연습에서 잡을 것이 사라지면 아이는 아무것도 못 하고 갇힌다.
  */
 
-const { canvasWidth: W, canvasHeight: H } = CFG
 const HAND_SLOTS: HandSlot[] = ['a', 'b']
 
 /** 연습에서 넣어야 하는 쓰레기 수. 성공을 맛보게 하는 게 목적이라 짧게 끝낸다. */
@@ -81,7 +79,7 @@ function createPracticeItems(): FloatingItem[] {
 
     // 두 개를 화면 좌우로 벌리고 높이도 갈라 놓아 한 번에 둘 다 보이게 한다.
     const startX = 250 + index * 420
-    const laneOffsetY = index === 0 ? -40 : 34
+    const laneRatio = index === 0 ? -0.7 : 0.6
 
     return [
       {
@@ -91,10 +89,10 @@ function createPracticeItems(): FloatingItem[] {
         category: item.category,
         imageUrl: item.imageUrl,
         x: startX,
-        y: CFG.river.y + laneOffsetY,
+        y: riverCenterY(startX) + laneRatio * riverHalfSpread(startX),
         riverX: startX,
         speedPx: PRACTICE_SPEED_PX,
-        laneOffsetY,
+        laneRatio,
         bobPhaseMs: index * 900,
         heldBy: null,
         judging: false,
@@ -214,9 +212,7 @@ export function useRecyclePractice({
           continue
         }
 
-        // 카메라 미러링: 아이가 든 손이 화면에서도 같은 쪽에 보이게 한다.
-        const x = (1 - hand.x) * W
-        const y = hand.y * H
+        const { x, y } = screenFromHand(hand)
         paintPointer(slot, x, y, hand.angle, hand.fist)
 
         if (finished) {

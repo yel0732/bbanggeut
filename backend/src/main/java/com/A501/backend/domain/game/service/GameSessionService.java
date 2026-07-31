@@ -17,6 +17,8 @@ import com.A501.backend.domain.game.dto.request.SaveDobbleCardResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveFruitNinjaResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveRecyclingResultRequest;
+import com.A501.backend.domain.game.dto.request.SaveWordMatchProblemResultRequest;
+import com.A501.backend.domain.game.dto.request.SaveWordMatchResultRequest;
 import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.Game;
@@ -24,7 +26,9 @@ import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.entity.RecyclingGameResult;
-import com.A501.backend.domain.game.entity.RecyclingRuleVersion;
+import com.A501.backend.domain.game.entity.WordMatchProblemResult;
+import com.A501.backend.domain.game.entity.WordMatchProblemStatus;
+import com.A501.backend.domain.game.entity.WordMatchResult;
 import com.A501.backend.domain.game.exception.GameErrorCode;
 import com.A501.backend.domain.game.exception.GameException;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
@@ -34,7 +38,7 @@ import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
 import com.A501.backend.domain.game.repository.GameRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
-import com.A501.backend.domain.game.repository.RecyclingRuleVersionRepository;
+import com.A501.backend.domain.game.repository.WordMatchResultRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -44,11 +48,18 @@ import lombok.RequiredArgsConstructor;
 public class GameSessionService {
 
     private static final String RECYCLING_GAME_CODE = "RECYCLING";
+    private static final String WORD_MATCH_GAME_CODE = "WORD_MATCH";
+    private static final int RECYCLING_MAX_DURATION_SECONDS = 60;
+    private static final int RECYCLING_SCORE_PER_CORRECT = 100;
+    private static final int WORD_MATCH_MAX_DURATION_SECONDS = 90;
+    private static final int WORD_MATCH_SCORE_WITHOUT_HINT = 1_000;
+    private static final int WORD_MATCH_SCORE_WITH_HINT = 700;
+    private static final int WORD_MATCH_HINT_WRONG_THRESHOLD = 2;
 
     private final GameSessionRepository gameSessionRepository;
     private final GameRepository gameRepository;
     private final RecyclingGameResultRepository recyclingGameResultRepository;
-    private final RecyclingRuleVersionRepository recyclingRuleVersionRepository;
+    private final WordMatchResultRepository wordMatchResultRepository;
     private final GameSessionWriter gameSessionWriter;
     private final GameCurrentMemberProvider currentMemberProvider;
     private final GameChildAccessVerifier childAccessVerifier;
@@ -114,6 +125,9 @@ public class GameSessionService {
         if (request.gameType() == GameMetricType.RECYCLING) {
             return saveNewRecyclingSession(request);
         }
+        if (request.gameType() == GameMetricType.WORD_MATCH) {
+            return saveNewWordMatchSession(request);
+        }
         if (gameRepository.findById(request.gameId())
                 .map(Game::getGameCode)
                 .filter(RECYCLING_GAME_CODE::equals)
@@ -140,6 +154,133 @@ public class GameSessionService {
         }
     }
 
+    private GameSessionResponse saveNewWordMatchSession(SaveGameResultRequest request) {
+        SaveWordMatchResultRequest requestedResult = request.wordMatchResult();
+        if (requestedResult == null
+                || request.cardResults() != null
+                || request.fruitNinjaResult() != null
+                || request.recyclingResult() != null) {
+            throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+        }
+
+        Game game = gameRepository.findById(request.gameId())
+                .orElseThrow(() -> new GameException(GameErrorCode.GAME_NOT_FOUND));
+        if (!WORD_MATCH_GAME_CODE.equals(game.getGameCode())) {
+            throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
+        }
+
+        validateWordMatchResult(request, requestedResult);
+
+        GameSession session = GameSession.create(
+                request.childId(),
+                request.gameId(),
+                request.clientPlayId(),
+                null,
+                request.selectedAt(),
+                request.playStartedAt(),
+                request.completedAt(),
+                request.playDurationSeconds(),
+                request.score());
+        WordMatchResult result = WordMatchResult.create(
+                session.getGameSessionId(),
+                requestedResult.rulesVersion(),
+                requestedResult.solvedWordCount(),
+                requestedResult.incompleteWordCount(),
+                requestedResult.wrongCount(),
+                requestedResult.hintUsedCount());
+        List<WordMatchProblemResult> problemResults =
+                requestedResult.problemResults().stream()
+                        .map(item -> WordMatchProblemResult.create(
+                                session.getGameSessionId(),
+                                item.problemCode(),
+                                item.questionOrder(),
+                                item.wordLength(),
+                                item.status(),
+                                item.wrongCount(),
+                                item.hintUsed(),
+                                item.earnedScore(),
+                                item.solveTimeMs()))
+                        .toList();
+
+        try {
+            GameSession saved =
+                    gameSessionWriter.saveWordMatchResult(session, result, problemResults);
+            return GameSessionResponse.from(saved, result);
+        } catch (DataIntegrityViolationException e) {
+            return gameSessionRepository.findByClientPlayId(request.clientPlayId())
+                    .map(existing -> responseForExisting(existing, request))
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    private void validateWordMatchResult(
+            SaveGameResultRequest request,
+            SaveWordMatchResultRequest result) {
+        if (request.playDurationSeconds() < 0
+                || request.playDurationSeconds() > WORD_MATCH_MAX_DURATION_SECONDS) {
+            throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+        }
+
+        int solved = 0;
+        int incomplete = 0;
+        int wrong = 0;
+        int hintUsed = 0;
+        long score = 0;
+        Set<Integer> orders = new HashSet<>();
+        Set<String> problemCodes = new HashSet<>();
+        int expectedOrder = 1;
+
+        List<SaveWordMatchProblemResultRequest> ordered = result.problemResults().stream()
+                .sorted(java.util.Comparator.comparingInt(
+                        SaveWordMatchProblemResultRequest::questionOrder))
+                .toList();
+        for (SaveWordMatchProblemResultRequest item : ordered) {
+            if (!orders.add(item.questionOrder()) || item.questionOrder() != expectedOrder++) {
+                throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+            }
+            if (!problemCodes.add(item.problemCode())
+                    || item.wordLength() < 2
+                    || item.wordLength() > 4) {
+                throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+            }
+            if (item.status() == WordMatchProblemStatus.COMPLETED) {
+                solved++;
+                if (item.solveTimeMs() == null || item.solveTimeMs() < 1) {
+                    throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+                }
+                int expectedScore = item.hintUsed()
+                        ? WORD_MATCH_SCORE_WITH_HINT
+                        : WORD_MATCH_SCORE_WITHOUT_HINT;
+                if (item.earnedScore() != expectedScore) {
+                    throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+                }
+            } else {
+                incomplete++;
+                if (item.earnedScore() != 0 || item.solveTimeMs() != null
+                        || item.questionOrder() != ordered.size()) {
+                    throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+                }
+            }
+            if (item.wrongCount() < 0
+                    || (item.hintUsed()
+                            && item.wrongCount() < WORD_MATCH_HINT_WRONG_THRESHOLD)) {
+                throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+            }
+            wrong += item.wrongCount();
+            hintUsed += item.hintUsed() ? 1 : 0;
+            score += item.earnedScore();
+        }
+
+        if (incomplete > 1
+                || solved != result.solvedWordCount()
+                || incomplete != result.incompleteWordCount()
+                || wrong != result.wrongCount()
+                || hintUsed != result.hintUsedCount()
+                || score != request.score()) {
+            throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
+        }
+    }
+
     private GameSessionResponse saveNewRecyclingSession(SaveGameResultRequest request) {
         SaveRecyclingResultRequest requestedResult = request.recyclingResult();
         if (requestedResult == null) {
@@ -152,10 +293,7 @@ public class GameSessionService {
             throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
         }
 
-        RecyclingRuleVersion ruleVersion = recyclingRuleVersionRepository
-                .findByVersionCode(requestedResult.rulesVersion())
-                .orElseThrow(() -> new GameException(GameErrorCode.RECYCLING_RULE_NOT_FOUND));
-        validateRecyclingResult(request, requestedResult, ruleVersion);
+        validateRecyclingResult(request, requestedResult);
 
         GameSession gameSession = GameSession.create(
                 request.childId(),
@@ -187,9 +325,9 @@ public class GameSessionService {
 
     private void validateRecyclingResult(
             SaveGameResultRequest request,
-            SaveRecyclingResultRequest requestedResult,
-            RecyclingRuleVersion ruleVersion) {
-        if (request.playDurationSeconds() < 0 || request.playDurationSeconds() > 60) {
+            SaveRecyclingResultRequest requestedResult) {
+        if (request.playDurationSeconds() < 0
+                || request.playDurationSeconds() > RECYCLING_MAX_DURATION_SECONDS) {
             throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
         }
         if (requestedResult.successfulCount() < 0 || requestedResult.wrongCount() < 0) {
@@ -197,7 +335,7 @@ public class GameSessionService {
         }
 
         long expectedScore =
-                (long) requestedResult.successfulCount() * ruleVersion.getScorePerCorrect();
+                (long) requestedResult.successfulCount() * RECYCLING_SCORE_PER_CORRECT;
         if (expectedScore > Integer.MAX_VALUE || request.score() != expectedScore) {
             throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
         }
@@ -221,6 +359,16 @@ public class GameSessionService {
         }
         if (request.gameType() == GameMetricType.RECYCLING) {
             throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
+        }
+        var wordMatchResult = wordMatchResultRepository.findById(existing.getGameSessionId());
+        if (wordMatchResult.isPresent()) {
+            if (request.gameType() != GameMetricType.WORD_MATCH) {
+                throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
+            }
+            return GameSessionResponse.from(existing, wordMatchResult.get());
+        }
+        if (request.gameType() == GameMetricType.WORD_MATCH) {
+            throw new GameException(GameErrorCode.INVALID_WORD_MATCH_RESULT);
         }
         return GameSessionResponse.from(existing);
     }

@@ -18,10 +18,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 
-import com.A501.backend.domain.game.entity.RecyclingRuleVersion;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
-import com.A501.backend.domain.game.repository.RecyclingRuleVersionRepository;
 import com.A501.backend.domain.game.service.GameChildAccessVerifier;
 
 @SpringBootTest
@@ -44,26 +42,13 @@ class RecyclingGameSessionControllerTest {
     @Autowired
     private RecyclingGameResultRepository recyclingGameResultRepository;
 
-    @Autowired
-    private RecyclingRuleVersionRepository ruleVersionRepository;
-
     @BeforeEach
     void setUp() {
         recyclingGameResultRepository.deleteAll();
         gameSessionRepository.deleteAll();
-        ruleVersionRepository.deleteAll();
         jdbcTemplate.update("delete from game where game_id in (7, 9)");
         insertGame(7L, "DOBBLE", "그림 맞추기");
         insertGame(9L, "RECYCLING", "분리수거");
-        ruleVersionRepository.saveAndFlush(RecyclingRuleVersion.create(
-                "RECYCLING_V1",
-                60,
-                2000,
-                10000,
-                5,
-                100,
-                2500,
-                true));
     }
 
     @Test
@@ -154,17 +139,16 @@ class RecyclingGameSessionControllerTest {
     }
 
     @Test
-    void rejectsUnknownRuleVersion() throws Exception {
+    void storesFrontendRuleVersionWithoutServerCatalogLookup() throws Exception {
         String request = validRequest(UUID.randomUUID(), 15L)
                 .replace("RECYCLING_V1", "RECYCLING_UNKNOWN");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("RECYCLING_RULE_NOT_FOUND"));
-
-        assertNothingSaved();
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.recyclingResult.rulesVersion")
+                        .value("RECYCLING_UNKNOWN"));
     }
 
     @Test

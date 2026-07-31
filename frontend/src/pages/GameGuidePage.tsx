@@ -61,6 +61,7 @@ import {
   useRecyclePractice,
   type RecyclePracticeState,
 } from '@/features/games/tutorial/useRecyclePractice'
+import { RECYCLE_GAME_CONFIG as RECYCLE_CFG } from '@/features/games/recycle/recycleGameConfig'
 import {
   playCorrectSfx,
   playGrabSfx,
@@ -114,6 +115,12 @@ export function GameGuidePage() {
   const gestures = useHandGestures(
     videoRef,
     cameraReady && usesHandGestures(tutorialGameId),
+    // 분리수거는 한 손만 쓰고(과일 자르기처럼) 화면을 크게 오가서 손이 더
+    // 즉각 따라와야 한다. 도블은 양손으로 제자리 그림을 짚는 게임이라 기본값을
+    // 그대로 쓴다.
+    tutorialGameId === 'recycle'
+      ? { maxHands: 1, smoothing: RECYCLE_CFG.handSmoothing }
+      : undefined,
   )
 
   // 카메라는 필요한 단계에 들어갈 때 요청한다. 안내를 보기만 할 아이에게
@@ -626,7 +633,12 @@ function StepBody({
               : undefined,
           }}
         >
-          <TutorialPanel overflowVisible={isDemoStep && !demoFitsPanel}>
+          {/*
+            시범 단계는 판 밖으로 넘치게 둔다. 네 게임 모두 같은 360px 판을
+            쓰는데, 공룡 크기는 게임마다 다르게 잡으므로 판보다 커질 수 있다.
+            넘침을 막으면 그때 공룡이 잘려 나간다.
+          */}
+          <TutorialPanel overflowVisible={isDemoStep}>
             {kind === 'demo' ? (
               demoFitsPanel ? (
                 <UpcomingGameDemo gameId={gameId} />

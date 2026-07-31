@@ -54,6 +54,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/auth/password").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/auth/me").authenticated()
                         .requestMatchers(PERMIT_ALL_PATTERNS).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/games/recycling/rules/active")
+                        .permitAll()
                         .requestMatchers("/actuator/metrics/**").authenticated()
                         // /api/children/**는 report 도메인의 /api/children/{childId}/reports/**와 경로가
                         // 겹치므로 와일드카드 대신 이 도메인이 실제로 쓰는 경로만 정확히 지정한다.

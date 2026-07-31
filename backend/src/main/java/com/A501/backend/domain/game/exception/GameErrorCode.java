@@ -46,7 +46,19 @@ public enum GameErrorCode implements ErrorCode {
     INVALID_FRUIT_NINJA_RULE(
             HttpStatus.CONFLICT,
             "INVALID_FRUIT_NINJA_RULE",
-            "후르츠 게임 규칙의 점수 설정이 올바르지 않습니다.");
+            "후르츠 게임 규칙의 점수 설정이 올바르지 않습니다."),
+    ACTIVE_RECYCLING_RULE_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "ACTIVE_RECYCLING_RULE_NOT_FOUND",
+            "활성화된 분리수거 게임 규칙을 찾을 수 없습니다."),
+    MULTIPLE_ACTIVE_RECYCLING_RULES(
+            HttpStatus.CONFLICT,
+            "MULTIPLE_ACTIVE_RECYCLING_RULES",
+            "활성화된 분리수거 게임 규칙이 여러 개입니다."),
+    EMPTY_RECYCLING_RULE(
+            HttpStatus.CONFLICT,
+            "EMPTY_RECYCLING_RULE",
+            "활성화된 분리수거 쓰레기가 없습니다.");
 
     private final HttpStatus status;
     private final String code;

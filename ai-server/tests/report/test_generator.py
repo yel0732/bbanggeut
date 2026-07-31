@@ -20,7 +20,9 @@ class FakeProvider:
 @pytest.mark.asyncio
 async def test_generates_validated_daily_report() -> None:
     provider = FakeProvider([
-        '{"title":"즐거운 하루","body":"친구와 축구한 이야기를 나누었어요."}'
+        '{"title":"즐거운 하루","dailyStory":"친구와 축구한 이야기를 나누었어요.",'
+        '"emotionDetails":[],"interests":[],"notableQuotes":[],'
+        '"conversationGuide":{"description":"","questions":[]}}'
     ])
     generator = DailyReportGenerator(provider, 1.0, 2)
     request = DailyReportSummaryRequest.model_validate({
@@ -35,7 +37,8 @@ async def test_generates_validated_daily_report() -> None:
 
     assert result.title == "즐거운 하루"
     assert result.model_version == "gpt-5.4-mini"
-    assert result.prompt_version == "daily-report-v1"
+    assert result.daily_story == "친구와 축구한 이야기를 나누었어요."
+    assert result.prompt_version == "daily-report-v2"
 
 
 @pytest.mark.asyncio

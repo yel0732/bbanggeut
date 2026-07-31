@@ -50,8 +50,17 @@ public class ReportConversationSummary extends BaseTimeEntity {
     @Column(name = "emotions", nullable = false, columnDefinition = "TEXT")
     private String emotions;
 
+    @Column(name = "emotion_details", nullable = false, columnDefinition = "TEXT")
+    private String emotionDetails;
+
     @Column(name = "interests", nullable = false, columnDefinition = "TEXT")
     private String interests;
+
+    @Column(name = "notable_quotes", nullable = false, columnDefinition = "TEXT")
+    private String notableQuotes;
+
+    @Column(name = "conversation_guide", nullable = false, columnDefinition = "TEXT")
+    private String conversationGuide;
 
     @Column(name = "model_version", length = 100)
     private String modelVersion;
@@ -67,7 +76,10 @@ public class ReportConversationSummary extends BaseTimeEntity {
             String diaryContent,
             String mainEvents,
             String emotions,
+            String emotionDetails,
             String interests,
+            String notableQuotes,
+            String conversationGuide,
             String modelVersion,
             String promptVersion
     ) {
@@ -77,7 +89,10 @@ public class ReportConversationSummary extends BaseTimeEntity {
         this.diaryContent = diaryContent;
         this.mainEvents = mainEvents;
         this.emotions = emotions;
+        this.emotionDetails = emotionDetails;
         this.interests = interests;
+        this.notableQuotes = notableQuotes;
+        this.conversationGuide = conversationGuide;
         this.modelVersion = modelVersion;
         this.promptVersion = promptVersion;
     }
@@ -88,7 +103,10 @@ public class ReportConversationSummary extends BaseTimeEntity {
             String sourceConversationIds,
             String mainEvents,
             String emotions,
-            String interests
+            String interests,
+            String emotionDetails,
+            String notableQuotes,
+            String conversationGuide
     ) {
         validate(reportId, source);
 
@@ -99,10 +117,32 @@ public class ReportConversationSummary extends BaseTimeEntity {
                 .diaryContent(source.diaryContent())
                 .mainEvents(mainEvents)
                 .emotions(emotions)
+                .emotionDetails(emotionDetails)
                 .interests(interests)
+                .notableQuotes(notableQuotes)
+                .conversationGuide(conversationGuide)
                 .modelVersion(source.modelVersion())
                 .promptVersion(source.promptVersion())
                 .build();
+    }
+
+    public static ReportConversationSummary snapshot(
+            Long reportId,
+            ReportConversationSummarySource source,
+            String sourceConversationIds,
+            String mainEvents,
+            String emotions,
+            String interests) {
+        return snapshot(
+                reportId,
+                source,
+                sourceConversationIds,
+                mainEvents,
+                emotions,
+                interests,
+                "[]",
+                "[]",
+                "{\"description\":\"\",\"questions\":[]}");
     }
 
     private static void validate(

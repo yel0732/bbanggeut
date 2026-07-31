@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.A501.backend.domain.report.entity.ReportConversationSummary;
+import com.A501.backend.domain.report.model.ReportConversationGuide;
+import com.A501.backend.domain.report.model.ReportEmotionDetail;
 
 public record ReportConversationSummaryResponse(
         String diaryTitle,
@@ -11,6 +13,9 @@ public record ReportConversationSummaryResponse(
         List<String> mainEvents,
         List<String> expressedEmotions,
         List<String> interests,
+        List<ReportEmotionDetail> emotionDetails,
+        List<String> notableQuotes,
+        ReportConversationGuide conversationGuide,
         int sourceConversationCount,
         LocalDateTime generatedAt
 ) {
@@ -20,7 +25,10 @@ public record ReportConversationSummaryResponse(
             List<String> sourceConversationIds,
             List<String> mainEvents,
             List<String> emotions,
-            List<String> interests
+            List<String> interests,
+            List<ReportEmotionDetail> emotionDetails,
+            List<String> notableQuotes,
+            ReportConversationGuide conversationGuide
     ) {
         return new ReportConversationSummaryResponse(
                 summary.getDiaryTitle(),
@@ -28,6 +36,9 @@ public record ReportConversationSummaryResponse(
                 mainEvents,
                 emotions,
                 interests,
+                emotionDetails,
+                notableQuotes,
+                conversationGuide,
                 sourceConversationIds.size(),
                 summary.getCreatedAt());
     }

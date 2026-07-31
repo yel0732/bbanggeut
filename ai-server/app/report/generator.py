@@ -9,7 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.dialogue.question.provider import QuestionProviderError
 from app.report.prompts import PROMPT_VERSION, build_report_messages
-from app.report.schemas import DailyReportSummaryRequest, DailyReportSummaryResponse
+from app.report.schemas import (
+    DailyReportSummaryRequest,
+    DailyReportSummaryResponse,
+    ReportConversationGuide,
+    ReportEmotionDetail,
+)
 
 
 class ReportTextProvider(Protocol):
@@ -22,7 +27,15 @@ class _GeneratedNarrative(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     title: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=2000)
+    daily_story: str = Field(alias="dailyStory", min_length=1, max_length=4000)
+    emotion_details: tuple[ReportEmotionDetail, ...] = Field(
+        alias="emotionDetails", default_factory=tuple, max_length=10
+    )
+    interests: tuple[str, ...] = Field(default_factory=tuple, max_length=10)
+    notable_quotes: tuple[str, ...] = Field(
+        alias="notableQuotes", default_factory=tuple, max_length=3
+    )
+    conversation_guide: ReportConversationGuide = Field(alias="conversationGuide")
 
 
 class ReportGenerationError(RuntimeError):
@@ -48,7 +61,11 @@ class DailyReportGenerator:
                 narrative = _parse_narrative(raw)
                 return DailyReportSummaryResponse(
                     title=narrative.title.strip(),
-                    body=narrative.body.strip(),
+                    dailyStory=narrative.daily_story.strip(),
+                    emotionDetails=narrative.emotion_details,
+                    interests=narrative.interests,
+                    notableQuotes=narrative.notable_quotes,
+                    conversationGuide=narrative.conversation_guide,
                     modelVersion=self.provider.model,
                     promptVersion=PROMPT_VERSION,
                 )
@@ -66,6 +83,6 @@ class DailyReportGenerator:
 def _parse_narrative(raw: str) -> _GeneratedNarrative:
     payload = json.loads(raw)
     narrative = _GeneratedNarrative.model_validate(payload)
-    if not narrative.title.strip() or not narrative.body.strip():
+    if not narrative.title.strip() or not narrative.daily_story.strip():
         raise ValueError("generated report must contain text")
     return narrative

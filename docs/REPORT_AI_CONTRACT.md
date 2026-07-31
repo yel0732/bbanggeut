@@ -1,8 +1,8 @@
 # Daily Report AI Contract
 
 `POST /internal/v1/reports/daily-summary` is an internal backend-to-AI-server
-API. It accepts only validated structured facts. Raw conversation transcripts,
-access tokens, child names, and provider credentials are prohibited.
+API. It accepts validated structured facts and a bounded set of completed DAILY
+conversation turns. Access tokens, child names, and provider credentials are prohibited.
 
 Request fields use camelCase:
 
@@ -12,6 +12,10 @@ Request fields use camelCase:
   "events": ["친구와 축구함"],
   "emotions": ["즐거움"],
   "interests": ["축구"],
+  "conversations": [
+    {"speaker": "CHILD", "content": "친구와 축구해서 즐거웠어."},
+    {"speaker": "AI", "content": "어떤 순간이 가장 즐거웠어?"}
+  ],
   "games": [
     {"gameName": "도블", "playDurationSeconds": 180, "score": 3500}
   ]
@@ -23,9 +27,16 @@ Successful response:
 ```json
 {
   "title": "즐거운 축구 이야기",
-  "body": "오늘은 친구와 축구한 이야기를 즐겁게 나누었어요.",
+  "dailyStory": "오늘은 친구와 축구한 이야기를 즐겁게 나누었어요.",
+  "emotionDetails": [{"emotion": "즐거움", "reason": "친구와 축구해서"}],
+  "interests": ["축구"],
+  "notableQuotes": ["친구와 축구해서 즐거웠어."],
+  "conversationGuide": {
+    "description": "친구와 함께한 축구 경험에 관심을 보여주세요.",
+    "questions": ["어떤 순간이 가장 즐거웠어?"]
+  },
   "modelVersion": "gpt-5.4-mini",
-  "promptVersion": "daily-report-v1"
+  "promptVersion": "daily-report-v2"
 }
 ```
 

@@ -26,7 +26,10 @@ public class ReportConversationSummaryMapper {
                     objectMapper.writeValueAsString(source.conversationIds()),
                     objectMapper.writeValueAsString(source.mainEvents()),
                     objectMapper.writeValueAsString(source.emotions()),
-                    objectMapper.writeValueAsString(source.interests()));
+                    objectMapper.writeValueAsString(source.interests()),
+                    objectMapper.writeValueAsString(source.emotionDetails()),
+                    objectMapper.writeValueAsString(source.notableQuotes()),
+                    objectMapper.writeValueAsString(source.conversationGuide()));
         } catch (JacksonException exception) {
             throw new IllegalStateException(
                     "Failed to serialize the conversation summary.", exception);

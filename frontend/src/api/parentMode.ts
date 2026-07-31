@@ -290,10 +290,12 @@ export async function updateReportNotificationPreference(
 export async function subscribeToReportNotifications(
   onEvent: (event: ReportNotificationEvent) => void,
   signal: AbortSignal,
+  lastEventId?: string,
 ) {
   const response = await reportFetch(apiUrl('/api/notifications/stream'), {
     headers: {
       Accept: 'text/event-stream',
+      ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}),
     },
     signal,
   })

@@ -19,6 +19,7 @@ import {
 } from '@/components/game/PlayOverlays'
 import { getGameById } from '@/features/games/games'
 import { BinRow } from '@/features/games/recycle/BinRow'
+import { CheerAnimals } from '@/features/games/recycle/CheerAnimals'
 import { HandCursor } from '@/features/games/recycle/HandCursor'
 import { RECYCLE_GAME_CONFIG as CFG } from '@/features/games/recycle/recycleGameConfig'
 import {
@@ -360,6 +361,9 @@ function PlayField({
 
   return (
     <div className="absolute inset-0 z-10">
+      {/* 정답을 맞히면 동물들이 크게 뛴다. 쓰레기 uid가 바뀔 때마다 새로 뛴다. */}
+      <CheerAnimals celebrateKey={correct?.itemUid ?? null} />
+
       <BinRow
         celebratingBin={correct?.bin ?? null}
         holding={activeSlot !== null && activeSlot === holdingSlot}
@@ -377,6 +381,17 @@ function PlayField({
             style={{
               left: item.x,
               top: item.y,
+              /*
+                크기를 반드시 못박는다.
+
+                너비를 비워 두면 이 박스는 shrink-to-fit으로 크기를 정한다.
+                화면 오른쪽으로 흘러 나갈 때 `left`가 캔버스 폭을 넘어서면 남은
+                공간이 음수가 되어 박스가 눌리고, 쓰레기가 쪼그라들면서 사라진다.
+                왼쪽에서 들어올 때는 남은 공간이 넉넉해 멀쩡하다 — 그래서 나갈
+                때만 증상이 보였다.
+              */
+              width: CFG.itemSize,
+              height: CFG.itemSize,
               transform: 'translate(-50%, -50%)',
             }}
           >
@@ -622,32 +637,19 @@ function PlayHud({
       </div>
 
       {/*
-        칭찬과 조작 안내가 같은 자리를 쓴다. 둘이 동시에 뜨면 아이는 어느 쪽을
-        읽어야 하는지 모른다. 칭찬이 있으면 칭찬만 남긴다.
+        조작 안내 띠는 두지 않는다. 이 자리에 늘 떠 있으면 응원하는 동물을
+        가린다. 무엇을 하는지는 게임 방법에서 배우고 들어오고, 손을 올린 통이
+        빛나는 것으로 그때그때 알 수 있다. 칭찬만 잠깐 띄운다.
       */}
-      {phase === 'playing' ? (
-        <div
-          className="absolute left-1/2 flex -translate-x-1/2 justify-center"
-          style={{ top: HUD_BELOW_SCORE_Y }}
+      {praise && phase === 'playing' ? (
+        <p
+          // 문구가 바뀔 때마다 다시 마운트해 크게 튀어오르게 한다.
+          className="absolute left-1/2 -translate-x-1/2 [animation:dobble-grab-pop_420ms_ease-out] text-[60px] leading-none whitespace-nowrap text-[#fff2a8] [text-shadow:0_5px_0_#1c6b7a,0_10px_18px_rgba(0,0,0,0.4)]"
+          key={praise}
+          style={{ ...jua, top: HUD_BELOW_SCORE_Y }}
         >
-          {praise ? (
-            <p
-              // 문구가 바뀔 때마다 다시 마운트해 크게 튀어오르게 한다.
-              className="[animation:dobble-grab-pop_420ms_ease-out] text-[60px] leading-none whitespace-nowrap text-[#fff2a8] [text-shadow:0_5px_0_#1c6b7a,0_10px_18px_rgba(0,0,0,0.4)]"
-              key={praise}
-              style={jua}
-            >
-              {praise}
-            </p>
-          ) : (
-            <p
-              className="rounded-full bg-[rgba(10,40,50,0.45)] px-6 py-2 text-[22px] leading-none whitespace-nowrap text-white [text-shadow:0_2px_6px_rgba(10,40,50,0.5)]"
-              style={jua}
-            >
-              쓰레기를 잡아서 알맞은 통에 넣어요
-            </p>
-          )}
-        </div>
+          {praise}
+        </p>
       ) : null}
     </div>
   )

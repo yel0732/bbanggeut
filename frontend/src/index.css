@@ -350,6 +350,53 @@
   }
 }
 
+/*
+  분리수거 물길 건너편에서 응원하는 동물.
+
+  제자리에서 폴짝 뛰며 좌우로 기울인다. 크게 움직이면 물길 위 쓰레기에서 시선이
+  옮겨가므로, 눈에 걸릴 만큼만 작게 흔든다. 동물마다 animation-delay를 달리 줘야
+  세 마리가 한 몸처럼 뛰지 않는다.
+*/
+@keyframes recycle-cheer-hop {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  25% {
+    transform: translateY(-7px) rotate(2deg);
+  }
+  50% {
+    transform: translateY(0) rotate(3deg);
+  }
+  75% {
+    transform: translateY(-4px) rotate(-2deg);
+  }
+}
+
+/*
+  알맞은 통에 넣었을 때. 높이 뛰어오르며 몸을 크게 흔든다.
+
+  평소 응원보다 확실히 커야 아이가 "내가 잘해서 저러는구나"로 읽는다. 한 번만
+  돌고 끝나며, 끝나면 평소 응원으로 돌아간다.
+*/
+@keyframes recycle-cheer-jump {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-34px) rotate(-9deg) scale(1.12);
+  }
+  50% {
+    transform: translateY(-6px) rotate(7deg) scale(1.04);
+  }
+  75% {
+    transform: translateY(-20px) rotate(-5deg) scale(1.08);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
 @layer base {
   :root {
     --cursor-game-default:

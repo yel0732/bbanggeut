@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
+import bubbleBigUrl from '@/assets/images/child-home/bubble-big.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg-2.webp'
 import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
 import gameMenuPanelUrl from '@/assets/images/game-entry/game-menu-panel.webp'
@@ -161,6 +162,28 @@ export function MoreGamesPage() {
               </div>
             )
           })}
+
+          {/*
+            빵긋이 말풍선. 1페이지(GameEntryPage)와 위치·크기·에셋·대사를 똑같이
+            둔다. 같은 화면을 좌우로 넘기는 것이라 넘길 때 말풍선이 사라지거나
+            자리가 달라지면 다른 화면으로 온 것처럼 보인다.
+          */}
+          <div className="absolute top-[175px] left-[630px] z-20 -translate-x-6/11">
+            <div className="relative h-[122px] w-[270px]">
+              <img
+                alt=""
+                className="absolute inset-0 size-full object-fill drop-shadow-[0_8px_14px_rgba(0,0,0,0.14)]"
+                decoding="async"
+                src={bubbleBigUrl}
+              />
+              <span
+                className="absolute top-[44%] right-0 left-0 -translate-y-1/2 text-center text-[32px] whitespace-nowrap text-[#2f6d3a]"
+                style={jua}
+              >
+                무슨 게임 할까?
+              </span>
+            </div>
+          </div>
 
           <div className="absolute bottom-[90px] left-1/2 z-10 h-[320px] w-[320px] -translate-x-1/2">
             <DinoCharacter

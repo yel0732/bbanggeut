@@ -1,10 +1,10 @@
-import { type CSSProperties, type RefObject } from 'react'
+import { type RefObject } from 'react'
 
 import backgroundUrl from '@/assets/images/recycle-game/background.webp'
 import { BinRow } from '@/features/games/recycle/BinRow'
+import { HandCursor } from '@/features/games/recycle/HandCursor'
 import { RECYCLE_GAME_CONFIG as CFG } from '@/features/games/recycle/recycleGameConfig'
 import { hitRadius } from '@/features/games/recycle/recycleGrab'
-import type { HandSlot } from '@/hooks/useHandGestures'
 
 import { useAttachStream } from './useAttachStream'
 import type { RecyclePracticeState } from './useRecyclePractice'
@@ -20,14 +20,6 @@ import type { RecyclePracticeState } from './useRecyclePractice'
 
 /** 연습 판 자리가 663x380px이라 1280x720을 가로에 맞춰 넣으면 이 값이 나온다. */
 const SCALE = 0.52
-
-/** 플레이 화면과 같은 손 구분 색 */
-const HAND_COLOR: Record<HandSlot, string> = {
-  a: '#37cfb4',
-  b: '#ffab26',
-}
-
-const CURSOR_SIZE = 96
 
 export function RecyclePracticeStage({
   practice,
@@ -138,9 +130,14 @@ export function RecyclePracticeStage({
           )
         })}
 
-        {/* 손 포인터 — 좌표·각도·주먹은 훅이 이 노드에 직접 쓴다. */}
+        {/*
+          손 포인터 — 좌표·각도·주먹은 훅이 이 노드에 직접 쓴다.
+
+          본 게임과 같은 커서를 쓴다. 연습에서 본 손 모양이 본 게임에서 다르면
+          아이는 같은 조작인지 알 수 없다.
+        */}
         {(['a', 'b'] as const).map((slot) => (
-          <PracticeCursor
+          <HandCursor
             key={slot}
             nodeRef={practice.pointerRefs[slot]}
             slot={slot}
@@ -171,55 +168,6 @@ export function RecyclePracticeStage({
             }}
           />
         ))}
-      </div>
-    </div>
-  )
-}
-
-/** 손 포인터. 조준 링이 차오르고 주먹을 쥐면 모양이 바뀐다. */
-function PracticeCursor({
-  nodeRef,
-  slot,
-}: {
-  nodeRef: RefObject<HTMLDivElement | null>
-  slot: HandSlot
-}) {
-  const color = HAND_COLOR[slot]
-
-  return (
-    <div
-      className="pointer-events-none absolute top-0 left-0 z-30 opacity-0"
-      ref={nodeRef}
-      style={
-        {
-          '--aim': 0,
-          '--fist': 0,
-          '--hand-angle': '0deg',
-        } as CSSProperties
-      }
-    >
-      <div
-        className="relative -translate-x-1/2 -translate-y-1/2"
-        style={{ width: CURSOR_SIZE, height: CURSOR_SIZE }}
-      >
-        {/* 조준 링 — 다 차면 잡을 수 있다 */}
-        <span
-          className="absolute inset-0 rounded-full"
-          style={{
-            border: `6px solid ${color}`,
-            opacity: 'var(--aim)',
-            transform: 'scale(calc(0.7 + var(--aim) * 0.3))',
-          }}
-        />
-        {/* 손 — 주먹을 쥐면 작아지고 진해진다 */}
-        <span
-          className="absolute inset-[18%] rounded-full border-[5px] border-white"
-          style={{
-            background: color,
-            transform: 'scale(calc(1 - var(--fist) * 0.22))',
-            boxShadow: '0 3px 8px rgba(60,36,10,0.4)',
-          }}
-        />
       </div>
     </div>
   )

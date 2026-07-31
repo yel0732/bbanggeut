@@ -134,12 +134,12 @@ export function GameGuidePage() {
       return hand.playHandRef.current !== null
     }
     const frame = gestures.gesturesRef.current
-    // 분리수거는 한 손만으로도 할 수 있어(RGAME-05) 한 손이 잡히면 통과시킨다.
-    if (tutorialGameId === 'recycle') {
-      return frame.a !== null || frame.b !== null
+    // 도블만 두 손을 다 써야 하는 게임이라 둘 다 잡혀야 통과시킨다. 분리수거와
+    // 낱말 맞추기는 한 손으로 하므로(RGAME-05, WGAME-04) 한 손이면 통과다.
+    if (tutorialGameId === 'dobble') {
+      return frame.a !== null && frame.b !== null
     }
-    // 도블은 두 손을 다 써야 하는 게임이라 둘 다 잡혀야 통과시킨다.
-    return frame.a !== null && frame.b !== null
+    return frame.a !== null || frame.b !== null
   }, [gestures.gesturesRef, hand.playHandRef, tutorialGameId])
 
   const detection = useDetectionHold({
@@ -634,12 +634,17 @@ function StepBody({
               <TutorialCamera
                 detected={camera.detected}
                 gapClassName="gap-5"
+                /*
+                  두 손을 요구하는 것은 도블뿐이다. 분리수거·낱말 맞추기는 한
+                  손으로 하므로 두 손을 보여 달라고 하면, 게임에서 필요하지 않은
+                  것을 연습에서 시키는 셈이 된다.
+                */
                 hintWhenWaiting={
                   gameId === 'fruit'
                     ? '한 팔을 번쩍 들어 주세요'
-                    : gameId === 'recycle'
-                      ? '손바닥을 펴서 보여 주세요'
-                      : '두 손을 다 보여 주세요'
+                    : gameId === 'dobble'
+                      ? '두 손을 다 보여 주세요'
+                      : '손바닥을 펴서 보여 주세요'
                 }
                 modelReady={camera.modelReady}
                 progress={camera.progress}

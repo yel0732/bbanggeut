@@ -128,6 +128,28 @@
   }
 }
 
+@keyframes game-page-slide-in-right {
+  0% {
+    opacity: 0;
+    transform: translateX(70px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes game-page-slide-in-left {
+  0% {
+    opacity: 0;
+    transform: translateX(-70px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes dobble-side-in {
   0% {
     opacity: 0;

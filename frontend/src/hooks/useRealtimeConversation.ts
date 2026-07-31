@@ -55,11 +55,16 @@ export type RealtimeConversationState = {
   localStream: MediaStream | null
   remoteStream: MediaStream | null
   micEnabled: boolean
+  /** 방금 대화의 식별자. 종료 후 일기 생성(preview) 호출에 쓴다. */
+  conversationId: string | null
+  childId: number | null
 }
 
 const INITIAL_STATE: RealtimeConversationState = {
   assistantText: '',
+  childId: null,
   childTranscript: '',
+  conversationId: null,
   endedReason: null,
   failure: null,
   localStream: null,
@@ -108,6 +113,7 @@ export function useRealtimeConversation() {
 
   const clientRef = useRef<RealtimeConversationClient | null>(null)
   const conversationIdRef = useRef<string | null>(null)
+  const childIdRef = useRef<number | null>(null)
   const phaseRef = useRef<ConversationPhase>('idle')
   /** 마지막으로 만들어진 AI 응답. 종료 인사의 오디오를 짚어내는 데 쓴다. */
   const lastResponseIdRef = useRef<string | null>(null)
@@ -358,6 +364,14 @@ export function useRealtimeConversation() {
       const childId = await resolveBackendChildId()
       const conversation = await createConversation(childId)
       conversationIdRef.current = conversation.conversationId
+      childIdRef.current = childId
+      // 종료 후 일기 preview에 필요한 식별자를 상태에 실어 둔다. 정상 완주
+      // 경로에선 초기화되지 않아 ended 화면까지 유지된다.
+      setState((current) => ({
+        ...current,
+        childId,
+        conversationId: conversation.conversationId,
+      }))
       const session = await issueRealtimeSession(conversation.conversationId)
 
       // 준비하는 사이에 화면을 떠났다면 연결을 만들지 않는다. 여기서 멈추지

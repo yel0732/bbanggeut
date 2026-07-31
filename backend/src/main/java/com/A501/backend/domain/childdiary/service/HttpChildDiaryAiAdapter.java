@@ -43,14 +43,11 @@ public class HttpChildDiaryAiAdapter implements ChildDiaryAiPort {
         List<String> lines = response == null ? null : response.lines();
         if (response == null || !request.conversationId().equals(response.conversationId())
                 || !request.diaryDate().equals(response.diaryDate()) || !TITLE.equals(response.title())
-                || lines == null || lines.size() < 3 || lines.size() > 4
-                || lines.stream().anyMatch(line -> line == null || line.isBlank() || line.length() > 40)
+                || lines == null || lines.size() < 3 || lines.size() > 5
+                || lines.stream().anyMatch(line -> line == null || line.isBlank() || line.length() > 60)
                 || new HashSet<>(lines).size() != lines.size()
                 || isBlank(response.modelVersion()) || isBlank(response.promptVersion())) {
             throw new ChildDiaryAiUnavailableException("Child diary AI returned an invalid response.");
-        }
-        if (request.topics().size() == 2 && lines.size() != 4) {
-            throw new ChildDiaryAiUnavailableException("Combined child diary must contain four lines.");
         }
     }
 

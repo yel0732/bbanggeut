@@ -479,6 +479,30 @@ function PlayField({
   )
 }
 
+/*
+  ⭐ 오답 안내 화면의 빵긋이 — 이 네 숫자로 조절한다.
+
+  빵긋이와 말풍선이 나란히 서고, 두 사람 묶음이 화면 가운데에 놓인다. 그래서
+  빵긋이만 옮기는 값(GUIDE_DINO_X/Y)과 묶음 전체를 옮기는 값(GUIDE_GROUP_Y)이
+  따로 있다.
+*/
+
+/** 빵긋이 키(px). 폭은 비율대로 따라온다. */
+const GUIDE_DINO_HEIGHT = 270
+/** 빵긋이 좌우 위치(px). 양수면 오른쪽, 음수면 왼쪽. */
+const GUIDE_DINO_X = 0
+/** 빵긋이 상하 위치(px). 양수면 아래, 음수면 위. */
+const GUIDE_DINO_Y = -30
+/**
+ * 빵긋이·말풍선 묶음의 상하 위치(px).
+ *
+ * 기본은 상단 점수 칸 바로 아래다. 아래쪽은 통이 서 있는 자리라 더 내리면
+ * 통을 가린다.
+ */
+const GUIDE_GROUP_Y = HUD_BELOW_SCORE_Y + 15
+/** 말풍선을 빵긋이 발끝보다 얼마나 띄울지(px). 키우면 말풍선이 올라간다. */
+const GUIDE_BUBBLE_LIFT = 70
+
 /**
  * 오답 안내 화면.
  *
@@ -495,19 +519,25 @@ function WrongGuideOverlay({
       aria-live="polite"
       className="absolute inset-0 z-30 flex justify-center bg-[rgba(10,40,50,0.5)]"
     >
-      {/* 상단 점수 칸 바로 아래에서 시작한다. 아래쪽은 통이 서 있는 자리다. */}
       <div
         className="flex items-end gap-3"
-        style={{ marginTop: HUD_BELOW_SCORE_Y }}
+        style={{ marginTop: GUIDE_GROUP_Y }}
       >
         <img
           alt=""
-          className="block h-[270px] w-auto object-contain drop-shadow-[0_14px_24px_rgba(20,50,16,0.4)]"
+          className="block w-auto object-contain drop-shadow-[0_14px_24px_rgba(20,50,16,0.4)]"
           decoding="async"
           draggable={false}
           src={bbanggutGuideUrl}
+          style={{
+            height: GUIDE_DINO_HEIGHT,
+            transform: `translate(${GUIDE_DINO_X}px, ${GUIDE_DINO_Y}px)`,
+          }}
         />
-        <div className="mb-[56px] flex items-center gap-5 rounded-[30px] border-[4px] border-[#e2caa0] bg-white/95 px-8 py-6 shadow-[0_12px_28px_rgba(20,50,16,0.35)]">
+        <div
+          className="flex items-center gap-5 rounded-[30px] border-[4px] border-[#e2caa0] bg-white/95 px-8 py-6 shadow-[0_12px_28px_rgba(20,50,16,0.35)]"
+          style={{ marginBottom: GUIDE_BUBBLE_LIFT }}
+        >
           <img
             alt=""
             className="block size-[96px] shrink-0 object-contain"

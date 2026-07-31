@@ -11,6 +11,8 @@ import {
 import {
   binAt,
   idleAim,
+  riverCenterY,
+  riverHalfSpread,
   riverY,
   screenFromHand,
   stepAim,
@@ -164,7 +166,7 @@ function spawnItem(engine: Engine, now: number): void {
   const item: RecycleItem = pickNextItem(engine.recentCodes)
   engine.recentCodes = [...engine.recentCodes.slice(-3), item.code]
 
-  const lanes = CFG.river.lanesY
+  const lanes = CFG.river.lanes
   let lane = Math.floor(Math.random() * lanes.length)
   if (lane === engine.lastLane) {
     lane =
@@ -172,8 +174,9 @@ function spawnItem(engine: Engine, now: number): void {
   }
   engine.lastLane = lane
 
-  const jitter = (Math.random() * 2 - 1) * CFG.river.laneJitterPx
-  const laneOffsetY = lanes[lane] + jitter
+  const jitter = (Math.random() * 2 - 1) * CFG.river.laneJitterRatio
+  // 비율이라 -1~1을 넘으면 물 밖으로 나간다.
+  const laneRatio = Math.min(1, Math.max(-1, lanes[lane] + jitter))
   const speedPx =
     CFG.itemSpeedPx * (1 + (Math.random() * 2 - 1) * CFG.speedJitterRatio)
 
@@ -184,10 +187,10 @@ function spawnItem(engine: Engine, now: number): void {
     category: item.category,
     imageUrl: item.imageUrl,
     x: SPAWN_X,
-    y: CFG.river.y + laneOffsetY,
+    y: riverCenterY(SPAWN_X) + laneRatio * riverHalfSpread(SPAWN_X),
     riverX: SPAWN_X,
     speedPx,
-    laneOffsetY,
+    laneRatio,
     // 위상을 흩어 놓아야 쓰레기들이 한 몸처럼 출렁이지 않는다.
     bobPhaseMs: (now * 0.37 + engine.nextUid * 613) % CFG.river.bobPeriodMs,
     heldBy: null,

@@ -137,7 +137,19 @@ export function storeLoginSession(
   remember: boolean,
   loginMethod: LoginMethod = 'email',
 ) {
+  // 다른 계정이 같은 브라우저에 로그인해도 이전 계정의 아이·리포트 캐시는 남는다.
+  // 그러면 새 계정 화면에 남의 아이 이름과 사진이 그대로 보이고, ChildRouteGuard도
+  // 이전 계정의 아이 id로 진입을 판정한다.
+  //
+  // 같은 계정으로 다시 로그인한 경우는 남겨 둔다. 리포트 도착 목록처럼 서버에서
+  // 복구되지 않는 캐시가 있어, 계정이 그대로인데 지우면 부모가 못 본 알림이 사라진다.
+  const previousParentId = getSessionStorage()?.getItem('parentId') ?? null
+  const isAccountSwitch = previousParentId !== String(response.parentId)
+
   clearLoginSession()
+  if (isAccountSwitch) {
+    clearAccountLocalData()
+  }
   const storage = remember ? window.localStorage : window.sessionStorage
   storeAccessToken(response, storage)
   storage.setItem('loginMethod', loginMethod)
@@ -292,7 +304,7 @@ export async function withdrawAccount(pin: string) {
     )
   }
   clearLoginSession()
-  ACCOUNT_LOCAL_DATA_KEYS.forEach((key) => window.localStorage.removeItem(key))
+  clearAccountLocalData()
   window.sessionStorage.removeItem(NEW_SIGNUP_EMAIL_KEY)
 }
 
@@ -322,6 +334,11 @@ export function clearLoginSession() {
   for (const storage of [window.localStorage, window.sessionStorage]) {
     SESSION_KEYS.forEach((key) => storage.removeItem(key))
   }
+}
+
+/** 계정에 종속된 로컬 캐시(아이 프로필, 부모 사진, 리포트 알림)를 지운다. */
+function clearAccountLocalData() {
+  ACCOUNT_LOCAL_DATA_KEYS.forEach((key) => window.localStorage.removeItem(key))
 }
 
 async function ensureAccessToken() {

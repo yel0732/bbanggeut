@@ -16,18 +16,25 @@ import org.springframework.transaction.annotation.Transactional;
 import com.A501.backend.domain.game.dto.request.SaveDobbleCardResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveGameResultRequest;
 import com.A501.backend.domain.game.dto.request.SaveFruitNinjaResultRequest;
+import com.A501.backend.domain.game.dto.request.SaveRecyclingResultRequest;
 import com.A501.backend.domain.game.dto.response.GameSessionResponse;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.Game;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
+import com.A501.backend.domain.game.entity.RecyclingGameResult;
+import com.A501.backend.domain.game.entity.RecyclingRuleVersion;
+import com.A501.backend.domain.game.exception.GameErrorCode;
+import com.A501.backend.domain.game.exception.GameException;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
 import com.A501.backend.domain.game.metric.FruitResultCount;
 import com.A501.backend.domain.game.metric.GameMetricType;
 import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
 import com.A501.backend.domain.game.repository.GameRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
+import com.A501.backend.domain.game.repository.RecyclingRuleVersionRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,8 +43,12 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class GameSessionService {
 
+    private static final String RECYCLING_GAME_CODE = "RECYCLING";
+
     private final GameSessionRepository gameSessionRepository;
     private final GameRepository gameRepository;
+    private final RecyclingGameResultRepository recyclingGameResultRepository;
+    private final RecyclingRuleVersionRepository recyclingRuleVersionRepository;
     private final GameSessionWriter gameSessionWriter;
     private final GameCurrentMemberProvider currentMemberProvider;
     private final GameChildAccessVerifier childAccessVerifier;
@@ -87,7 +98,7 @@ public class GameSessionService {
         validateTimeline(request);
 
         return gameSessionRepository.findByClientPlayId(request.clientPlayId())
-                .map(GameSessionResponse::from)
+                .map(existing -> responseForExisting(existing, request))
                 .orElseGet(() -> saveNewSession(request));
     }
 
@@ -99,6 +110,15 @@ public class GameSessionService {
         }
         if (request.gameType() == GameMetricType.FRUIT_NINJA) {
             return saveNewFruitNinjaSession(request);
+        }
+        if (request.gameType() == GameMetricType.RECYCLING) {
+            return saveNewRecyclingSession(request);
+        }
+        if (gameRepository.findById(request.gameId())
+                .map(Game::getGameCode)
+                .filter(RECYCLING_GAME_CODE::equals)
+                .isPresent()) {
+            throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
         }
         GameSession gameSession = GameSession.create(
                 request.childId(),
@@ -118,6 +138,91 @@ public class GameSessionService {
                     .map(GameSessionResponse::from)
                     .orElseThrow(() -> e);
         }
+    }
+
+    private GameSessionResponse saveNewRecyclingSession(SaveGameResultRequest request) {
+        SaveRecyclingResultRequest requestedResult = request.recyclingResult();
+        if (requestedResult == null) {
+            throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
+        }
+
+        Game game = gameRepository.findById(request.gameId())
+                .orElseThrow(() -> new GameException(GameErrorCode.GAME_NOT_FOUND));
+        if (!RECYCLING_GAME_CODE.equals(game.getGameCode())) {
+            throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
+        }
+
+        RecyclingRuleVersion ruleVersion = recyclingRuleVersionRepository
+                .findByVersionCode(requestedResult.rulesVersion())
+                .orElseThrow(() -> new GameException(GameErrorCode.RECYCLING_RULE_NOT_FOUND));
+        validateRecyclingResult(request, requestedResult, ruleVersion);
+
+        GameSession gameSession = GameSession.create(
+                request.childId(),
+                request.gameId(),
+                request.clientPlayId(),
+                null,
+                request.selectedAt(),
+                request.playStartedAt(),
+                request.completedAt(),
+                request.playDurationSeconds(),
+                request.score());
+        RecyclingGameResult recyclingGameResult = RecyclingGameResult.create(
+                gameSession.getGameSessionId(),
+                requestedResult.rulesVersion(),
+                requestedResult.successfulCount(),
+                requestedResult.wrongCount());
+
+        try {
+            GameSession savedSession = gameSessionWriter.saveRecyclingResult(
+                    gameSession,
+                    recyclingGameResult);
+            return GameSessionResponse.from(savedSession, recyclingGameResult);
+        } catch (DataIntegrityViolationException e) {
+            return gameSessionRepository.findByClientPlayId(request.clientPlayId())
+                    .map(existing -> responseForExisting(existing, request))
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    private void validateRecyclingResult(
+            SaveGameResultRequest request,
+            SaveRecyclingResultRequest requestedResult,
+            RecyclingRuleVersion ruleVersion) {
+        if (request.playDurationSeconds() < 0 || request.playDurationSeconds() > 60) {
+            throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
+        }
+        if (requestedResult.successfulCount() < 0 || requestedResult.wrongCount() < 0) {
+            throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
+        }
+
+        long expectedScore =
+                (long) requestedResult.successfulCount() * ruleVersion.getScorePerCorrect();
+        if (expectedScore > Integer.MAX_VALUE || request.score() != expectedScore) {
+            throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
+        }
+    }
+
+    private GameSessionResponse responseForExisting(
+            GameSession existing,
+            SaveGameResultRequest request) {
+        if (!existing.getChildId().equals(request.childId())
+                || !existing.getGameId().equals(request.gameId())) {
+            throw new GameException(GameErrorCode.CLIENT_PLAY_ID_CONFLICT);
+        }
+        var recyclingResult =
+                recyclingGameResultRepository.findById(existing.getGameSessionId());
+        if (recyclingResult.isPresent()) {
+            if (request.gameType() != GameMetricType.RECYCLING) {
+                throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
+            }
+            RecyclingGameResult result = recyclingResult.get();
+            return GameSessionResponse.from(existing, result);
+        }
+        if (request.gameType() == GameMetricType.RECYCLING) {
+            throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
+        }
+        return GameSessionResponse.from(existing);
     }
 
     private GameSessionResponse saveNewFruitNinjaSession(SaveGameResultRequest request) {

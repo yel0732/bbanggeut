@@ -17,6 +17,7 @@ import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.game.metric.DobbleResultMetrics;
 import com.A501.backend.domain.game.metric.FruitNinjaResultMetrics;
 import com.A501.backend.domain.game.metric.GameResultMetrics;
+import com.A501.backend.domain.game.metric.RecyclingResultMetrics;
 import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.model.ReportPeriod;
@@ -72,6 +73,7 @@ class ReportGameSnapshotServiceTest {
     void 완료된_게임_결과를_리포트_스냅샷으로_저장한다() {
         UUID dobbleSessionId = UUID.randomUUID();
         UUID fruitSessionId = UUID.randomUUID();
+        UUID recyclingSessionId = UUID.randomUUID();
         gameSourceQueryPort.returns(List.of(
                 source(
                         dobbleSessionId,
@@ -91,7 +93,16 @@ class ReportGameSnapshotServiceTest {
                         LocalDateTime.of(2026, 7, 23, 11, 0),
                         90,
                         1200,
-                        new FruitNinjaResultMetrics(15, 12, "v1"))));
+                        new FruitNinjaResultMetrics(15, 12, "v1")),
+                source(
+                        recyclingSessionId,
+                        9L,
+                        "RECYCLING",
+                        "분리수거",
+                        LocalDateTime.of(2026, 7, 23, 12, 0),
+                        60,
+                        1200,
+                        new RecyclingResultMetrics(12, 3, "RECYCLING_V1"))));
 
         int createdCount = snapshotService.createSnapshots(
                 dailyReport.getId());
@@ -99,11 +110,12 @@ class ReportGameSnapshotServiceTest {
         var snapshots = reportGameResultRepository.findAllByReportId(
                 dailyReport.getId());
 
-        assertThat(createdCount).isEqualTo(2);
-        assertThat(snapshots).hasSize(2);
+        assertThat(createdCount).isEqualTo(3);
+        assertThat(snapshots).hasSize(3);
         assertThat(snapshots)
                 .extracting(result -> result.getGameSessionId())
-                .containsExactlyInAnyOrder(dobbleSessionId, fruitSessionId);
+                .containsExactlyInAnyOrder(
+                        dobbleSessionId, fruitSessionId, recyclingSessionId);
         assertThat(snapshots)
                 .allMatch(result -> result.isCompleted());
 
@@ -130,6 +142,19 @@ class ReportGameSnapshotServiceTest {
         assertThat(fruitSnapshot.getResultMetrics())
                 .contains("\"totalFruitCount\":15")
                 .contains("\"slicedFruitCount\":12");
+
+        var recyclingSnapshot = snapshots.stream()
+                .filter(result ->
+                        result.getGameSessionId().equals(recyclingSessionId))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(recyclingSnapshot.getGameCode()).isEqualTo("RECYCLING");
+        assertThat(recyclingSnapshot.getGameName()).isEqualTo("분리수거");
+        assertThat(recyclingSnapshot.getResultMetrics())
+                .contains("\"successfulCount\":12")
+                .contains("\"wrongCount\":3")
+                .contains("\"rulesVersion\":\"RECYCLING_V1\"");
     }
 
     @Test

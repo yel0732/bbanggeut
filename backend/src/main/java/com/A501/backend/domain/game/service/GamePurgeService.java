@@ -10,6 +10,7 @@ import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaFruitResultRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ public class GamePurgeService {
     private final CardRoundRepository cardRoundRepository;
     private final FruitNinjaFruitResultRepository fruitNinjaFruitResultRepository;
     private final FruitNinjaResultRepository fruitNinjaResultRepository;
+    private final RecyclingGameResultRepository recyclingGameResultRepository;
 
     @Transactional
     public void purgeByChildIds(List<Long> childIds) {
@@ -39,14 +41,17 @@ public class GamePurgeService {
         int fruitDetailCount =
                 fruitNinjaFruitResultRepository.deleteByGameSessionIds(gameSessionIds);
         int fruitResultCount = fruitNinjaResultRepository.deleteByGameSessionIds(gameSessionIds);
+        int recyclingResultCount =
+                recyclingGameResultRepository.deleteByGameSessionIds(gameSessionIds);
         int gameSessionCount = gameSessionRepository.deleteByChildIds(childIds);
 
         log.info(
                 "게임 데이터 hard delete 완료: gameSessions={}, cardRounds={}, "
-                        + "fruitResults={}, fruitDetails={}",
+                        + "fruitResults={}, fruitDetails={}, recyclingResults={}",
                 gameSessionCount,
                 cardRoundCount,
                 fruitResultCount,
-                fruitDetailCount);
+                fruitDetailCount,
+                recyclingResultCount);
     }
 }

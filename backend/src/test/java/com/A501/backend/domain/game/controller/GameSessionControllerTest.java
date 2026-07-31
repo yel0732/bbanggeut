@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import com.A501.backend.domain.child.entity.Child;
 import com.A501.backend.domain.child.repository.ChildRepository;
@@ -22,6 +23,7 @@ import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@WithMockUser
 class GameSessionControllerTest {
 
     @Autowired

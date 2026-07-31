@@ -13,12 +13,15 @@ import org.springframework.transaction.annotation.Transactional;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.entity.GameSession;
+import com.A501.backend.domain.game.entity.RecyclingGameResult;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
 import com.A501.backend.domain.game.metric.DobbleResultCalculator;
 import com.A501.backend.domain.game.metric.FruitNinjaResultMetrics;
+import com.A501.backend.domain.game.metric.RecyclingResultMetrics;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
 import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 
@@ -33,10 +36,13 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
     private static final String DOBBLE_GAME_NAME = "그림 맞추기";
     private static final String FRUIT_NINJA_GAME_CODE = "FRUIT_NINJA";
     private static final String FRUIT_NINJA_GAME_NAME = "과일 자르기";
+    private static final String RECYCLING_GAME_CODE = "RECYCLING";
+    private static final String RECYCLING_GAME_NAME = "분리수거";
 
     private final GameSessionRepository gameSessionRepository;
     private final CardRoundRepository cardRoundRepository;
     private final FruitNinjaResultRepository fruitNinjaResultRepository;
+    private final RecyclingGameResultRepository recyclingGameResultRepository;
 
     @Override
     public boolean existsCompletedGame(
@@ -75,12 +81,19 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
                         .collect(Collectors.toMap(
                                 FruitNinjaResult::getGameSessionId,
                                 result -> result));
+        Map<UUID, RecyclingGameResult> recyclingResultsBySessionId =
+                recyclingGameResultRepository.findAllById(sessionIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                RecyclingGameResult::getGameSessionId,
+                                result -> result));
 
         return sessions.stream()
                 .map(session -> toReportSource(
                         session,
                         roundsBySessionId.get(session.getGameSessionId()),
-                        fruitResultsBySessionId.get(session.getGameSessionId())))
+                        fruitResultsBySessionId.get(session.getGameSessionId()),
+                        recyclingResultsBySessionId.get(session.getGameSessionId())))
                 .filter(Objects::nonNull)
                 .toList();
     }
@@ -88,12 +101,16 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
     private ReportGameSource toReportSource(
             GameSession session,
             List<CardRound> rounds,
-            FruitNinjaResult fruitResult) {
+            FruitNinjaResult fruitResult,
+            RecyclingGameResult recyclingResult) {
         if (rounds != null) {
             return toDobbleReportSource(session, rounds);
         }
         if (fruitResult != null) {
             return toFruitNinjaReportSource(session, fruitResult);
+        }
+        if (recyclingResult != null) {
+            return toRecyclingReportSource(session, recyclingResult);
         }
         return null;
     }
@@ -129,6 +146,23 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
                 new FruitNinjaResultMetrics(
                         result.getTotalFruitCount(),
                         result.getSlicedFruitCount(),
+                        result.getRulesVersion()));
+    }
+
+    private ReportGameSource toRecyclingReportSource(
+            GameSession session,
+            RecyclingGameResult result) {
+        return new ReportGameSource(
+                session.getGameSessionId(),
+                session.getGameId(),
+                RECYCLING_GAME_CODE,
+                RECYCLING_GAME_NAME,
+                session.getCompletedAt(),
+                session.getPlayDurationSeconds(),
+                session.getScore(),
+                new RecyclingResultMetrics(
+                        result.getSuccessfulCount(),
+                        result.getWrongCount(),
                         result.getRulesVersion()));
     }
 

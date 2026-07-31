@@ -17,6 +17,7 @@ import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.entity.FruitType;
 import com.A501.backend.domain.game.entity.GameSession;
+import com.A501.backend.domain.game.entity.RecyclingGameResult;
 import com.A501.backend.domain.game.metric.CardResultStatus;
 import com.A501.backend.domain.game.metric.CognitiveGrade;
 import com.A501.backend.domain.game.metric.FruitResultCount;
@@ -25,6 +26,7 @@ import com.A501.backend.domain.game.repository.FruitNinjaFruitResultRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
 import com.A501.backend.domain.game.repository.FruitTypeRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
+import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, GamePurgeService.class})
@@ -36,6 +38,7 @@ class GamePurgeServiceTest {
     @Autowired FruitNinjaResultRepository fruitNinjaResultRepository;
     @Autowired FruitNinjaFruitResultRepository fruitNinjaFruitResultRepository;
     @Autowired FruitTypeRepository fruitTypeRepository;
+    @Autowired RecyclingGameResultRepository recyclingGameResultRepository;
 
     @Test
     void purgesOnlyTargetChildrenGameDataAndKeepsGlobalReferenceData() {
@@ -55,6 +58,10 @@ class GamePurgeServiceTest {
         GameSession otherChildFruit = saveSession(16L, 8L);
         saveFruitResult(otherChildFruit);
 
+        GameSession targetRecycling = saveSession(15L, 9L);
+        recyclingGameResultRepository.saveAndFlush(RecyclingGameResult.create(
+                targetRecycling.getGameSessionId(), "RECYCLING_V1", 10, 2));
+
         fruitTypeRepository.saveAndFlush(FruitType.create("APPLE", "사과", 120));
 
         gamePurgeService.purgeByChildIds(List.of(15L));
@@ -65,6 +72,9 @@ class GamePurgeServiceTest {
         assertThat(fruitNinjaResultRepository.findById(targetFruit.getGameSessionId())).isEmpty();
         assertThat(fruitNinjaFruitResultRepository
                 .findAllByGameSessionIdOrderByFruitCode(targetFruit.getGameSessionId()))
+                .isEmpty();
+        assertThat(recyclingGameResultRepository
+                .findById(targetRecycling.getGameSessionId()))
                 .isEmpty();
 
         assertThat(gameSessionRepository.findById(otherChildFruit.getGameSessionId())).isPresent();

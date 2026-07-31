@@ -6,46 +6,26 @@ import gameMenuButtonUrl from '@/assets/images/game-entry/game-menu-button.webp'
 import gameMenuPanelUrl from '@/assets/images/game-entry/game-menu-panel.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import prevButtonUrl from '@/assets/images/game-entry/prev-btn.webp'
-import recycleCardUrl from '@/assets/images/game-entry/recycle-card.webp'
-import wordmatchCardUrl from '@/assets/images/game-entry/wordmatch-card.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { DinoCharacter } from '@/components/character/DinoCharacter'
+import { getGamesByPage } from '@/features/games/games'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
-/**
- * 게임 선택 두 번째 화면에 들어갈 새 게임 두 개.
- *
- * 게임 자체는 아직 구현 전이라 id는 임시로 정했다. 실제로 만들 때
- * `features/games/games.ts`의 GAMES와 합치거나 라우트를 새로 연결해야 한다.
- */
-const NEW_GAMES = [
-  {
-    id: 'wordmatch',
-    label: '낱말 맞추기',
-    cardImageUrl: wordmatchCardUrl,
-    floatClassName: '[animation-delay:-0.4s]',
-    positionClassName: 'top-[93px] left-[154px]',
-  },
-  {
-    id: 'recycle',
-    label: '숲 속 청소하기',
-    cardImageUrl: recycleCardUrl,
-    floatClassName: '[animation-delay:-1.7s]',
-    positionClassName: 'top-[93px] right-[154px]',
-  },
-] as const
+/** 두 번째 게임 선택 화면에 놓는 게임. */
+const PAGE_GAMES = getGamesByPage(2)
 
 /**
  * 게임 선택 두 번째 화면.
  *
  * 첫 번째 화면(GameEntryPage)의 오른쪽 화살표로 들어온다. GameEntryPage와
- * 같은 위치·크기·호버 뒤집기 효과로 새 게임 두 개를 보여 준다. 게임 시작·
- * 게임 방법 버튼은 아직 없는 화면을 향하지만 자리는 동일하게 잡아 둔다.
+ * 같은 위치·크기·호버 뒤집기 효과로 새 게임 두 개를 보여 준다. 두 게임 모두
+ * 플레이 화면이 아직 없어 `playable: false`다 — 게임 시작을 눌러도
+ * GamePlayPage가 게임 방법으로 되돌린다.
  */
 export function MoreGamesPage() {
   const navigate = useNavigate()
@@ -110,7 +90,7 @@ export function MoreGamesPage() {
 
           <ChildProfileSwitchButton />
 
-          {NEW_GAMES.map((game) => {
+          {PAGE_GAMES.map((game) => {
             const isFlipped = hoveredGameId === game.id
 
             return (

@@ -13,7 +13,7 @@ import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { FRUIT_GAME_CONFIG } from '@/features/games/fruit/fruitGameConfig'
-import { getGameById } from '@/features/games/games'
+import { getGameById, type GameId } from '@/features/games/games'
 import {
   SpeechBubble,
   TutorialBoard,
@@ -29,9 +29,8 @@ import {
 } from '@/features/games/tutorial/TutorialMedia'
 import { TutorialCamera } from '@/features/games/tutorial/TutorialCamera'
 import {
-  isTutorialGame,
+  isInteractiveTutorialGame,
   TUTORIAL_STEPS,
-  type TutorialGameId,
   type TutorialStepKind,
 } from '@/features/games/tutorial/tutorialSteps'
 import { DobblePracticeStage } from '@/features/games/tutorial/DobblePracticeStage'
@@ -68,12 +67,14 @@ export function GameGuidePage() {
   // 훅은 조건 없이 먼저 부른다. 잘못된 gameId로 들어와도 훅 호출 순서가
   // 흔들리면 안 되므로, 화면 이탈 판단은 훅을 다 부른 뒤에 한다.
   const game = getGameById(gameId)
-  const tutorialGameId: TutorialGameId | null =
-    game && isTutorialGame(game.id) ? game.id : null
+  const tutorialGameId: GameId = game?.id ?? 'fruit'
+  // 아직 만들지 않은 게임은 인식·실습 판정이 없다. 카메라도 켜지 않는다.
+  const interactive = game ? isInteractiveTutorialGame(game.id) : false
 
-  const steps = TUTORIAL_STEPS[tutorialGameId ?? 'fruit']
+  const steps = TUTORIAL_STEPS[tutorialGameId]
   const step = steps[Math.min(stepIndex, steps.length - 1)]
-  const needsCamera = step.kind === 'detect' || step.kind === 'practice'
+  const needsCamera =
+    interactive && (step.kind === 'detect' || step.kind === 'practice')
 
   const { requestCamera, status, streamRef, videoRef } = useCameraStream()
   // 게임마다 필요한 모델이 다르다. 둘을 동시에 올리면 낭비라 한쪽만 켠다.
@@ -110,7 +111,7 @@ export function GameGuidePage() {
   }, [gestures.gesturesRef, hand.playHandRef, tutorialGameId])
 
   const detection = useDetectionHold({
-    active: step.kind === 'detect' && cameraReady,
+    active: step.kind === 'detect' && cameraReady && interactive,
     check: detectCheck,
     holdMs: DETECT_HOLD_MS,
     onComplete: goNext,
@@ -131,7 +132,7 @@ export function GameGuidePage() {
     targetCount: PRACTICE_TARGET_FRUITS,
   })
 
-  if (!game || !tutorialGameId) {
+  if (!game) {
     return <Navigate replace to="/games" />
   }
 
@@ -141,7 +142,10 @@ export function GameGuidePage() {
   const cameraUsable =
     status !== 'denied' && status !== 'unavailable' && status !== 'error'
 
-  const backToSelect = () => navigate('/games')
+  // 온 곳으로 돌려보낸다. 2페이지 게임인데 1페이지로 나가면 방금 고른 카드가
+  // 사라져 아이가 길을 잃는다.
+  const selectPath = game.page === 2 ? '/games/more' : '/games'
+  const backToSelect = () => navigate(selectPath)
   const startGame = () => navigate(`/games/${game.id}/play`)
   const goPrev = () => setStepIndex((current) => Math.max(current - 1, 0))
   const relearn = () => setStepIndex(0)
@@ -152,6 +156,10 @@ export function GameGuidePage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
+        {/*
+          아직 전용 BGM이 없는 게임은 같은 인지 게임 계열인 도블 음악을 쓴다.
+          게임을 만들 때 전용 음악으로 바꾼다.
+        */}
         <audio
           aria-label="게임 배경 음악"
           loop
@@ -224,8 +232,10 @@ export function GameGuidePage() {
                   streamRef,
                   videoRef,
                 }}
+                cardImageUrl={game.cardImageUrl}
                 dobblePractice={dobblePractice}
                 gameId={tutorialGameId}
+                interactive={interactive}
                 kind={step.kind}
                 practice={practice}
                 speech={step.speech}
@@ -233,27 +243,26 @@ export function GameGuidePage() {
             }
             bodyOverflowVisible={
               step.kind === 'intro' ||
-              step.kind === 'demo' ||
+              (step.kind === 'demo' && interactive) ||
               step.kind === 'ready'
             }
             footer={
               <StepFooter
                 cameraUsable={cameraUsable}
+                interactive={interactive}
                 kind={step.kind}
                 onNext={goNext}
                 onPrev={goPrev}
                 onQuit={backToSelect}
                 onRelearn={relearn}
                 onStart={startGame}
+                playable={game.playable}
                 showPrev={stepIndex > 0}
               />
             }
-            showTitle={
-              step.kind === 'intro' ||
-              step.kind === 'demo' ||
-              step.kind === 'detect' ||
-              step.kind === 'ready'
-            }
+            // 실습만 제목 자리를 본문에 넘긴다. 판정 없는 게임의 실습 단계는
+            // 다른 안내 단계와 똑같이 생겨야 하므로 제목을 그대로 둔다.
+            showTitle={step.kind !== 'practice' || !interactive}
             stepCount={steps.length}
             stepIndex={stepIndex}
           />
@@ -348,19 +357,30 @@ type CameraProps = {
 
 function StepBody({
   camera,
+  cardImageUrl,
   dobblePractice,
   gameId,
+  interactive,
   kind,
   practice,
   speech,
 }: {
   camera: CameraProps
+  cardImageUrl: string
   dobblePractice: DobblePracticeState
-  gameId: TutorialGameId
+  gameId: GameId
+  /** 인식·실습 판정이 구현된 게임인지 */
+  interactive: boolean
   kind: TutorialStepKind
   practice: FruitPracticeState
   speech: string
 }) {
+  // 인사와 시작은 게임과 무관한 빵긋이 화면이라 어느 게임이든 그대로 쓴다.
+  // 그 사이 세 단계만 보여 줄 것이 없어 카드 그림으로 대신한다.
+  if (!interactive && kind !== 'intro' && kind !== 'ready') {
+    return <UpcomingStepBody cardImageUrl={cardImageUrl} speech={speech} />
+  }
+
   if (kind === 'intro' || kind === 'ready') {
     if (kind === 'intro') {
       return (
@@ -523,6 +543,51 @@ function StepBody({
                 videoRef={camera.videoRef}
               />
             )}
+          </TutorialPanel>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 아직 만들지 않은 게임의 시범·인식·실습 단계 본문.
+ *
+ * 시범 영상도 연습 판도 없으니 그 자리에 게임 카드 그림을 놓는다. 빈 판을 두면
+ * 화면이 덜 그려진 것처럼 보이는데, 방금 고른 카드가 그대로 있으면 아이는
+ * 자기가 고른 게임을 보고 있다는 것을 안다.
+ *
+ * 배치는 시범·인식 단계와 같다 — 왼쪽에 말풍선, 오른쪽에 점선 패널.
+ */
+function UpcomingStepBody({
+  cardImageUrl,
+  speech,
+}: {
+  cardImageUrl: string
+  speech: string
+}) {
+  return (
+    <div className="flex h-full w-full items-center gap-4">
+      <div className="flex w-[240px] shrink-0 flex-col items-center">
+        <SpeechBubble side="right" size="small" speech={speech} />
+      </div>
+      <div className="flex h-full min-w-0 flex-1 items-center justify-center">
+        <div
+          className="flex items-center justify-center"
+          style={{
+            width: COMPACT_GUIDE_PANEL_WIDTH,
+            height: COMPACT_GUIDE_PANEL_HEIGHT,
+            transform: `translate(${COMPACT_GUIDE_PANEL_X}px, ${COMPACT_GUIDE_PANEL_Y}px)`,
+          }}
+        >
+          <TutorialPanel>
+            <img
+              alt=""
+              className="max-h-full max-w-full object-contain drop-shadow-[0_10px_18px_rgba(120,80,30,0.22)]"
+              decoding="async"
+              draggable={false}
+              src={cardImageUrl}
+            />
           </TutorialPanel>
         </div>
       </div>
@@ -709,34 +774,46 @@ function PracticeCameraPreview({
 
 function StepFooter({
   cameraUsable,
+  interactive,
   kind,
   onNext,
   onPrev,
   onQuit,
   onRelearn,
   onStart,
+  playable,
   showPrev,
 }: {
   /** 카메라를 쓸 수 있는지. 못 쓰면 인식 단계를 건너뛸 길을 열어 준다. */
   cameraUsable: boolean
+  /** 인식·실습 판정이 구현된 게임인지 */
+  interactive: boolean
   kind: TutorialStepKind
   onNext: () => void
   onPrev: () => void
   onQuit: () => void
   onRelearn: () => void
   onStart: () => void
+  /** 플레이 화면이 있는지. 없으면 시작하기를 두지 않는다. */
+  playable: boolean
   showPrev: boolean
 }) {
   if (kind === 'ready') {
     return (
       <div className="flex w-full items-center justify-center gap-5">
-        <GuideButton
-          imageUrl={guideStartButtonUrl}
-          label="시작하기"
-          labelClassName="text-white [text-shadow:0_2px_0_#3f7d1e,0_5px_8px_rgba(20,50,15,0.3)]"
-          onClick={onStart}
-          width={196}
-        />
+        {/*
+          플레이 화면이 없는 게임은 시작하기를 두지 않는다. 눌러도 게임 방법으로
+          되돌아오기만 해서, 아이는 버튼이 고장난 줄 안다.
+        */}
+        {playable ? (
+          <GuideButton
+            imageUrl={guideStartButtonUrl}
+            label="시작하기"
+            labelClassName="text-white [text-shadow:0_2px_0_#3f7d1e,0_5px_8px_rgba(20,50,15,0.3)]"
+            onClick={onStart}
+            width={196}
+          />
+        ) : null}
         <GuideButton
           imageUrl={guideBackButtonUrl}
           label="다시 배우기"
@@ -761,16 +838,24 @@ function StepFooter({
     알아서 다음으로 넘어가므로 버튼이 필요 없다.
 
     카메라를 못 쓰는 경우에만 길을 열어 둔다. 그때는 여기서 막아도 방법이 없다.
+    판정 자체가 없는 게임도 마찬가지다 — 해낼 방법이 없으니 막으면 갇힌다.
   */
-  const mustFinish = (kind === 'detect' || kind === 'practice') && cameraUsable
+  const mustFinish =
+    (kind === 'detect' || kind === 'practice') && cameraUsable && interactive
 
   /*
     실습은 버튼을 아예 두지 않는다. 몸으로 하는 단계라 손에 칼이 붙어 있고 손을
     휘두르는 중인데, 밑에 누를 것이 있으면 시선이 거기로 간다. 그만두고 싶으면
     화면 왼쪽 위 뒤로가기·닫기 버튼이 그대로 있으니 갇히지도 않는다.
+
+    판정이 없는 게임은 몸으로 할 것이 없다. 그때는 이전 버튼을 남겨 둔다.
   */
-  const hidePrev = kind === 'practice' && cameraUsable
-  const alignWithIntroButtons = kind === 'demo' || kind === 'detect'
+  const hidePrev = kind === 'practice' && cameraUsable && interactive
+  // 판정 없는 게임은 시범·인식·실습이 다 같은 안내 화면이라 버튼 배치도 맞춘다.
+  const alignWithIntroButtons =
+    kind === 'demo' ||
+    kind === 'detect' ||
+    (kind === 'practice' && !interactive)
   const keepSingleButtonInLeftSlot = kind === 'detect' && mustFinish
   const footerLayoutClass =
     !showPrev || alignWithIntroButtons
@@ -795,7 +880,11 @@ function StepFooter({
       {mustFinish ? null : (
         <GuideButton
           imageUrl={guideStartButtonUrl}
-          label={kind === 'detect' || kind === 'practice' ? '건너뛰기' : '다음'}
+          label={
+            interactive && (kind === 'detect' || kind === 'practice')
+              ? '건너뛰기'
+              : '다음'
+          }
           labelClassName="text-white [text-shadow:0_2px_0_#3f7d1e,0_5px_8px_rgba(20,50,15,0.3)]"
           onClick={onNext}
         />

@@ -11,11 +11,15 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { DinoCharacter } from '@/components/character/DinoCharacter'
-import { GAMES } from '@/features/games/games'
+import { getGamesByPage } from '@/features/games/games'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
+
+/** 첫 번째 게임 선택 화면에 놓는 게임. 두 번째 화면은 MoreGamesPage가 그린다. */
+const PAGE_GAMES = getGamesByPage(1)
+
 export function GameEntryPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -81,7 +85,7 @@ export function GameEntryPage() {
 
           <ChildProfileSwitchButton />
 
-          {GAMES.map((game) => {
+          {PAGE_GAMES.map((game) => {
             const isFlipped = hoveredGameId === game.id
 
             return (

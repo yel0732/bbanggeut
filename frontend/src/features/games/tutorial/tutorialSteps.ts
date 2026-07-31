@@ -15,6 +15,8 @@ export type TutorialStepKind =
   | 'intro'
   /** 조작을 자동 재생으로 보여 준다 */
   | 'demo'
+  /** 무엇이 어느 종류인지 알려 준다 (분리수거 전용) */
+  | 'sorting'
   /** 카메라에 몸/손이 잡히는지 확인한다 */
   | 'detect'
   /** 직접 해 본다. 성공하면 다음으로 넘어간다 */
@@ -31,15 +33,20 @@ export type TutorialStep = {
 /**
  * 카메라 판정과 연습 판이 실제로 구현된 게임.
  *
- * 나머지 게임은 같은 5단계를 보여 주되 인식·실습을 실제로 하지 않고 안내만
+ * 나머지 게임은 같은 단계를 보여 주되 인식·실습을 실제로 하지 않고 안내만
  * 보고 넘어간다. 판정이 없는데 통과를 요구하면 아이가 그 단계에 갇힌다.
  */
-export type InteractiveTutorialGameId = 'fruit' | 'dobble'
+export type InteractiveTutorialGameId = 'fruit' | 'dobble' | 'recycle'
 
 export function isInteractiveTutorialGame(
   id: GameId,
 ): id is InteractiveTutorialGameId {
-  return id === 'fruit' || id === 'dobble'
+  return id === 'fruit' || id === 'dobble' || id === 'recycle'
+}
+
+/** 양손 제스처(주먹 쥐기)로 조작하는 게임. 과일 자르기만 손 위치를 쓴다. */
+export function usesHandGestures(id: GameId): boolean {
+  return id === 'dobble' || id === 'recycle'
 }
 
 const FRUIT_STEPS: TutorialStep[] = [
@@ -124,12 +131,37 @@ const WORDMATCH_STEPS: TutorialStep[] = [
   READY_STEP,
 ]
 
+/*
+  분리수거는 한 단계가 더 있다.
+
+  다른 게임은 어떻게 잡는지만 알면 되지만, 이 게임은 무엇이 어느 통에 가는지도
+  알아야 한다. 그것을 모르고 실습에 들어가면 아이는 조작이 아니라 분류에서
+  막힌다. 그래서 시범 다음에 분류를 한 번 보여 준다.
+*/
 const RECYCLE_STEPS: TutorialStep[] = [
   {
     kind: 'intro',
     speech: '안녕! 나는 빵긋이야!\n이번에는 숲을 깨끗하게 치워 보자!',
   },
-  ...UPCOMING_MIDDLE_STEPS,
+  {
+    kind: 'demo',
+    speech:
+      '손을 올리고 주먹을 쥐면 쓰레기를 잡아!\n통 위에서 손을 펴면 쏙 들어가!',
+  },
+  {
+    // 아래 네 칸에 자리를 몰아주려고 한 줄로 둔다. 줄바꿈을 넣으면 말풍선이
+    // 두 배로 높아져 칸이 그만큼 눌린다.
+    kind: 'sorting',
+    speech: '쓰레기마다 들어갈 통이 달라. 어디로 가는지 같이 보자!',
+  },
+  {
+    kind: 'detect',
+    speech: '손바닥을 펴서\n카메라에 보여 줘!',
+  },
+  {
+    kind: 'practice',
+    speech: '쓰레기 두 개를\n알맞은 통에 넣어 볼까?',
+  },
   READY_STEP,
 ]
 

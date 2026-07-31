@@ -7,9 +7,13 @@ import handsFistUrl from '@/assets/images/tutorial/dobble/dino-hands-fist.png'
 import handsOpenUrl from '@/assets/images/tutorial/dobble/dino-hands-open.png'
 import fruitDemoUrl from '@/assets/images/tutorial/fruit/fruit-slice-demo.webm'
 import fruitPosesUrl from '@/assets/images/tutorial/fruit/dino-fruit-left-arm-2poses-low.png'
-import recycleDemoUrl from '@/assets/images/tutorial/recycle/recycle-clean-demo.webp'
-import wordmatchDemoUrl from '@/assets/images/tutorial/wordmatch/wordmatch-demo.webp'
 import type { GameId } from '@/features/games/games'
+
+import {
+  UPCOMING_DEMO_HEIGHT,
+  UPCOMING_DEMOS,
+  upcomingDemoWidth,
+} from './upcomingDemos'
 
 /**
  * 튜토리얼 그림·영상.
@@ -189,41 +193,12 @@ export function DobbleHands({
 /** 포즈 시트 한 컷의 원본 크기 — 배치 계산이 필요할 때 쓴다. */
 export const FRUIT_POSE_SOURCE_SIZE = FRUIT_POSE_FRAME
 
-/*
-  아직 만들지 않은 게임의 시범 동작.
-
-  기존 두 게임은 1024x1024 알파 WebM을 `<video>`로 돌린다. 이 두 게임 에셋은
-  512x800 알파 애니메이션 WebP라 `<img>`로 붙인다 — WebP 애니메이션은 img에서
-  알아서 반복 재생되고, video와 달리 muted·autoPlay를 챙길 필요가 없다.
-
-  크기: 기존 시범은 500px 상자를 1.55배 키워 775px로 그리는데, 그 안에서 공룡이
-  차지하는 높이는 6할 정도라 화면에서는 약 490px로 보인다. 이 에셋은 800px 프레임
-  안에서 공룡이 이미 7할 5푼을 채우고 있어(측정값 580~633px), 같은 키로 보이려면
-  프레임을 645px로 그린다. 세로형이라 폭은 비율대로 따라온다.
-
-  숫자를 조절할 일이 생기면 UPCOMING_DEMO_HEIGHT 하나만 만지면 된다.
-*/
-const UPCOMING_DEMO_SOURCE = { width: 512, height: 800 } as const
-
-/** 시범 단계에서 공룡 프레임을 그릴 높이(px) */
-export const UPCOMING_DEMO_HEIGHT = 645
-
-const UPCOMING_DEMO: Partial<Record<GameId, { label: string; url: string }>> = {
-  wordmatch: {
-    label: '빵긋이 낱말 카드를 골라 맞추는 모습',
-    url: wordmatchDemoUrl,
-  },
-  recycle: {
-    label: '빵긋이 숲에 떨어진 쓰레기를 주워 담는 모습',
-    url: recycleDemoUrl,
-  },
-}
-
 /**
- * 아직 만들지 않은 게임의 시범 동작 그림.
+ * 나중에 추가한 게임의 시범 동작 그림.
  *
  * 에셋이 없는 게임이면 `fallback`을 그린다. 부르는 쪽이 에셋 유무를 따로
- * 물어보지 않아도 되게 여기서 갈라 준다.
+ * 물어보지 않아도 되게 여기서 갈라 준다. 에셋 목록과 크기는
+ * `upcomingDemos.ts`에 있다.
  */
 export function UpcomingGameDemo({
   fallback = null,
@@ -234,7 +209,7 @@ export function UpcomingGameDemo({
   gameId: GameId
   height?: number
 }) {
-  const demo = UPCOMING_DEMO[gameId]
+  const demo = UPCOMING_DEMOS[gameId]
 
   if (!demo) {
     return fallback
@@ -247,11 +222,7 @@ export function UpcomingGameDemo({
       decoding="async"
       draggable={false}
       src={demo.url}
-      style={{
-        height,
-        width:
-          (height * UPCOMING_DEMO_SOURCE.width) / UPCOMING_DEMO_SOURCE.height,
-      }}
+      style={{ height, width: upcomingDemoWidth(height) }}
     />
   )
 }

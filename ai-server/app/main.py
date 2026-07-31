@@ -1,7 +1,5 @@
 """FastAPI application factory and provider lifecycle assembly."""
 
-import asyncio
-import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -210,14 +208,10 @@ def create_app(
                 voice=resolved_settings.tts_voice,
                 first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
             ),
-            logging.getLogger("app.speech.tts_cache"),
         )
-        # 매번 같은 문장(무응답 복구·되묻기·주제 전환)은 한 번만 합성한다 —
-        # TTFB 실측 1.89초를 그 경로에서 없앤다. 기동을 막지 않도록 배경에서
-        # 채운다(11회 합성 = 20초 이상). 아직 안 채워진 문장은 평소처럼 합성되고
-        # 그 결과가 캐시에 남으므로, 이 태스크가 실패해도 기능은 온전하다.
+        # 매번 같은 문장(무응답 복구·되묻기·주제 전환)은 실제 첫 사용 때 합성하고
+        # 프로세스가 살아 있는 동안 재사용한다. 앱 시작 시 Provider를 호출하지 않는다.
         speech_synthesizer.register(fixed_assistant_messages())
-        prewarm_task = asyncio.create_task(speech_synthesizer.prewarm())
 
         def synthesis_service_factory(speaker, publisher, response_registry, on_completed):
             return SpeechSynthesisService(
@@ -272,11 +266,6 @@ def create_app(
         try:
             yield
         finally:
-            # 사전 합성은 HTTP client보다 먼저 정리한다 — 닫힌 client로 요청하면
-            # 종료 경로에서 예외가 난다.
-            prewarm_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await prewarm_task
             await redis_client.aclose()
             await realtime_http_client.aclose()
             await http_client.aclose()

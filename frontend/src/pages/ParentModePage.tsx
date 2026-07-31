@@ -16,8 +16,10 @@ import {
   getUnreadReportNotifications,
   isBackendChildId,
   markReportNotificationRead,
+  ReportApiError,
   subscribeToReportNotifications,
   updateReportNotificationPreference,
+  type ReportNotificationEvent,
   type ReportNotificationItem,
 } from '@/api/parentMode'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
@@ -352,6 +354,8 @@ export function ParentModePage() {
     useState(false)
   const childDeletionLockTimerRef = useRef<number | null>(null)
   const [isDeletingChildProfile, setIsDeletingChildProfile] = useState(false)
+  const lastReportEventIdRef = useRef<string | undefined>(undefined)
+  const seenReportEventIdsRef = useRef(new Set<string>())
 
   useEffect(() => {
     const video = parentVideoRef.current
@@ -534,14 +538,50 @@ export function ParentModePage() {
   useEffect(() => {
     if (!getStoredAccessToken() || !notification.enabled) return
     const controller = new AbortController()
+    let reconnectTimer: number | null = null
+    let toastTimer: number | null = null
+    let retryDelay = 1000
+    const maxRetryDelay = 30_000
 
-    void subscribeToReportNotifications((event) => {
+    const waitForReconnect = (delay: number) =>
+      new Promise<boolean>((resolve) => {
+        const onAbort = () => {
+          if (reconnectTimer !== null) {
+            window.clearTimeout(reconnectTimer)
+            reconnectTimer = null
+          }
+          resolve(false)
+        }
+        controller.signal.addEventListener('abort', onAbort, { once: true })
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null
+          controller.signal.removeEventListener('abort', onAbort)
+          resolve(true)
+        }, delay)
+      })
+
+    const handleEvent = (event: ReportNotificationEvent) => {
+      if (event.id) {
+        if (seenReportEventIdsRef.current.has(event.id)) return
+        seenReportEventIdsRef.current.add(event.id)
+        if (seenReportEventIdsRef.current.size > 100) {
+          const oldestId = seenReportEventIdsRef.current.values().next().value
+          if (oldestId) seenReportEventIdsRef.current.delete(oldestId)
+        }
+        lastReportEventIdRef.current = event.id
+      }
+      retryDelay = 1000
+
       const childName = event.childName.trim()
       const message = childName
         ? `${childName}이의 일일 리포트가 도착했어요!`
         : event.message
       setNotificationToast(message)
-      window.setTimeout(() => setNotificationToast(''), 4500)
+      if (toastTimer !== null) window.clearTimeout(toastTimer)
+      toastTimer = window.setTimeout(() => {
+        toastTimer = null
+        if (!controller.signal.aborted) setNotificationToast('')
+      }, 4500)
       if (event.type !== 'REPORT_COMPLETED' || !childName) return
       const matchedProfile = profiles.find(
         (profile) =>
@@ -560,11 +600,45 @@ export function ParentModePage() {
         saveReportArrivals(next)
         return next
       })
-    }, controller.signal).catch(() => {
-      // 인증/서버가 준비되지 않은 개발 환경에서는 홈 기능을 계속 제공한다.
-    })
+    }
 
-    return () => controller.abort()
+    const subscribeUntilStopped = async () => {
+      while (!controller.signal.aborted) {
+        try {
+          await subscribeToReportNotifications(
+            handleEvent,
+            controller.signal,
+            lastReportEventIdRef.current,
+          )
+          retryDelay = 1000
+        } catch (error) {
+          if (
+            controller.signal.aborted ||
+            (error instanceof DOMException && error.name === 'AbortError')
+          ) {
+            return
+          }
+          if (
+            error instanceof ReportApiError &&
+            (error.status === 401 || error.status === 403)
+          ) {
+            return
+          }
+        }
+
+        const jitter = Math.floor(Math.random() * 250)
+        if (!(await waitForReconnect(retryDelay + jitter))) return
+        retryDelay = Math.min(retryDelay * 2, maxRetryDelay)
+      }
+    }
+
+    void subscribeUntilStopped()
+
+    return () => {
+      controller.abort()
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
+      if (toastTimer !== null) window.clearTimeout(toastTimer)
+    }
   }, [notification.enabled, profiles])
 
   const unreadReportArrivals = reportArrivals.filter((item) => !item.read)

@@ -13,8 +13,14 @@ import com.A501.backend.domain.conversation.entity.ConversationSession;
 import com.A501.backend.domain.conversation.entity.ConversationStatus;
 import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.ConversationTopicState;
+import com.A501.backend.domain.conversation.entity.ConversationTurn;
+import com.A501.backend.domain.conversation.entity.Speaker;
+import com.A501.backend.domain.conversation.entity.TurnStatus;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
+import com.A501.backend.domain.report.model.ReportAiConversationTurn;
+import com.A501.backend.domain.report.model.ReportConversationGuide;
 import com.A501.backend.domain.report.model.ReportConversationSummarySource;
 import com.A501.backend.domain.report.model.ReportAiGameInput;
 import com.A501.backend.domain.report.model.ReportAiProperties;
@@ -38,6 +44,7 @@ public class ConversationReportAdapter
 
     private final ConversationSessionRepository sessionRepository;
     private final ConversationTopicStateRepository topicStateRepository;
+    private final ConversationTurnRepository turnRepository;
     private final ObjectMapper objectMapper;
     private final ReportAiSummaryPort reportAiSummaryPort;
     private final GameReportQueryPort gameReportQueryPort;
@@ -46,6 +53,7 @@ public class ConversationReportAdapter
     public ConversationReportAdapter(
             ConversationSessionRepository sessionRepository,
             ConversationTopicStateRepository topicStateRepository,
+            ConversationTurnRepository turnRepository,
             ObjectMapper objectMapper,
             ReportAiSummaryPort reportAiSummaryPort,
             GameReportQueryPort gameReportQueryPort,
@@ -53,6 +61,7 @@ public class ConversationReportAdapter
     ) {
         this.sessionRepository = sessionRepository;
         this.topicStateRepository = topicStateRepository;
+        this.turnRepository = turnRepository;
         this.objectMapper = objectMapper;
         this.reportAiSummaryPort = reportAiSummaryPort;
         this.gameReportQueryPort = gameReportQueryPort;
@@ -78,6 +87,24 @@ public class ConversationReportAdapter
                 childId, startedAt, endedAt);
         List<ReportGameSource> games = gameReportQueryPort.findCompletedGames(
                 childId, startedAt, endedAt);
+        List<ConversationTurn> turns = findCompletedTurns(sources);
+        List<ReportAiConversationTurn> conversations = turns.stream()
+                .limit(60)
+                .map(turn -> new ReportAiConversationTurn(
+                        turn.getSpeaker().name(),
+                        limit(turn.getContent(), 500)))
+                .toList();
+        List<String> childUtterances = turns.stream()
+                .filter(turn -> turn.getSpeaker() == Speaker.CHILD)
+                .map(ConversationTurn::getContent)
+                .filter(this::hasText)
+                .map(String::trim)
+                .filter(quote -> quote.length() <= 200)
+                .distinct()
+                .toList();
+        List<String> childQuotes = childUtterances.stream()
+                .limit(3)
+                .toList();
 
         LinkedHashSet<String> events = new LinkedHashSet<>();
         LinkedHashSet<String> emotions = new LinkedHashSet<>();
@@ -93,15 +120,19 @@ public class ConversationReportAdapter
             }
         }
 
-        if (contents.isEmpty() && games.isEmpty()) {
+        if (contents.isEmpty() && games.isEmpty() && conversations.isEmpty()) {
             return Optional.empty();
         }
         if (contents.isEmpty()) {
-            contents.add(games.stream()
-                    .map(game -> game.gameName() + " 게임에 참여했다")
-                    .distinct()
-                    .reduce((left, right) -> left + ". " + right)
-                    .orElseThrow() + ".");
+            if (!childQuotes.isEmpty()) {
+                contents.add(String.join(" ", childQuotes));
+            } else {
+                contents.add(games.stream()
+                        .map(game -> game.gameName() + " 게임에 참여했다")
+                        .distinct()
+                        .reduce((left, right) -> left + ". " + right)
+                        .orElseThrow() + ".");
+            }
         }
         String firstEvent = events.stream().findFirst()
                 .orElse(games.isEmpty() ? "오늘의 이야기" : "오늘의 게임 활동");
@@ -116,6 +147,9 @@ public class ConversationReportAdapter
                 List.copyOf(events),
                 List.copyOf(emotions),
                 List.of(),
+                List.of(),
+                childQuotes,
+                ReportConversationGuide.empty(),
                 MODEL_VERSION,
                 PROMPT_VERSION);
         if (!reportAiProperties.enabled()) {
@@ -128,6 +162,7 @@ public class ConversationReportAdapter
                             fallback.mainEvents(),
                             fallback.emotions(),
                             fallback.interests(),
+                            conversations,
                             games.stream()
                                     .map(game -> new ReportAiGameInput(
                                             game.gameName(),
@@ -137,10 +172,13 @@ public class ConversationReportAdapter
             return Optional.of(new ReportConversationSummarySource(
                     fallback.conversationIds(),
                     ai.title(),
-                    ai.body(),
+                    ai.dailyStory(),
                     fallback.mainEvents(),
                     fallback.emotions(),
-                    fallback.interests(),
+                    ai.interests(),
+                    ai.emotionDetails(),
+                    verifiedQuotes(ai.notableQuotes(), childUtterances),
+                    ai.conversationGuide(),
                     ai.modelVersion(),
                     ai.promptVersion()));
         } catch (ReportAiUnavailableException exception) {
@@ -173,32 +211,59 @@ public class ConversationReportAdapter
                         ConversationTopic.DAILY)
                 .stream()
                 .map(this::toSource)
-                .filter(Optional::isPresent)
-                .map(Optional::orElseThrow)
                 .toList();
     }
 
-    private Optional<ConversationSource> toSource(ConversationTopicState state) {
+    private ConversationSource toSource(ConversationTopicState state) {
         try {
             DialogueSlotsPayload slots = objectMapper.readValue(
                     state.getSlotsJson(),
                     DialogueSlotsPayload.class);
-            if (!hasReportableValue(slots)) {
-                return Optional.empty();
-            }
-            return Optional.of(new ConversationSource(
+            return new ConversationSource(
                     state.getConversationId(),
-                    slots));
+                    slots);
         } catch (JacksonException exception) {
             throw new IllegalStateException(
                     "Failed to deserialize conversation diary slots.", exception);
         }
     }
 
-    private boolean hasReportableValue(DialogueSlotsPayload slots) {
-        return hasText(slots.event())
-                || hasText(slots.emotion())
-                || hasText(slots.memorableMoment());
+    private List<ConversationTurn> findCompletedTurns(List<ConversationSource> sources) {
+        List<String> conversationIds = sources.stream()
+                .map(ConversationSource::conversationId)
+                .toList();
+        if (conversationIds.isEmpty()) {
+            return List.of();
+        }
+        return turnRepository
+                .findAllByConversationIdInAndTopicTypeAndStatusOrderByConversationIdAscTurnSeqAsc(
+                        conversationIds,
+                        ConversationTopic.DAILY,
+                        TurnStatus.COMPLETED)
+                .stream()
+                .filter(turn -> hasText(turn.getContent()))
+                .toList();
+    }
+
+    private List<String> verifiedQuotes(
+            List<String> generatedQuotes,
+            List<String> childQuotes) {
+        if (generatedQuotes == null) {
+            return List.of();
+        }
+        return generatedQuotes.stream()
+                .map(String::trim)
+                .filter(childQuotes::contains)
+                .distinct()
+                .limit(3)
+                .toList();
+    }
+
+    private String limit(String value, int maxLength) {
+        String normalized = value.trim();
+        return normalized.length() <= maxLength
+                ? normalized
+                : normalized.substring(0, maxLength);
     }
 
     private String toDiarySentence(DialogueSlotsPayload slots) {

@@ -16,6 +16,7 @@ import com.A501.backend.domain.conversation.entity.ConversationTopic;
 import com.A501.backend.domain.conversation.entity.ConversationTopicState;
 import com.A501.backend.domain.conversation.repository.ConversationSessionRepository;
 import com.A501.backend.domain.conversation.repository.ConversationTopicStateRepository;
+import com.A501.backend.domain.conversation.repository.ConversationTurnRepository;
 import com.A501.backend.domain.report.model.ReportAiProperties;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 import com.A501.backend.domain.report.port.ReportAiSummaryPort;
@@ -59,6 +60,7 @@ class ConversationReportAdapterTest {
         ConversationReportAdapter adapter = new ConversationReportAdapter(
                 sessionRepository,
                 topicRepository,
+                mock(ConversationTurnRepository.class),
                 new ObjectMapper(),
                 mock(ReportAiSummaryPort.class),
                 mock(GameReportQueryPort.class),
@@ -113,6 +115,7 @@ class ConversationReportAdapterTest {
         ConversationReportAdapter adapter = new ConversationReportAdapter(
                 sessionRepository,
                 topicRepository,
+                mock(ConversationTurnRepository.class),
                 new ObjectMapper(),
                 aiPort,
                 gamePort,

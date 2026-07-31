@@ -62,6 +62,14 @@ import {
   useRecyclePractice,
   type RecyclePracticeState,
 } from '@/features/games/tutorial/useRecyclePractice'
+import { WordMatchPracticeStage } from '@/features/games/tutorial/WordMatchPracticeStage'
+import {
+  useWordMatchPractice,
+  type WordMatchPracticeFeedback,
+  type WordMatchPracticeState,
+} from '@/features/games/tutorial/useWordMatchPractice'
+import * as wordMatchSfx from '@/features/games/wordmatch/wordMatchSfx'
+import { WORD_MATCH_CONFIG as WORDMATCH_CFG } from '@/features/games/wordmatch/wordMatchConfig'
 import { RECYCLE_GAME_CONFIG as RECYCLE_CFG } from '@/features/games/recycle/recycleGameConfig'
 import {
   playCorrectSfx,
@@ -95,8 +103,9 @@ export function GameGuidePage() {
   /*
     인식과 실습을 따로 본다.
 
-    낱말 맞추기는 인식 단계는 실제로 돌지만 연습 판이 아직 없다. 하나로 묶으면
-    연습에서 통과 조건을 못 채워 아이가 그 단계에 갇힌다.
+    지금은 네 게임 모두 둘 다 있지만, 새 게임을 붙일 때는 인식만 먼저 되고 연습
+    판이 늦게 오는 일이 생긴다. 하나로 묶으면 그 사이에 아이가 통과 조건을 못
+    채워 실습 단계에 갇힌다.
   */
   const interactive = game ? isInteractiveTutorialGame(game.id) : false
   const practiceReady = game ? hasTutorialPractice(game.id) : false
@@ -118,12 +127,18 @@ export function GameGuidePage() {
   const gestures = useHandGestures(
     videoRef,
     cameraReady && usesHandGestures(tutorialGameId),
-    // 분리수거는 한 손만 쓰고(과일 자르기처럼) 화면을 크게 오가서 손이 더
-    // 즉각 따라와야 한다. 도블은 양손으로 제자리 그림을 짚는 게임이라 기본값을
-    // 그대로 쓴다.
+    /*
+      한 손 게임은 본 게임과 같은 손 설정으로 돈다.
+
+      분리수거와 낱말 맞추기는 한 손만 쓰고(RGAME-05, WGAME-02) 게임마다 알맞은
+      평활 계수가 다르다. 연습에서 손이 다르게 움직이면 본 게임에서 다시 배워야
+      한다. 도블은 양손으로 제자리 그림을 짚는 게임이라 기본값을 그대로 쓴다.
+    */
     tutorialGameId === 'recycle'
       ? { maxHands: 1, smoothing: RECYCLE_CFG.handSmoothing }
-      : undefined,
+      : tutorialGameId === 'wordmatch'
+        ? { maxHands: 1, smoothing: WORDMATCH_CFG.handSmoothing }
+        : undefined,
   )
 
   // 카메라는 필요한 단계에 들어갈 때 요청한다. 안내를 보기만 할 아이에게
@@ -188,6 +203,17 @@ export function GameGuidePage() {
     onCorrect: playCorrectSfx,
     onGrab: playGrabSfx,
     onWrong: playWrongSfx,
+  })
+
+  const wordMatchPractice = useWordMatchPractice({
+    active:
+      step.kind === 'practice' && cameraReady && tutorialGameId === 'wordmatch',
+    gesturesRef: gestures.gesturesRef,
+    onComplete: goNext,
+    onCorrect: wordMatchSfx.playCorrectSfx,
+    onGrab: wordMatchSfx.playGrabSfx,
+    onPlace: wordMatchSfx.playPlaceSfx,
+    onWrong: wordMatchSfx.playWrongSfx,
   })
 
   if (!game) {
@@ -307,6 +333,7 @@ export function GameGuidePage() {
                 practiceReady={practiceReady}
                 recyclePractice={recyclePractice}
                 speech={step.speech}
+                wordMatchPractice={wordMatchPractice}
               />
             }
             // 시범 단계는 공룡이 판 밖으로 넘치게 두지만, 애니메이션 WebP를 쓰는
@@ -437,6 +464,7 @@ function StepBody({
   practiceReady,
   recyclePractice,
   speech,
+  wordMatchPractice,
 }: {
   camera: CameraProps
   cardImageUrl: string
@@ -450,6 +478,7 @@ function StepBody({
   practiceReady: boolean
   recyclePractice: RecyclePracticeState
   speech: string
+  wordMatchPractice: WordMatchPracticeState
 }) {
   /*
     안내만 보여 주고 넘어가는 단계.
@@ -551,10 +580,7 @@ function StepBody({
         : gameId === 'recycle'
           ? recycleCoaching(recyclePractice.feedback)
           : gameId === 'wordmatch'
-            ? {
-                text: '손을 0.3초 모으고 주먹으로 잡아 칸에 놓아 봐!',
-                tone: 'guide' as const,
-              }
+            ? wordMatchCoaching(wordMatchPractice.feedback)
             : dobbleCoaching(dobblePractice.feedback)
 
     return (
@@ -571,6 +597,12 @@ function StepBody({
           ) : gameId === 'recycle' ? (
             <RecyclePracticeStage
               practice={recyclePractice}
+              streamRef={camera.streamRef}
+              videoRef={camera.videoRef}
+            />
+          ) : gameId === 'wordmatch' ? (
+            <WordMatchPracticeStage
+              practice={wordMatchPractice}
               streamRef={camera.streamRef}
               videoRef={camera.videoRef}
             />
@@ -644,6 +676,12 @@ function StepBody({
             {kind === 'demo' ? (
               demoFitsPanel ? (
                 <UpcomingGameDemo gameId={gameId} />
+              ) : gameId === 'wordmatch' ? (
+                <WordMatchPracticeStage
+                  practice={wordMatchPractice}
+                  streamRef={camera.streamRef}
+                  videoRef={camera.videoRef}
+                />
               ) : gameId === 'fruit' ? (
                 <div
                   style={{
@@ -794,6 +832,23 @@ function recycleCoaching(feedback: RecyclePracticeState['feedback']): {
       return { text: '좋아요! 알맞은 통 위에서 손을 펴요', tone: 'guide' }
     default:
       return { text: '쓰레기를 잡아서 알맞은 통에 넣어 봐!', tone: 'guide' }
+  }
+}
+
+/** 낱말 맞추기 연습 안내 문구. */
+function wordMatchCoaching(feedback: WordMatchPracticeFeedback): {
+  text: string
+  tone: CoachingTone
+} {
+  switch (feedback) {
+    case 'done':
+      return { text: '완벽해요! 낱말을 다 맞혔어요!', tone: 'praise' }
+    case 'wrong':
+      return { text: '앗, 글자가 달라요. 다시 놓아 볼까요?', tone: 'retry' }
+    case 'holding':
+      return { text: '좋아요! 놓을 칸 위에서 손을 펴요', tone: 'guide' }
+    default:
+      return { text: '글자를 잡아서 알맞은 칸에 놓아 봐!', tone: 'guide' }
   }
 }
 

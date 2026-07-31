@@ -50,11 +50,11 @@ export function isInteractiveTutorialGame(
 /**
  * 직접 해 보는 연습 판이 만들어진 게임.
  *
- * 인식 확인과는 따로 둔다. 낱말 맞추기는 인식 단계는 실제로 돌지만 연습 판은
- * 아직 없다 — 하나로 묶으면 연습에서 통과 조건을 못 채워 아이가 갇힌다.
+ * 인식 확인과는 따로 둔다. 판정이 없는 연습을 통과하라고 하면 아이가 그 단계에
+ * 갇히기 때문이다. 지금은 네 게임 모두 연습 판이 있다.
  */
 export function hasTutorialPractice(id: GameId): boolean {
-  return id === 'fruit' || id === 'dobble' || id === 'recycle'
+  return isInteractiveTutorialGame(id)
 }
 
 /** 양손 제스처(주먹 쥐기)로 조작하는 게임. 과일 자르기만 손 위치를 쓴다. */
@@ -114,11 +114,10 @@ const READY_STEP: TutorialStep = {
 }
 
 /*
-  낱말 맞추기는 인식 단계만 실제로 돈다.
+  낱말 맞추기.
 
-  시범은 공룡 동작 그림을 보여 주므로 문구도 그 동작을 설명한다. 연습 판은 아직
-  없어서 곧 준비된다고만 알려 준다 — 할 수 없는 것을 "해 봐"라고 하면 아이는
-  화면이 고장난 줄 안다.
+  시범은 공룡 동작 그림을 보여 주므로 문구도 그 동작을 설명한다. 연습은 두 글자
+  한 낱말만 낸다 — 조작을 익히는 자리라 낱말을 읽어 내는 것까지 시험하지 않는다.
 */
 const WORDMATCH_STEPS: TutorialStep[] = [
   {

@@ -24,7 +24,6 @@ import {
   loadActiveChildProfileId,
   loadChildProfiles,
   saveActiveChildProfileId,
-  type ChildProfile,
 } from '@/lib/childProfiles'
 import { grantParentAccess, revokeParentAccess } from '@/lib/parentAccess'
 
@@ -44,21 +43,13 @@ function formatPinLockTime(totalSeconds: number): string {
   if (seconds === 0) return `${minutes}분`
   return `${minutes}분 ${seconds}초`
 }
-const DEMO_CHILD_PROFILES: ChildProfile[] = [
-  { id: 'demo-harin', name: '하린', photoUrl: null },
-  { id: 'demo-doyun', name: '도윤', photoUrl: null },
-]
-
 export function ProfileSelectPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const locationState = location.state as ProfileSelectLocationState | null
   const canvasRef = useFitScale<HTMLDivElement>()
   const { isBgmPlaying, toggleBgm } = useAdventureBgm()
-  const [childProfiles, setChildProfiles] = useState(() => {
-    const storedProfiles = loadChildProfiles()
-    return storedProfiles.length ? storedProfiles : DEMO_CHILD_PROFILES
-  })
+  const [childProfiles, setChildProfiles] = useState(loadChildProfiles)
   const [activeChildProfileId, setActiveChildProfileId] = useState(
     loadActiveChildProfileId,
   )

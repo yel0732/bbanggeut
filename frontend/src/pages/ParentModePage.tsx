@@ -133,12 +133,6 @@ function listTimezoneOptions(): string[] {
 
 const TIMEZONE_OPTIONS = listTimezoneOptions()
 
-const DEMO_PROFILES: ChildProfile[] = [
-  { id: 'demo-1', name: '아이1', photoUrl: null },
-  { id: 'demo-2', name: '아이2', photoUrl: null },
-  { id: 'demo-3', name: '아이3', photoUrl: null },
-]
-
 function formatPinLockTime(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
@@ -273,10 +267,7 @@ export function ParentModePage() {
   const lastUnreadReportCountRef = useRef(0)
   const [popup, setPopup] = useState<PopupType>(null)
   const [profileView, setProfileView] = useState<ProfileView>('menu')
-  const [profiles, setProfiles] = useState(() => {
-    const stored = loadChildProfiles()
-    return stored.length ? stored : DEMO_PROFILES
-  })
+  const [profiles, setProfiles] = useState(loadChildProfiles)
   const [parentPhoto, setParentPhoto] = useState<string | null>(() =>
     window.localStorage.getItem(PARENT_PHOTO_KEY),
   )
@@ -2185,7 +2176,7 @@ export function ParentModePage() {
                 기준 시간대
                 <button
                   aria-expanded={isTimezonePickerOpen}
-                  className="relative -ml-4 -mt-1 block h-[70px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-left text-[20px] text-[#5a4a2a]"
+                  className="relative -mt-1 -ml-4 block h-[70px] w-full bg-[length:100%_100%] bg-center bg-no-repeat text-left text-[20px] text-[#5a4a2a]"
                   onClick={() => setIsTimezonePickerOpen((open) => !open)}
                   style={{
                     ...jua,

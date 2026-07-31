@@ -91,6 +91,22 @@ export type ReportNotificationEvent = {
   childName: string
 }
 
+/** `GET /api/notifications/unread`가 돌려주는 미확인 알림 한 건 */
+export type ReportNotificationItem = {
+  notificationId: number
+  reportId: number
+  childId: number
+  reportDate: string
+  type: 'REPORT_COMPLETED' | 'REPORT_FAILED'
+  message: string
+  availableAt: string
+}
+
+export type UnreadReportNotifications = {
+  unreadCount: number
+  notifications: ReportNotificationItem[]
+}
+
 export type ReportNotificationPreference = {
   enabled: boolean
   time: string
@@ -212,6 +228,43 @@ export async function regenerateChildReport(
   )
   await requireReportResponse(response)
   return (await response.json()) as ReportRegenerationResponse
+}
+
+/**
+ * 아직 확인하지 않은 리포트 알림을 서버에서 가져온다.
+ *
+ * SSE는 부모 모드 화면이 열려 있는 동안에만 구독되므로, 그 밖의 시간에 도착한
+ * 알림은 이 조회로만 화면에 올릴 수 있다.
+ */
+export async function getUnreadReportNotifications(signal?: AbortSignal) {
+  const response = await reportFetch(apiUrl('/api/notifications/unread'), {
+    signal,
+  })
+  await requireReportResponse(response)
+  return (await response.json()) as UnreadReportNotifications
+}
+
+/** 알림 하나를 읽음 처리한다. 목록에서 알림을 직접 눌렀을 때 쓴다. */
+export async function markReportNotificationRead(notificationId: number) {
+  const response = await reportFetch(
+    apiUrl(`/api/notifications/${notificationId}/read`),
+    { method: 'PATCH' },
+  )
+  await requireReportResponse(response)
+}
+
+/**
+ * 리포트를 열어봤으므로 그 리포트의 알림을 읽음 처리한다.
+ *
+ * 알림 목록을 거치지 않고 리포트로 바로 들어오는 경로가 있어, 알림 id가 아니라
+ * 리포트 id로도 읽음을 반영할 수 있어야 한다.
+ */
+export async function markReportReadByReportId(reportId: number) {
+  const response = await reportFetch(
+    apiUrl(`/api/notifications/reports/${reportId}/read`),
+    { method: 'PATCH' },
+  )
+  await requireReportResponse(response)
 }
 
 export async function getReportNotificationPreference(signal?: AbortSignal) {

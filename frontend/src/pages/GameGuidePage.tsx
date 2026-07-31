@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import dobbleBgmUrl from '@/assets/audio/dobble-game/dobble-bgm.mp3'
@@ -26,6 +32,7 @@ import {
   FruitPose,
   FruitSliceVideo,
   GreetingVideo,
+  UpcomingGameDemo,
 } from '@/features/games/tutorial/TutorialMedia'
 import { TutorialCamera } from '@/features/games/tutorial/TutorialCamera'
 import {
@@ -243,7 +250,7 @@ export function GameGuidePage() {
             }
             bodyOverflowVisible={
               step.kind === 'intro' ||
-              (step.kind === 'demo' && interactive) ||
+              step.kind === 'demo' ||
               step.kind === 'ready'
             }
             footer={
@@ -376,9 +383,27 @@ function StepBody({
   speech: string
 }) {
   // 인사와 시작은 게임과 무관한 빵긋이 화면이라 어느 게임이든 그대로 쓴다.
-  // 그 사이 세 단계만 보여 줄 것이 없어 카드 그림으로 대신한다.
+  // 시범 단계는 공룡 동작 그림이 있으면 그것을, 없으면 카드 그림을 보여 준다.
   if (!interactive && kind !== 'intro' && kind !== 'ready') {
-    return <UpcomingStepBody cardImageUrl={cardImageUrl} speech={speech} />
+    const cardImage = (
+      <img
+        alt=""
+        className="max-h-full max-w-full object-contain drop-shadow-[0_10px_18px_rgba(120,80,30,0.22)]"
+        decoding="async"
+        draggable={false}
+        src={cardImageUrl}
+      />
+    )
+
+    return (
+      <UpcomingStepBody speech={speech}>
+        {kind === 'demo' ? (
+          <UpcomingGameDemo fallback={cardImage} gameId={gameId} />
+        ) : (
+          cardImage
+        )}
+      </UpcomingStepBody>
+    )
   }
 
   if (kind === 'intro' || kind === 'ready') {
@@ -553,17 +578,17 @@ function StepBody({
 /**
  * 아직 만들지 않은 게임의 시범·인식·실습 단계 본문.
  *
- * 시범 영상도 연습 판도 없으니 그 자리에 게임 카드 그림을 놓는다. 빈 판을 두면
- * 화면이 덜 그려진 것처럼 보이는데, 방금 고른 카드가 그대로 있으면 아이는
- * 자기가 고른 게임을 보고 있다는 것을 안다.
+ * 배치는 시범·인식 단계와 같다 — 왼쪽에 말풍선, 오른쪽에 점선 패널. 판 안에
+ * 무엇을 놓을지는 부르는 쪽이 정한다(시범은 공룡 동작, 나머지는 카드 그림).
  *
- * 배치는 시범·인식 단계와 같다 — 왼쪽에 말풍선, 오른쪽에 점선 패널.
+ * 공룡 동작 그림은 판(360px)보다 커서 위아래로 넘친다. 기존 시범 단계도 같은
+ * 이유로 판 밖으로 넘치게 두므로 overflowVisible을 켠다.
  */
 function UpcomingStepBody({
-  cardImageUrl,
+  children,
   speech,
 }: {
-  cardImageUrl: string
+  children: ReactNode
   speech: string
 }) {
   return (
@@ -580,15 +605,7 @@ function UpcomingStepBody({
             transform: `translate(${COMPACT_GUIDE_PANEL_X}px, ${COMPACT_GUIDE_PANEL_Y}px)`,
           }}
         >
-          <TutorialPanel>
-            <img
-              alt=""
-              className="max-h-full max-w-full object-contain drop-shadow-[0_10px_18px_rgba(120,80,30,0.22)]"
-              decoding="async"
-              draggable={false}
-              src={cardImageUrl}
-            />
-          </TutorialPanel>
+          <TutorialPanel overflowVisible>{children}</TutorialPanel>
         </div>
       </div>
     </div>

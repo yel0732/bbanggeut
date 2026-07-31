@@ -24,12 +24,12 @@ const ITEMS_PER_BIN = 3
 
 /** 한 칸 크기(px). 네 칸이 모두 이 크기다. */
 const CELL_WIDTH = 152
-const CELL_HEIGHT = 292
+const CELL_HEIGHT = 258
 
 /** 칸 안에서 각 줄이 차지하는 높이(px) */
-const BIN_HEIGHT = 132
-const ITEM_ROW_HEIGHT = 56
-const NAME_HEIGHT = 60
+const BIN_HEIGHT = 116
+const ITEM_ROW_HEIGHT = 50
+const NAME_HEIGHT = 54
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 

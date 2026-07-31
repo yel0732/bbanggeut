@@ -21,7 +21,10 @@ import { getGameById } from '@/features/games/games'
 import { BinRow } from '@/features/games/recycle/BinRow'
 import { HandCursor } from '@/features/games/recycle/HandCursor'
 import { RECYCLE_GAME_CONFIG as CFG } from '@/features/games/recycle/recycleGameConfig'
-import { preloadRecycleImages } from '@/features/games/recycle/recycleItems'
+import {
+  binCenterX,
+  preloadRecycleImages,
+} from '@/features/games/recycle/recycleItems'
 import { hitRadius } from '@/features/games/recycle/recycleGrab'
 import {
   playCorrectSfx,
@@ -49,6 +52,15 @@ const PRAISES = [
   '척척박사네요!',
 ]
 
+/**
+ * 상단 점수 칸 아래로 문구를 띄우는 높이(px).
+ *
+ * 점수 칸이 y 35에서 시작해 약 70px을 쓴다. 안내 문구를 화면 아래에 두면 통과
+ * 겹치고, 통에 손을 넣는 동안 시선이 아래로 끌려 손을 놓칠 곳을 못 본다. 그래서
+ * 빵긋이 말과 조작 안내를 모두 이 높이로 모은다.
+ */
+const HUD_BELOW_SCORE_Y = 112
+
 function formatTime(totalSec: number): string {
   const min = Math.floor(totalSec / 60)
   const sec = totalSec % 60
@@ -75,6 +87,7 @@ export function RecyclePlayPage() {
   const { gesturesRef, modelReady } = useHandGestures(
     videoRef,
     status === 'granted',
+    { smoothing: CFG.handSmoothing },
   )
 
   const game = getGameById('recycle')
@@ -310,7 +323,7 @@ function PlayField({
   game: RecycleGameState
   handModelReady: boolean
 }) {
-  const { phase, items, hover, binHover, guide, pointerRefs } = game
+  const { phase, items, hover, binHover, correct, guide, pointerRefs } = game
   const radius = hitRadius()
 
   /*
@@ -332,6 +345,7 @@ function PlayField({
   return (
     <div className="absolute inset-0 z-10">
       <BinRow
+        celebratingBin={correct?.bin ?? null}
         holding={activeSlot !== null && activeSlot === holdingSlot}
         hoveredBin={activeSlot ? binHover[activeSlot] : null}
       />
@@ -387,6 +401,24 @@ function PlayField({
           </div>
         )
       })}
+
+      {/*
+        정답 점수. 방금 넣은 통 위에서 떠오른다. 점수 칸의 숫자만 조용히
+        올라가면 아이는 무엇 때문에 올랐는지 모른다.
+      */}
+      {correct ? (
+        <span
+          className="pointer-events-none absolute z-[9] -translate-x-1/2 [animation:dobble-match-burst_900ms_ease-out_forwards] text-[54px] leading-none whitespace-nowrap text-[#b6ff7a] [text-shadow:0_4px_0_#2d6b1c,0_8px_16px_rgba(0,0,0,0.4)]"
+          key={correct.itemUid}
+          style={{
+            ...jua,
+            left: binCenterX(correct.bin),
+            top: CFG.bin.y - 60,
+          }}
+        >
+          +{CFG.scorePerCorrect}
+        </span>
+      ) : null}
 
       {/* 손 포인터 — 좌표/각도/주먹 상태는 엔진이 이 노드에 직접 쓴다. */}
       {(['a', 'b'] as const).map((slot) => (
@@ -445,17 +477,21 @@ function WrongGuideOverlay({
   return (
     <div
       aria-live="polite"
-      className="absolute inset-0 z-30 flex items-end justify-center bg-[rgba(10,40,50,0.5)]"
+      className="absolute inset-0 z-30 flex justify-center bg-[rgba(10,40,50,0.5)]"
     >
-      <div className="mb-[40px] flex items-end gap-3">
+      {/* 상단 점수 칸 바로 아래에서 시작한다. 아래쪽은 통이 서 있는 자리다. */}
+      <div
+        className="flex items-end gap-3"
+        style={{ marginTop: HUD_BELOW_SCORE_Y }}
+      >
         <img
           alt=""
-          className="block h-[300px] w-auto object-contain drop-shadow-[0_14px_24px_rgba(20,50,16,0.4)]"
+          className="block h-[270px] w-auto object-contain drop-shadow-[0_14px_24px_rgba(20,50,16,0.4)]"
           decoding="async"
           draggable={false}
           src={bbanggutGuideUrl}
         />
-        <div className="mb-[70px] flex items-center gap-5 rounded-[30px] border-[4px] border-[#e2caa0] bg-white/95 px-8 py-6 shadow-[0_12px_28px_rgba(20,50,16,0.35)]">
+        <div className="mb-[56px] flex items-center gap-5 rounded-[30px] border-[4px] border-[#e2caa0] bg-white/95 px-8 py-6 shadow-[0_12px_28px_rgba(20,50,16,0.35)]">
           <img
             alt=""
             className="block size-[96px] shrink-0 object-contain"
@@ -539,22 +575,33 @@ function PlayHud({
         <PauseButton disabled={!canPause} onClick={onPause} />
       </div>
 
-      {praise && phase === 'playing' ? (
-        <p
-          className="absolute top-[110px] left-1/2 -translate-x-1/2 text-[52px] leading-none text-[#fff2a8] [text-shadow:0_4px_0_#1c6b7a,0_8px_14px_rgba(0,0,0,0.35)]"
-          style={jua}
-        >
-          {praise}
-        </p>
-      ) : null}
-
+      {/*
+        칭찬과 조작 안내가 같은 자리를 쓴다. 둘이 동시에 뜨면 아이는 어느 쪽을
+        읽어야 하는지 모른다. 칭찬이 있으면 칭찬만 남긴다.
+      */}
       {phase === 'playing' ? (
-        <p
-          className="absolute bottom-[20px] left-1/2 -translate-x-1/2 rounded-full bg-[rgba(10,40,50,0.45)] px-6 py-2 text-[22px] leading-none text-white [text-shadow:0_2px_6px_rgba(10,40,50,0.5)]"
-          style={jua}
+        <div
+          className="absolute left-1/2 flex -translate-x-1/2 justify-center"
+          style={{ top: HUD_BELOW_SCORE_Y }}
         >
-          쓰레기를 잡아서 알맞은 통에 넣어요
-        </p>
+          {praise ? (
+            <p
+              // 문구가 바뀔 때마다 다시 마운트해 크게 튀어오르게 한다.
+              className="[animation:dobble-grab-pop_420ms_ease-out] text-[60px] leading-none whitespace-nowrap text-[#fff2a8] [text-shadow:0_5px_0_#1c6b7a,0_10px_18px_rgba(0,0,0,0.4)]"
+              key={praise}
+              style={jua}
+            >
+              {praise}
+            </p>
+          ) : (
+            <p
+              className="rounded-full bg-[rgba(10,40,50,0.45)] px-6 py-2 text-[22px] leading-none whitespace-nowrap text-white [text-shadow:0_2px_6px_rgba(10,40,50,0.5)]"
+              style={jua}
+            >
+              쓰레기를 잡아서 알맞은 통에 넣어요
+            </p>
+          )}
+        </div>
       ) : null}
     </div>
   )

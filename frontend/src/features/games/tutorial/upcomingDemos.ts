@@ -16,14 +16,21 @@ import type { GameId } from '@/features/games/games'
 const SOURCE = { width: 512, height: 800 } as const
 
 /**
+ * 시범 단계 점선 안내 판 높이(px).
+ *
+ * 기존 두 게임은 360px 판을 쓰고 공룡을 판 밖으로 넘치게 둔다. 이 그림은 세로로
+ * 길어 넘치면 보드 밖까지 삐져나오므로 판 안에 담아야 하는데, 360px 안에서는
+ * 공룡이 작아 보인다. 그래서 이 게임들만 판을 본문이 허용하는 만큼(394px) 키운다.
+ */
+export const UPCOMING_DEMO_PANEL_HEIGHT = 392
+
+/**
  * 시범 단계에서 공룡 프레임을 그릴 높이(px).
  *
- * 점선 안내 판은 360px인데 테두리 3px 두 줄과 안쪽 여백 12px 두 줄을 빼면 담을
- * 수 있는 높이가 330px이다. 기존 두 게임의 시범은 판 밖으로 넘치게 두지만, 이
- * 그림은 세로로 길어 넘치면 보드 밖까지 삐져나온다. 그래서 330px을 넘기지
- * 않는 선에서 최대한 키운다.
+ * 판 높이에서 테두리 3px 두 줄과 안쪽 여백 12px 두 줄을 빼면 담을 수 있는
+ * 높이가 362px이다. 그 안에서 최대한 키운다.
  */
-export const UPCOMING_DEMO_HEIGHT = 328
+export const UPCOMING_DEMO_HEIGHT = 358
 
 export function upcomingDemoWidth(height: number): number {
   return (height * SOURCE.width) / SOURCE.height

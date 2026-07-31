@@ -42,7 +42,10 @@ import {
   usesHandGestures,
   type TutorialStepKind,
 } from '@/features/games/tutorial/tutorialSteps'
-import { hasUpcomingDemo } from '@/features/games/tutorial/upcomingDemos'
+import {
+  hasUpcomingDemo,
+  UPCOMING_DEMO_PANEL_HEIGHT,
+} from '@/features/games/tutorial/upcomingDemos'
 import { DobblePracticeStage } from '@/features/games/tutorial/DobblePracticeStage'
 import { RecyclePracticeStage } from '@/features/games/tutorial/RecyclePracticeStage'
 import { RecycleSortingBoard } from '@/features/games/tutorial/RecycleSortingBoard'
@@ -60,6 +63,7 @@ import {
   useRecyclePractice,
   type RecyclePracticeState,
 } from '@/features/games/tutorial/useRecyclePractice'
+import { RECYCLE_GAME_CONFIG as RECYCLE_CFG } from '@/features/games/recycle/recycleGameConfig'
 import {
   playCorrectSfx,
   playGrabSfx,
@@ -107,6 +111,11 @@ export function GameGuidePage() {
   const gestures = useHandGestures(
     videoRef,
     cameraReady && usesHandGestures(tutorialGameId),
+    // 분리수거는 화면을 크게 오가야 해서 손이 더 즉각 따라와야 한다. 도블은
+    // 제자리 그림을 짚는 게임이라 기본값을 그대로 쓴다.
+    tutorialGameId === 'recycle'
+      ? { smoothing: RECYCLE_CFG.handSmoothing }
+      : undefined,
   )
 
   // 카메라는 필요한 단계에 들어갈 때 요청한다. 안내를 보기만 할 아이에게
@@ -585,7 +594,11 @@ function StepBody({
           className="flex items-center justify-center"
           style={{
             width: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_WIDTH : '100%',
-            height: usesCompactGuidePanel ? COMPACT_GUIDE_PANEL_HEIGHT : '100%',
+            height: usesCompactGuidePanel
+              ? isDemoStep && demoFitsPanel
+                ? UPCOMING_DEMO_PANEL_HEIGHT
+                : COMPACT_GUIDE_PANEL_HEIGHT
+              : '100%',
             transform: usesCompactGuidePanel
               ? `translate(${COMPACT_GUIDE_PANEL_X}px, ${COMPACT_GUIDE_PANEL_Y}px)`
               : undefined,

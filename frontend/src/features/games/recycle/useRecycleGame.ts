@@ -12,6 +12,7 @@ import {
   binAt,
   idleAim,
   riverY,
+  screenFromHand,
   stepAim,
   type FloatingItem,
   type HandAim,
@@ -120,7 +121,6 @@ type Engine = {
   ended: boolean
 }
 
-const { canvasWidth: W, canvasHeight: H } = CFG
 const HAND_SLOTS: HandSlot[] = ['a', 'b']
 
 function emptyAim(): Record<HandSlot, HandAim> {
@@ -309,7 +309,19 @@ export function useRecycleGame(
       return
     }
 
-    engineRef.current = createEngine(performance.now())
+    /*
+      엔진은 한 판에 하나만 만든다.
+
+      이 effect는 카메라 상태(`active`)가 흔들리면 다시 돈다 — 카메라 오류 뒤
+      다시 시도를 누르면 granted → requesting → granted로 지나가고, 개발 모드의
+      StrictMode도 effect를 두 번 부른다. 그때마다 엔진을 새로 만들면 점수와
+      남은 시간이 조용히 0으로 돌아간다. 판을 처음부터 다시 하는 것은 오직
+      `restart()`뿐이다.
+    */
+    engineRef.current ??= createEngine(performance.now())
+    // 멈춰 있던 사이 프레임 간격이 크게 벌어졌을 수 있다. 그 간격이 플레이
+    // 시간으로 들어가지 않게 기준 시각을 지금으로 맞춘다.
+    engineRef.current.lastFrameTs = performance.now()
     let rafId = 0
     let publishedKey = ''
 
@@ -401,9 +413,7 @@ export function useRecycleGame(
 
         anyVisible = true
 
-        // 카메라 미러링: 아이가 든 손이 화면에서도 같은 쪽에 보이도록 x를 뒤집는다.
-        const x = (1 - hand.x) * W
-        const y = hand.y * H
+        const { x, y } = screenFromHand(hand)
         paintPointer(slot, x, y, hand.angle, hand.fist)
 
         if (!inputOpen) {
@@ -650,7 +660,8 @@ export function useRecycleGame(
 
     return () => {
       cancelAnimationFrame(rafId)
-      engineRef.current = null
+      // 엔진은 남겨 둔다. 여기서 비우면 카메라 상태가 흔들릴 때마다 판이
+      // 처음으로 돌아간다.
     }
   }, [active, gesturesRef, pointerRefs])
 

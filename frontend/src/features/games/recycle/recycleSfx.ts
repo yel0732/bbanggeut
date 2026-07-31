@@ -12,12 +12,22 @@ export function playGrabSfx(): void {
   playTones([{ from: 620, to: 980, delay: 0, duration: 0.11, gain: 0.16 }])
 }
 
-/** 알맞은 통에 넣었을 때 — 올라가는 세 음 */
+/**
+ * 알맞은 통에 넣었을 때.
+ *
+ * 이 게임에서 가장 크게 칭찬하는 순간이다. 올라가는 네 음(도-미-솔-도)에 위쪽
+ * 옥타브를 겹쳐 종이 울리는 느낌을 주고, 마지막 음을 길게 남겨 여운을 둔다.
+ * 잡기·오답 소리보다 확실히 커서 아이가 무엇이 잘된 것인지 소리만으로 안다.
+ */
 export function playCorrectSfx(): void {
   playTones([
-    { from: 523, delay: 0, duration: 0.16, gain: 0.16, type: 'triangle' },
-    { from: 659, delay: 0.1, duration: 0.16, gain: 0.16, type: 'triangle' },
-    { from: 784, delay: 0.2, duration: 0.26, gain: 0.18, type: 'triangle' },
+    { from: 523, delay: 0, duration: 0.14, gain: 0.2, type: 'triangle' },
+    { from: 659, delay: 0.08, duration: 0.14, gain: 0.2, type: 'triangle' },
+    { from: 784, delay: 0.16, duration: 0.16, gain: 0.22, type: 'triangle' },
+    { from: 1047, delay: 0.24, duration: 0.42, gain: 0.24, type: 'triangle' },
+    // 반짝이는 배음. 같은 화음을 한 옥타브 위에서 얇게 덧댄다.
+    { from: 1568, delay: 0.24, duration: 0.34, gain: 0.09, type: 'sine' },
+    { from: 2093, delay: 0.32, duration: 0.3, gain: 0.06, type: 'sine' },
   ])
 }
 

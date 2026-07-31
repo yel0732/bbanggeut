@@ -64,6 +64,32 @@ export function hitRadius(): number {
   return CFG.itemSize * CFG.hitRadiusScale
 }
 
+/**
+ * 카메라 손 좌표를 화면 좌표로 옮긴다.
+ *
+ * 두 가지를 함께 한다.
+ *
+ * 1. 미러링 — 아이가 든 손이 화면에서도 같은 쪽에 보이도록 x를 뒤집는다.
+ * 2. 도달 범위 넓히기 — 카메라 가운데 영역을 화면 전체로 늘린다. 아이는 프레임
+ *    가장자리까지 팔을 뻗지 않아서, 그대로 옮기면 양쪽 끝 통에 손이 닿지 않는다.
+ *
+ * 본 게임과 튜토리얼 연습이 이 함수를 함께 쓴다. 연습에서 닿던 곳이 본 게임에서
+ * 안 닿으면 아이는 배운 대로 해도 안 된다고 느낀다.
+ */
+export function screenFromHand(hand: { x: number; y: number }): {
+  x: number
+  y: number
+} {
+  const gain = CFG.reachGain
+  const stretch = (value: number) =>
+    Math.min(1, Math.max(0, 0.5 + (value - 0.5) * gain))
+
+  return {
+    x: stretch(1 - hand.x) * CFG.canvasWidth,
+    y: stretch(hand.y) * CFG.canvasHeight,
+  }
+}
+
 /** 자기 갈래 높이에서 물결에 따라 흔들리는 y. 잡히면 흔들리지 않는다. */
 export function riverY(item: FloatingItem, now: number): number {
   const phase =

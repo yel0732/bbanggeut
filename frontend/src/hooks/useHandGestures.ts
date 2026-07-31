@@ -34,8 +34,14 @@ const FINGER_EXTENDED_RATIO = 1.45
 const FIST_MAX_EXTENDED = 1
 /** 주먹 상태에서 이 개수 이상 펴져야 다시 펴진 것으로 본다 (히스테리시스). */
 const OPEN_MIN_EXTENDED = 3
-/** 손 좌표 지터를 줄이는 지수 평활 계수 (1에 가까울수록 즉각 반응) */
-const SMOOTHING = 0.45
+/**
+ * 손 좌표 지터를 줄이는 지수 평활 계수 (1에 가까울수록 즉각 반응).
+ *
+ * 낮으면 손이 묵직하게 따라온다. 그림 맞추기는 제자리에 놓인 그림을 짚는
+ * 게임이라 이 값으로 충분하지만, 화면을 크게 오가는 게임은 답답하다. 그래서
+ * 기본값만 여기 두고 게임별로 올려 쓸 수 있게 인자로 받는다.
+ */
+const DEFAULT_SMOOTHING = 0.45
 /** 랜드마크가 잠깐 끊겨도 포인터를 유지하는 시간(ms) */
 const HOLD_MS = 220
 
@@ -92,8 +98,12 @@ function distance(
 export function useHandGestures(
   videoRef: RefObject<HTMLVideoElement | null>,
   enabled: boolean,
+  { smoothing = DEFAULT_SMOOTHING }: { smoothing?: number } = {},
 ): HandGesturesState {
   const gesturesRef = useRef<HandGesturesFrame>({ a: null, b: null })
+  // 매 프레임 콜백에서 읽으므로 ref에 담아 콜백을 다시 만들지 않는다.
+  const smoothingRef = useRef(smoothing)
+  smoothingRef.current = smoothing
   const trackedRef = useRef<Record<HandSlot, Tracked | null>>({
     a: null,
     b: null,
@@ -159,11 +169,12 @@ export function useHandGestures(
         ? extended < OPEN_MIN_EXTENDED
         : extended <= FIST_MAX_EXTENDED
 
+      const smoothing = smoothingRef.current
       const x = previous
-        ? previous.x + (palm.x - previous.x) * SMOOTHING
+        ? previous.x + (palm.x - previous.x) * smoothing
         : palm.x
       const y = previous
-        ? previous.y + (palm.y - previous.y) * SMOOTHING
+        ? previous.y + (palm.y - previous.y) * smoothing
         : palm.y
       // 화면은 좌우 반전되므로 각도도 반전된 좌표계에서 계산한다.
       const angle = Math.atan2(palm.y - wrist.y, -(palm.x - wrist.x))

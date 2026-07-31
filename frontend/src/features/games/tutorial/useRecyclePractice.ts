@@ -9,6 +9,7 @@ import {
   binAt,
   idleAim,
   riverY,
+  screenFromHand,
   stepAim,
   type FloatingItem,
   type HandAim,
@@ -30,7 +31,6 @@ import type { HandGesturesFrame, HandSlot } from '@/hooks/useHandGestures'
  * 들어온다 — 연습에서 잡을 것이 사라지면 아이는 아무것도 못 하고 갇힌다.
  */
 
-const { canvasWidth: W, canvasHeight: H } = CFG
 const HAND_SLOTS: HandSlot[] = ['a', 'b']
 
 /** 연습에서 넣어야 하는 쓰레기 수. 성공을 맛보게 하는 게 목적이라 짧게 끝낸다. */
@@ -214,9 +214,7 @@ export function useRecyclePractice({
           continue
         }
 
-        // 카메라 미러링: 아이가 든 손이 화면에서도 같은 쪽에 보이게 한다.
-        const x = (1 - hand.x) * W
-        const y = hand.y * H
+        const { x, y } = screenFromHand(hand)
         paintPointer(slot, x, y, hand.angle, hand.fist)
 
         if (finished) {

@@ -221,6 +221,11 @@ const BIN_BY_CATEGORY = new Map(
   RECYCLE_BINS.map((bin) => [bin.category, bin] as const),
 )
 
+/** 그 통이 서 있는 가운데 x. 통 위에 연출을 얹을 때 쓴다. */
+export function binCenterX(category: RecycleCategory): number {
+  return binFor(category).centerX
+}
+
 export function binFor(category: RecycleCategory): RecycleBin {
   const bin = BIN_BY_CATEGORY.get(category)
   if (!bin) {

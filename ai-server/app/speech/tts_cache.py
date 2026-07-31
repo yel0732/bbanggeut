@@ -20,10 +20,9 @@ children's own words, which the data policy keeps out of long-lived memory.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncIterator, Iterable
 
-from app.speech.tts_client import SpeechSynthesizer, TtsError, TtsFailureCode
+from app.speech.tts_client import SpeechSynthesizer
 
 # 큐에 한 번에 쏟지 않도록 재생분을 잘라 내보낸다(0.5초 @ 24kHz mono s16).
 _REPLAY_CHUNK_BYTES = 24_000
@@ -41,10 +40,8 @@ class CachedSpeechSynthesizer:
     def __init__(
         self,
         inner: SpeechSynthesizer,
-        logger: logging.Logger,
     ) -> None:
         self._inner = inner
-        self._logger = logger
         self._allowed: set[str] = set()
         self._audio: dict[str, bytes] = {}
 
@@ -59,29 +56,6 @@ class CachedSpeechSynthesizer:
             if text and text.strip():
                 self._allowed.add(text)
 
-    async def prewarm(self) -> int:
-        """Synthesize every registered text that is not cached yet.
-
-        Best effort: a Provider failure here must not stop the server from
-        starting, because the uncached path still works. Returns how many texts
-        are cached afterwards.
-        """
-
-        for text in sorted(self._allowed - self._audio.keys()):
-            try:
-                self._audio[text] = await self._collect(text)
-            except TtsError as error:
-                # 텍스트 원문은 로그에 남기지 않는다(docs/AI_CONVENTIONS.md §13).
-                self._logger.warning(
-                    "fixed speech prewarm failed; falling back to live synthesis",
-                    extra={"failure_code": error.code.value},
-                )
-        self._logger.info(
-            "fixed speech prewarmed",
-            extra={"cached": len(self._audio), "registered": len(self._allowed)},
-        )
-        return len(self._audio)
-
     async def synthesize(self, text: str) -> AsyncIterator[bytes]:
         cached = self._audio.get(text)
         if cached is not None:
@@ -92,19 +66,10 @@ class CachedSpeechSynthesizer:
             async for chunk in self._inner.synthesize(text):
                 yield chunk
             return
-        # 등록됐지만 prewarm이 실패했거나 아직 안 돌았다 — 이번에 채운다.
+        # 등록된 문장은 첫 사용에서 스트리밍하면서 캐시를 채운다.
         collected = bytearray()
         async for chunk in self._inner.synthesize(text):
             collected += chunk
             yield chunk
         if collected:
             self._audio[text] = bytes(collected)
-
-    async def _collect(self, text: str) -> bytes:
-        collected = bytearray()
-        async for chunk in self._inner.synthesize(text):
-            collected += chunk
-        if not collected:
-            # 빈 스트림을 캐시하면 그 문장은 영구히 무음이 된다.
-            raise TtsError(TtsFailureCode.PROVIDER_FAILED)
-        return bytes(collected)

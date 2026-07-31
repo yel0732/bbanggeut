@@ -27,6 +27,7 @@ import {
   slotCenter,
   slotSize,
   tileCenter,
+  tileSize,
 } from '@/features/games/wordmatch/wordMatchGrab'
 import { preloadWordImages } from '@/features/games/wordmatch/wordMatchProblems'
 import {
@@ -49,12 +50,28 @@ import { useHandGestures } from '@/hooks/useHandGestures'
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
 /**
- * 판정 안내 띠를 띄우는 높이(px).
+ * 판정 안내 띠 위쪽 y(px).
  *
- * 위 판(y 345에서 끝남)과 아래 글자 띠(y 495에서 시작) 사이 잔디 자리다. 판을
- * 가리지 않으면서 그림과 카드 양쪽에서 다 보인다.
+ * 그림(y 85~295)과 정답 칸(y 369부터) 사이에 띄운다. 그림에 붙이면 글자가 그림
+ * 위에 겹쳐 무엇을 맞히는 문제인지 가려 버린다.
  */
-const JUDGE_BANNER_Y = 396
+const JUDGE_BANNER_Y = 298
+
+/*
+  ⭐ 자기 모습 미리보기(웹캠) 자리와 크기 — 이 네 숫자로 조절한다.
+
+  지금은 일시정지 버튼(y 18~72) 바로 아래에 두고, 그 아래로 남은 시간·점수가
+  이어진다. 화면 아래쪽은 글자 카드 띠가 가로로 꽉 차서 놓을 자리가 없다.
+
+  `right`는 화면 오른쪽 끝에서의 거리다. 왼쪽에 두려면 `WEBCAM.right`를 지우고
+  아래 style에서 `right` 대신 `left`를 쓰면 된다.
+*/
+const WEBCAM = {
+  top: 115,
+  right: 30,
+  width: 116,
+  height: 86,
+} as const
 
 function formatTime(totalSec: number): string {
   const min = Math.floor(totalSec / 60)
@@ -234,10 +251,16 @@ export function WordMatchPlayPage() {
             {status === 'granted' ? (
               <video
                 autoPlay
-                className="pointer-events-none absolute top-[84px] right-[22px] z-[6] h-[86px] w-[116px] scale-x-[-1] rounded-xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
+                className="pointer-events-none absolute z-[6] scale-x-[-1] rounded-xl border-[3px] border-white/70 object-cover shadow-[0_6px_16px_rgba(0,0,0,0.35)]"
                 muted
                 playsInline
                 ref={videoRef}
+                style={{
+                  top: WEBCAM.top,
+                  right: WEBCAM.right,
+                  width: WEBCAM.width,
+                  height: WEBCAM.height,
+                }}
               />
             ) : null}
 
@@ -386,6 +409,7 @@ function PlayField({
             const hovered = hover.a === tile.uid || hover.b === tile.uid
             const held = tile.heldBy !== null
             const hinted = hint?.tileUid === tile.uid
+            const size = tileSize(tile)
 
             return (
               <div
@@ -395,13 +419,14 @@ function PlayField({
                   left: center.x,
                   top: center.y,
                   // 크기를 못박는다. 비워 두면 화면 가장자리에서 상자가 눌린다.
-                  width: CFG.tray.cardSize,
-                  height: CFG.tray.cardSize,
+                  width: size,
+                  height: size,
                   // 손에 들려 있을 때는 즉각 따라와야 한다. 놓인 뒤 자리를 옮길
-                  // 때만 부드럽게 미끄러지게 한다.
+                  // 때만 부드럽게 미끄러지게 한다. 크기도 같이 바뀌어 칸에
+                  // 앉는 것처럼 보인다.
                   transition: held
                     ? undefined
-                    : 'left 160ms ease-out, top 160ms ease-out',
+                    : 'left 160ms ease-out, top 160ms ease-out, width 160ms ease-out, height 160ms ease-out',
                 }}
               >
                 {hovered && !held ? (
@@ -436,9 +461,12 @@ function PlayField({
                   }}
                 />
                 <span
-                  className="absolute inset-0 flex items-center justify-center text-[52px] leading-none"
+                  className="absolute inset-0 flex items-center justify-center leading-none"
                   style={{
                     ...jua,
+                    // 상자 크기가 바뀌므로 글꼴도 따라가야 한다. 고정하면 칸에
+                    // 놓인 글자가 테두리에 닿는다.
+                    fontSize: size * 0.48,
                     // 오답에서 자리가 맞아 고정된 글자는 초록으로 굳는다.
                     color: tile.locked ? '#2f7d1e' : '#5a3c14',
                     transform: held ? 'scale(1.1)' : 'scale(1)',
@@ -563,7 +591,7 @@ function PlayHud({
         오른쪽은 일시정지 버튼과 자기 모습 미리보기가 쓰고, 가운데 위는 그림 판이
         차지한다. 왼쪽 한 줄에 모아 두면 아이가 볼 곳이 한 군데다.
       */}
-      <div className="absolute top-[110px] left-[18px] flex w-[212px] flex-col gap-2">
+      <div className="absolute top-[110px] left-[25px] flex w-[212px] flex-col gap-2">
         <div
           className={`flex flex-col items-center gap-1 rounded-[22px] px-4 py-3 ${
             timeWarning
@@ -595,7 +623,7 @@ function PlayHud({
         </div>
       </div>
 
-      <div className="absolute top-[18px] right-[22px] size-[54px]">
+      <div className="absolute top-[25px] right-[25px] size-[62px]">
         <PauseButton disabled={!canPause} onClick={onPause} />
       </div>
     </div>

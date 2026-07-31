@@ -1,4 +1,8 @@
-import { SLOT_ASPECT, WORD_MATCH_CONFIG as CFG } from './wordMatchConfig'
+import {
+  SLOT_ASPECT,
+  SLOT_INNER_RATIO,
+  WORD_MATCH_CONFIG as CFG,
+} from './wordMatchConfig'
 
 /**
  * 글자 조준·잡기·놓기 판정과 배치 계산.
@@ -59,6 +63,35 @@ export function slotSize(): { width: number; height: number } {
 }
 
 /**
+ * 정답 칸의 나무 테두리 안쪽 크기.
+ *
+ * 칸에 놓인 글자를 이 크기로 그린다. 그러면 칸을 키우든 줄이든 글자가 테두리
+ * 안에 꼭 맞고, 나무 틈으로 삐져나오지 않는다.
+ *
+ * 정사각형으로 맞춘다. 글자 카드가 정사각이라 가로세로가 다른 상자에 넣으면
+ * 한쪽이 남거나 잘린다.
+ */
+export function slotInnerSize(): number {
+  const { width, height } = slotSize()
+  return Math.min(
+    width * SLOT_INNER_RATIO.width,
+    height * SLOT_INNER_RATIO.height,
+  )
+}
+
+/**
+ * 그 글자를 그릴 한 변 크기.
+ *
+ * 나무 띠에 있거나 손에 들려 있으면 카드 크기, 정답 칸에 놓여 있으면 칸 안쪽
+ * 크기다. 놓는 순간 칸에 앉는 것처럼 보인다.
+ */
+export function tileSize(tile: LetterTile): number {
+  return tile.slotIndex !== null && tile.heldBy === null
+    ? slotInnerSize()
+    : CFG.tray.cardSize
+}
+
+/**
  * 카메라 손 좌표를 화면 좌표로 옮긴다.
  *
  * 미러링과 도달 범위 넓히기를 함께 한다. 아이는 카메라 프레임 가장자리까지 팔을
@@ -78,18 +111,19 @@ export function screenFromHand(hand: { x: number; y: number }): {
   }
 }
 
-/** 문제 그림 가운데 좌표 */
+/** 문제 그림 가운데 좌표. 위 판 가운데에 맞춘다. */
 export function pictureCenter(): { x: number; y: number } {
   return {
     x: CFG.board.x + CFG.board.width / 2,
-    y: CFG.board.y + CFG.picture.centerY,
+    y: CFG.picture.centerY,
   }
 }
 
 /**
  * 정답 칸 하나의 가운데 좌표.
  *
- * 낱말 길이만큼 가로로 늘어놓고 판 가운데에 맞춘다.
+ * 낱말 길이만큼 가로로 늘어놓고 화면 가운데에 맞춘다. 위 판이 아니라 판 사이
+ * 잔디에 서 있으므로 판 폭이 아니라 화면 폭을 기준으로 잡는다.
  */
 export function slotCenter(
   slotIndex: number,
@@ -97,11 +131,11 @@ export function slotCenter(
 ): { x: number; y: number } {
   const { width } = slotSize()
   const total = wordLength * width + (wordLength - 1) * CFG.slot.gap
-  const startX = CFG.board.x + CFG.board.width / 2 - total / 2
+  const startX = CFG.canvasWidth / 2 - total / 2
 
   return {
     x: startX + slotIndex * (width + CFG.slot.gap) + width / 2,
-    y: CFG.board.y + CFG.slot.centerY,
+    y: CFG.slot.centerY,
   }
 }
 

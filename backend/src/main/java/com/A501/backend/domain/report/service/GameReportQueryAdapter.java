@@ -14,14 +14,17 @@ import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.RecyclingGameResult;
+import com.A501.backend.domain.game.entity.WordMatchResult;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
 import com.A501.backend.domain.game.metric.DobbleResultCalculator;
 import com.A501.backend.domain.game.metric.FruitNinjaResultMetrics;
 import com.A501.backend.domain.game.metric.RecyclingResultMetrics;
+import com.A501.backend.domain.game.metric.WordMatchResultMetrics;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
+import com.A501.backend.domain.game.repository.WordMatchResultRepository;
 import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.port.GameReportQueryPort;
 
@@ -38,11 +41,14 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
     private static final String FRUIT_NINJA_GAME_NAME = "과일 자르기";
     private static final String RECYCLING_GAME_CODE = "RECYCLING";
     private static final String RECYCLING_GAME_NAME = "분리수거";
+    private static final String WORD_MATCH_GAME_CODE = "WORD_MATCH";
+    private static final String WORD_MATCH_GAME_NAME = "낱말 맞추기";
 
     private final GameSessionRepository gameSessionRepository;
     private final CardRoundRepository cardRoundRepository;
     private final FruitNinjaResultRepository fruitNinjaResultRepository;
     private final RecyclingGameResultRepository recyclingGameResultRepository;
+    private final WordMatchResultRepository wordMatchResultRepository;
 
     @Override
     public boolean existsCompletedGame(
@@ -87,13 +93,20 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
                         .collect(Collectors.toMap(
                                 RecyclingGameResult::getGameSessionId,
                                 result -> result));
+        Map<UUID, WordMatchResult> wordResultsBySessionId =
+                wordMatchResultRepository.findAllById(sessionIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                WordMatchResult::getGameSessionId,
+                                result -> result));
 
         return sessions.stream()
                 .map(session -> toReportSource(
                         session,
                         roundsBySessionId.get(session.getGameSessionId()),
                         fruitResultsBySessionId.get(session.getGameSessionId()),
-                        recyclingResultsBySessionId.get(session.getGameSessionId())))
+                        recyclingResultsBySessionId.get(session.getGameSessionId()),
+                        wordResultsBySessionId.get(session.getGameSessionId())))
                 .filter(Objects::nonNull)
                 .toList();
     }
@@ -102,7 +115,8 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
             GameSession session,
             List<CardRound> rounds,
             FruitNinjaResult fruitResult,
-            RecyclingGameResult recyclingResult) {
+            RecyclingGameResult recyclingResult,
+            WordMatchResult wordMatchResult) {
         if (rounds != null) {
             return toDobbleReportSource(session, rounds);
         }
@@ -111,6 +125,9 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
         }
         if (recyclingResult != null) {
             return toRecyclingReportSource(session, recyclingResult);
+        }
+        if (wordMatchResult != null) {
+            return toWordMatchReportSource(session, wordMatchResult);
         }
         return null;
     }
@@ -163,6 +180,25 @@ public class GameReportQueryAdapter implements GameReportQueryPort {
                 new RecyclingResultMetrics(
                         result.getSuccessfulCount(),
                         result.getWrongCount(),
+                        result.getRulesVersion()));
+    }
+
+    private ReportGameSource toWordMatchReportSource(
+            GameSession session,
+            WordMatchResult result) {
+        return new ReportGameSource(
+                session.getGameSessionId(),
+                session.getGameId(),
+                WORD_MATCH_GAME_CODE,
+                WORD_MATCH_GAME_NAME,
+                session.getCompletedAt(),
+                session.getPlayDurationSeconds(),
+                session.getScore(),
+                new WordMatchResultMetrics(
+                        result.getSolvedWordCount(),
+                        result.getIncompleteWordCount(),
+                        result.getWrongCount(),
+                        result.getHintUsedCount(),
                         result.getRulesVersion()));
     }
 

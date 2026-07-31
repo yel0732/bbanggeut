@@ -4,20 +4,6 @@ import { apiUrl } from '@/api/config'
 
 export type CompletedGameId = 'fruit' | 'dobble'
 
-export type FruitNinjaRule = {
-  rulesVersion: string
-  plannedDurationSeconds: number
-  sliceSpeedThreshold: number
-  fruitSpawnIntervalMs: number
-  maxVisibleFruit: number
-  fruits: {
-    fruitCode: string
-    name: string
-    sizePx: number
-    score: number
-  }[]
-}
-
 const BACKEND_GAME_IDS: Record<CompletedGameId, number> = {
   dobble: 7,
   fruit: 8,
@@ -98,16 +84,6 @@ export async function saveCompletedGameSession(input: SaveCompletedGameInput) {
     score: number
     createdAt: string
   }>
-}
-
-export async function getActiveFruitNinjaRule() {
-  const response = await authFetch(
-    apiUrl('/api/games/fruit-ninja/rules/active'),
-  )
-  if (!response.ok) {
-    throw new Error('과일 게임 규칙을 불러오지 못했어요.')
-  }
-  return response.json() as Promise<FruitNinjaRule>
 }
 
 /** Spring LocalDateTime 요청 형식에 맞춘 현재 로컬 시각. */

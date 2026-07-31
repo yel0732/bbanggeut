@@ -54,10 +54,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/auth/password").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/auth/me").authenticated()
                         .requestMatchers(PERMIT_ALL_PATTERNS).permitAll()
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/games/recycling/rules/active")
-                        .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/game-sessions")
                         .authenticated()
                         .requestMatchers("/actuator/metrics/**").authenticated()

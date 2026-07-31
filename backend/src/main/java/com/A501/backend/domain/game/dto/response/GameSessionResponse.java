@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import com.A501.backend.domain.game.entity.RecyclingGameResult;
 import com.A501.backend.domain.game.entity.GameSession;
+import com.A501.backend.domain.game.entity.WordMatchResult;
 import com.A501.backend.domain.game.metric.GameMetricType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -15,7 +16,8 @@ public record GameSessionResponse(
         int score,
         LocalDateTime createdAt,
         GameMetricType gameType,
-        RecyclingGameResultResponse recyclingResult
+        RecyclingGameResultResponse recyclingResult,
+        WordMatchGameResultResponse wordMatchResult
 ) {
 
     public static GameSessionResponse from(GameSession gameSession) {
@@ -24,6 +26,7 @@ public record GameSessionResponse(
                 gameSession.getClientPlayId(),
                 gameSession.getScore(),
                 gameSession.getCreatedAt(),
+                null,
                 null,
                 null);
     }
@@ -37,6 +40,20 @@ public record GameSessionResponse(
                 gameSession.getScore(),
                 gameSession.getCreatedAt(),
                 GameMetricType.RECYCLING,
-                RecyclingGameResultResponse.from(recyclingGameResult));
+                RecyclingGameResultResponse.from(recyclingGameResult),
+                null);
+    }
+
+    public static GameSessionResponse from(
+            GameSession gameSession,
+            WordMatchResult wordMatchResult) {
+        return new GameSessionResponse(
+                gameSession.getGameSessionId(),
+                gameSession.getClientPlayId(),
+                gameSession.getScore(),
+                gameSession.getCreatedAt(),
+                GameMetricType.WORD_MATCH,
+                null,
+                WordMatchGameResultResponse.from(wordMatchResult));
     }
 }

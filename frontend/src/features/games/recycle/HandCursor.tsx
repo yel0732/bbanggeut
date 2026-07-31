@@ -83,7 +83,7 @@ export function HandCursor({
 }
 
 /** 펼친 손바닥과 주먹. 두 그림을 겹쳐 두고 `--fist`로 교차 페이드한다. */
-function HandShape({ color }: { color: string }) {
+export function HandShape({ color }: { color: string }) {
   const skin = '#ffd9ae'
   const line = '#c0803f'
 

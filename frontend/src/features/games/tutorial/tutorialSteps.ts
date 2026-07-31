@@ -36,17 +36,20 @@ export type TutorialStep = {
  * 나머지 게임은 같은 단계를 보여 주되 인식·실습을 실제로 하지 않고 안내만
  * 보고 넘어간다. 판정이 없는데 통과를 요구하면 아이가 그 단계에 갇힌다.
  */
-export type InteractiveTutorialGameId = 'fruit' | 'dobble' | 'recycle'
+export type InteractiveTutorialGameId =
+  'fruit' | 'dobble' | 'wordmatch' | 'recycle'
 
 export function isInteractiveTutorialGame(
   id: GameId,
 ): id is InteractiveTutorialGameId {
-  return id === 'fruit' || id === 'dobble' || id === 'recycle'
+  return (
+    id === 'fruit' || id === 'dobble' || id === 'wordmatch' || id === 'recycle'
+  )
 }
 
 /** 양손 제스처(주먹 쥐기)로 조작하는 게임. 과일 자르기만 손 위치를 쓴다. */
 export function usesHandGestures(id: GameId): boolean {
-  return id === 'dobble' || id === 'recycle'
+  return id === 'dobble' || id === 'wordmatch' || id === 'recycle'
 }
 
 const FRUIT_STEPS: TutorialStep[] = [
@@ -95,28 +98,6 @@ const DOBBLE_STEPS: TutorialStep[] = [
   },
 ]
 
-/*
-  아직 만들지 않은 게임의 시범·인식·실습 문구.
-
-  단계 수와 흐름은 기존 게임과 같게 두고, 무엇을 하라고 시키지는 않는다. 아직
-  할 수 있는 것이 없는데 "해 봐"라고 하면 아이는 게임이 고장난 줄 안다. 대신
-  곧 준비된다고만 알려 준다. 게임을 실제로 만들 때 이 문구부터 바꾼다.
-*/
-const UPCOMING_MIDDLE_STEPS: TutorialStep[] = [
-  {
-    kind: 'demo',
-    speech: '어떻게 하는지\n곧 보여 줄게!',
-  },
-  {
-    kind: 'detect',
-    speech: '조금만 기다려 줘!\n금방 준비할게!',
-  },
-  {
-    kind: 'practice',
-    speech: '여기서 같이\n연습해 볼 거야!',
-  },
-]
-
 const READY_STEP: TutorialStep = {
   kind: 'ready',
   speech: '정말 잘했어!\n이제 시작해 볼까?',
@@ -127,7 +108,19 @@ const WORDMATCH_STEPS: TutorialStep[] = [
     kind: 'intro',
     speech: '안녕! 나는 빵긋이야!\n이번에는 낱말을 맞춰 보자!',
   },
-  ...UPCOMING_MIDDLE_STEPS,
+  {
+    kind: 'demo',
+    speech:
+      '글자에 손을 잠깐 모은 뒤 주먹을 쥐어 잡고,\n칸에서 손을 펴서 놓아 봐!',
+  },
+  {
+    kind: 'detect',
+    speech: '한 손을 활짝 펴서\n카메라에 보여 줘!',
+  },
+  {
+    kind: 'practice',
+    speech: '사과를 완성하도록\n글자를 직접 옮겨 볼까?',
+  },
   READY_STEP,
 ]
 

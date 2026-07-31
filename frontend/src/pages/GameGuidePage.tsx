@@ -10,6 +10,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import dobbleBgmUrl from '@/assets/audio/dobble-game/dobble-bgm.mp3'
 import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import recycleBgmUrl from '@/assets/audio/recycle-game/river-recycle.mp3'
+import wordMatchBgmUrl from '@/assets/audio/wordmatch-game/alphabet-gather.mp3'
 import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
 import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
 import guideStartButtonUrl from '@/assets/images/game-entry/guide-start-btn.webp'
@@ -65,6 +66,12 @@ import {
   playGrabSfx,
   playWrongSfx,
 } from '@/features/games/recycle/recycleSfx'
+import { WordMatchBoard } from '@/features/games/wordmatch/WordMatchBoard'
+import { WORD_MATCH_PRACTICE } from '@/features/games/wordmatch/wordMatchConfig'
+import {
+  useWordMatchInteraction,
+  type WordMatchInteraction,
+} from '@/features/games/wordmatch/useWordMatchInteraction'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useCameraStream, type CameraStatus } from '@/hooks/useCameraStream'
 import { useFitScale } from '@/hooks/useFitScale'
@@ -128,6 +135,10 @@ export function GameGuidePage() {
     }
     const frame = gestures.gesturesRef.current
     // 분리수거는 한 손만으로도 할 수 있어(RGAME-05) 한 손이 잡히면 통과시킨다.
+    if (tutorialGameId === 'wordmatch') {
+      const oneHand = frame.a ?? frame.b
+      return oneHand !== null && !oneHand.fist
+    }
     if (tutorialGameId === 'recycle') {
       return frame.a !== null || frame.b !== null
     }
@@ -165,6 +176,14 @@ export function GameGuidePage() {
     onCorrect: playCorrectSfx,
     onGrab: playGrabSfx,
     onWrong: playWrongSfx,
+  })
+
+  const wordMatchPractice = useWordMatchInteraction({
+    active:
+      step.kind === 'practice' && cameraReady && tutorialGameId === 'wordmatch',
+    gesturesRef: gestures.gesturesRef,
+    onComplete: goNext,
+    problem: WORD_MATCH_PRACTICE,
   })
 
   if (!game) {
@@ -205,7 +224,9 @@ export function GameGuidePage() {
               ? fruitBgmUrl
               : tutorialGameId === 'recycle'
                 ? recycleBgmUrl
-                : dobbleBgmUrl
+                : tutorialGameId === 'wordmatch'
+                  ? wordMatchBgmUrl
+                  : dobbleBgmUrl
           }
         />
 
@@ -281,6 +302,7 @@ export function GameGuidePage() {
                 practice={practice}
                 recyclePractice={recyclePractice}
                 speech={step.speech}
+                wordMatchPractice={wordMatchPractice}
               />
             }
             // 시범 단계는 공룡이 판 밖으로 넘치게 두지만, 애니메이션 WebP를 쓰는
@@ -409,6 +431,7 @@ function StepBody({
   practice,
   recyclePractice,
   speech,
+  wordMatchPractice,
 }: {
   camera: CameraProps
   cardImageUrl: string
@@ -420,6 +443,7 @@ function StepBody({
   practice: FruitPracticeState
   recyclePractice: RecyclePracticeState
   speech: string
+  wordMatchPractice: WordMatchInteraction
 }) {
   // 인사와 시작은 게임과 무관한 빵긋이 화면이라 어느 게임이든 그대로 쓴다.
   // 시범 단계는 공룡 동작 그림이 있으면 그것을, 없으면 카드 그림을 보여 준다.
@@ -511,7 +535,12 @@ function StepBody({
         ? fruitCoaching(practice)
         : gameId === 'recycle'
           ? recycleCoaching(recyclePractice.feedback)
-          : dobbleCoaching(dobblePractice.feedback)
+          : gameId === 'wordmatch'
+            ? {
+                text: '손을 0.3초 모으고 주먹으로 잡아 칸에 놓아 봐!',
+                tone: 'guide' as const,
+              }
+            : dobbleCoaching(dobblePractice.feedback)
 
     return (
       <div className="flex h-full w-full flex-col items-center gap-1.5">
@@ -527,6 +556,12 @@ function StepBody({
           ) : gameId === 'recycle' ? (
             <RecyclePracticeStage
               practice={recyclePractice}
+              streamRef={camera.streamRef}
+              videoRef={camera.videoRef}
+            />
+          ) : gameId === 'wordmatch' ? (
+            <WordMatchPracticeStage
+              practice={wordMatchPractice}
               streamRef={camera.streamRef}
               videoRef={camera.videoRef}
             />
@@ -856,6 +891,36 @@ function FruitPracticeStage({
 }
 
 /** 연습 판 구석에 붙는 작은 자기 모습. 플레이 화면과 같은 자리·모양이다. */
+function WordMatchPracticeStage({
+  practice,
+  streamRef,
+  videoRef,
+}: {
+  practice: WordMatchInteraction
+  streamRef: RefObject<MediaStream | null>
+  videoRef: RefObject<HTMLVideoElement | null>
+}) {
+  useAttachStream(videoRef, streamRef)
+
+  return (
+    <div className="relative h-[374px] w-[666px] overflow-hidden rounded-[18px] border-[3px] border-[#c39a5d]">
+      <div
+        className="absolute top-0 left-0"
+        style={{ transform: 'scale(0.52)', transformOrigin: '0 0' }}
+      >
+        <WordMatchBoard interaction={practice} problem={WORD_MATCH_PRACTICE} />
+      </div>
+      <video
+        autoPlay
+        className="pointer-events-none absolute right-1 bottom-1 z-50 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-lg"
+        muted
+        playsInline
+        ref={videoRef}
+      />
+    </div>
+  )
+}
+
 function PracticeCameraPreview({
   streamRef,
   videoRef,

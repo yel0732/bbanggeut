@@ -5,6 +5,7 @@ import {
   getChildReport,
   getChildReports,
   isBackendChildId,
+  markReportReadByReportId,
   regenerateChildReport,
 } from '@/api/parentMode'
 import type { ReportDetailResponse, ReportListItem } from '@/api/parentMode'
@@ -147,6 +148,8 @@ export function ReportListPage() {
           childName,
           reportDate: selectedDate,
         })
+        // 알림 목록을 거치지 않고 리포트로 바로 들어온 경우에도 읽음을 서버에 남긴다.
+        void markReportReadByReportId(report.reportId).catch(() => {})
       } catch (loadError) {
         if (controller.signal.aborted) return
         setDetailError(

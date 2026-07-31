@@ -13,9 +13,12 @@ import {
   getChildReports,
   getReportNotificationPreference,
   getStoredAccessToken,
+  getUnreadReportNotifications,
   isBackendChildId,
+  markReportNotificationRead,
   subscribeToReportNotifications,
   updateReportNotificationPreference,
+  type ReportNotificationItem,
 } from '@/api/parentMode'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
@@ -154,6 +157,32 @@ function loadNotificationSettings(): NotificationSettings {
     }
   } catch {
     return { enabled: true, time: '20:00', timezone: systemTimezone }
+  }
+}
+
+/**
+ * 서버 알림 한 건을 화면 목록 형태로 옮긴다.
+ *
+ * 서버는 아이 이름 대신 `childId`를 주므로 프로필 목록에서 이름을 찾는다. 프로필이
+ * 아직 로드되지 않았으면 알림 문구에서 뽑아 쓴다(SSE 쪽과 같은 방식).
+ */
+function toReportArrival(
+  item: ReportNotificationItem,
+  profiles: ChildProfile[],
+): ReportArrivalNotification {
+  const childId = String(item.childId)
+  const matched = profiles.find((profile) => profile.id === childId)
+  return {
+    id: String(item.notificationId),
+    notificationId: item.notificationId,
+    reportId: item.reportId,
+    childId,
+    childName:
+      matched?.name ??
+      item.message.match(/^(.+?)의 일일 리포트/)?.[1]?.trim() ??
+      '',
+    reportDate: item.reportDate,
+    read: false,
   }
 }
 
@@ -479,6 +508,29 @@ export function ParentModePage() {
     }
   }, [])
 
+  // SSE는 이 화면이 열려 있는 동안에만 구독된다. 그 밖의 시간에 도착한 알림은
+  // 서버에만 남아 있으므로, 진입할 때 미확인 목록을 받아 화면과 캐시를 맞춘다.
+  // 서버가 원천이므로 로컬 목록은 합치지 않고 통째로 교체한다.
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    const controller = new AbortController()
+
+    void getUnreadReportNotifications(controller.signal)
+      .then((unread) => {
+        if (controller.signal.aborted) return
+        const arrivals = unread.notifications
+          .filter((item) => item.type === 'REPORT_COMPLETED')
+          .map((item) => toReportArrival(item, profiles))
+        setReportArrivals(arrivals)
+        saveReportArrivals(arrivals)
+      })
+      .catch(() => {
+        // 서버가 준비되지 않은 개발 환경에서는 마지막 로컬 목록을 그대로 쓴다.
+      })
+
+    return () => controller.abort()
+  }, [profiles])
+
   useEffect(() => {
     if (!getStoredAccessToken() || !notification.enabled) return
     const controller = new AbortController()
@@ -549,6 +601,11 @@ export function ParentModePage() {
     const next = reportArrivals.filter((item) => item.id !== arrival.id)
     setReportArrivals(next)
     saveReportArrivals(next)
+    // 읽음은 서버에도 남겨야 다른 기기에서 다시 미확인으로 보이지 않는다. 화면 이동을
+    // 막지 않도록 결과는 기다리지 않는다.
+    if (arrival.notificationId !== undefined) {
+      void markReportNotificationRead(arrival.notificationId).catch(() => {})
+    }
     setIsUnreadReportNoticeVisible(false)
     window.dispatchEvent(new Event('bbanggut-report-arrivals-updated'))
     navigate(

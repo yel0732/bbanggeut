@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   getChildReport,
   isBackendChildId,
+  markReportReadByReportId,
   regenerateChildReport,
 } from '@/api/parentMode'
 import type { ReportDetailResponse, ReportGameResult } from '@/api/parentMode'
@@ -56,6 +57,8 @@ export function ReportDetailPage() {
         )
         setReport(nextReport)
         removeReadReportArrival({ childId, childName, reportDate })
+        // 알림 목록을 거치지 않고 리포트로 바로 들어온 경우에도 읽음을 서버에 남긴다.
+        void markReportReadByReportId(nextReport.reportId).catch(() => {})
       } catch (loadError) {
         if (controller.signal.aborted) return
         setError(

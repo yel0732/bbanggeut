@@ -15,18 +15,18 @@ import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.FruitNinjaFruitResult;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
-import com.A501.backend.domain.game.entity.FruitType;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.RecyclingGameResult;
+import com.A501.backend.domain.game.entity.WordMatchResult;
 import com.A501.backend.domain.game.metric.CardResultStatus;
 import com.A501.backend.domain.game.metric.CognitiveGrade;
 import com.A501.backend.domain.game.metric.FruitResultCount;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaFruitResultRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
-import com.A501.backend.domain.game.repository.FruitTypeRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
+import com.A501.backend.domain.game.repository.WordMatchResultRepository;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, GamePurgeService.class})
@@ -37,8 +37,8 @@ class GamePurgeServiceTest {
     @Autowired CardRoundRepository cardRoundRepository;
     @Autowired FruitNinjaResultRepository fruitNinjaResultRepository;
     @Autowired FruitNinjaFruitResultRepository fruitNinjaFruitResultRepository;
-    @Autowired FruitTypeRepository fruitTypeRepository;
     @Autowired RecyclingGameResultRepository recyclingGameResultRepository;
+    @Autowired WordMatchResultRepository wordMatchResultRepository;
 
     @Test
     void purgesOnlyTargetChildrenGameDataAndKeepsGlobalReferenceData() {
@@ -61,8 +61,9 @@ class GamePurgeServiceTest {
         GameSession targetRecycling = saveSession(15L, 9L);
         recyclingGameResultRepository.saveAndFlush(RecyclingGameResult.create(
                 targetRecycling.getGameSessionId(), "RECYCLING_V1", 10, 2));
-
-        fruitTypeRepository.saveAndFlush(FruitType.create("APPLE", "사과", 120));
+        GameSession targetWordMatch = saveSession(15L, 10L);
+        wordMatchResultRepository.saveAndFlush(WordMatchResult.create(
+                targetWordMatch.getGameSessionId(), "WORD_MATCH_V1", 1, 0, 0, 0));
 
         gamePurgeService.purgeByChildIds(List.of(15L));
 
@@ -76,6 +77,9 @@ class GamePurgeServiceTest {
         assertThat(recyclingGameResultRepository
                 .findById(targetRecycling.getGameSessionId()))
                 .isEmpty();
+        assertThat(wordMatchResultRepository
+                .findById(targetWordMatch.getGameSessionId()))
+                .isEmpty();
 
         assertThat(gameSessionRepository.findById(otherChildFruit.getGameSessionId())).isPresent();
         assertThat(fruitNinjaResultRepository.findById(otherChildFruit.getGameSessionId()))
@@ -83,7 +87,6 @@ class GamePurgeServiceTest {
         assertThat(fruitNinjaFruitResultRepository
                 .findAllByGameSessionIdOrderByFruitCode(otherChildFruit.getGameSessionId()))
                 .hasSize(1);
-        assertThat(fruitTypeRepository.count()).isOne();
     }
 
     @Test

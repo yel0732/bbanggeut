@@ -1,7 +1,8 @@
 package com.A501.backend.domain.game.metric;
 
 public sealed interface GameResultMetrics
-        permits DobbleResultMetrics, FruitNinjaResultMetrics, RecyclingResultMetrics {
+        permits DobbleResultMetrics, FruitNinjaResultMetrics, RecyclingResultMetrics,
+                WordMatchResultMetrics {
 
     GameMetricType metricType();
 }

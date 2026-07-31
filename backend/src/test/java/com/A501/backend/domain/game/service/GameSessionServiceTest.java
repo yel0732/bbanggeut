@@ -21,7 +21,7 @@ import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.repository.GameRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
-import com.A501.backend.domain.game.repository.RecyclingRuleVersionRepository;
+import com.A501.backend.domain.game.repository.WordMatchResultRepository;
 
 @ExtendWith(MockitoExtension.class)
 class GameSessionServiceTest {
@@ -36,7 +36,7 @@ class GameSessionServiceTest {
     private RecyclingGameResultRepository recyclingGameResultRepository;
 
     @Mock
-    private RecyclingRuleVersionRepository recyclingRuleVersionRepository;
+    private WordMatchResultRepository wordMatchResultRepository;
 
     @Mock
     private GameSessionWriter gameSessionWriter;
@@ -53,7 +53,7 @@ class GameSessionServiceTest {
         when(gameSessionRepository.findById(session.getGameSessionId())).thenReturn(Optional.of(session));
         GameSessionService service = new GameSessionService(
                 gameSessionRepository, gameRepository,
-                recyclingGameResultRepository, recyclingRuleVersionRepository,
+                recyclingGameResultRepository, wordMatchResultRepository,
                 gameSessionWriter,
                 currentMemberProvider, childAccessVerifier);
 
@@ -75,7 +75,7 @@ class GameSessionServiceTest {
         doNothing().when(childAccessVerifier).verifyAccess(1L, request.childId());
         GameSessionService service = new GameSessionService(
                 gameSessionRepository, gameRepository,
-                recyclingGameResultRepository, recyclingRuleVersionRepository,
+                recyclingGameResultRepository, wordMatchResultRepository,
                 gameSessionWriter,
                 currentMemberProvider, childAccessVerifier);
 

@@ -24,6 +24,7 @@ import {
   loadActiveChildProfileId,
   loadChildProfiles,
   saveActiveChildProfileId,
+  saveChildProfiles,
 } from '@/lib/childProfiles'
 import { grantParentAccess, revokeParentAccess } from '@/lib/parentAccess'
 
@@ -87,23 +88,26 @@ export function ProfileSelectPage() {
       .then((children) => {
         if (!active) return
         const localProfiles = loadChildProfiles()
-        setChildProfiles(
-          children.map((child) => {
-            const local = localProfiles.find(
-              (profile) => profile.id === String(child.childId),
-            )
-            return {
-              id: String(child.childId),
-              name: child.name,
-              photoUrl:
-                child.profileImageUrl ??
-                local?.photoUrl ??
-                childPhotoFromImageKey(child.profileImageKey),
-              profileImageKey: child.profileImageKey,
-              profileImageUrl: child.profileImageUrl,
-            }
-          }),
-        )
+        const serverProfiles = children.map((child) => {
+          const local = localProfiles.find(
+            (profile) => profile.id === String(child.childId),
+          )
+          return {
+            id: String(child.childId),
+            name: child.name,
+            photoUrl:
+              child.profileImageUrl ??
+              local?.photoUrl ??
+              childPhotoFromImageKey(child.profileImageKey),
+            profileImageKey: child.profileImageKey,
+            profileImageUrl: child.profileImageUrl,
+          }
+        })
+        setChildProfiles(serverProfiles)
+        // ChildRouteGuard는 이 캐시에 고른 아이가 들어 있어야 /child 진입을 허용한다.
+        // 여기서 저장하지 않으면 부모 모드를 거치기 전까지 캐시가 비어 있거나 이전
+        // 계정의 목록으로 남아, 아이를 골라도 프로필 선택 화면으로 되돌아온다.
+        saveChildProfiles(serverProfiles)
       })
       .catch(() => {})
     return () => {

@@ -208,6 +208,18 @@ function returnToRiver(engine: Engine, uid: number): void {
   item.x = item.riverX
 }
 
+/**
+ * 타이머를 한 프레임만큼 흘린다.
+ *
+ * 제한 시간을 넘기지 않는 것이 핵심이다. 오답 안내 중에도 타이머는 흐르는데
+ * (RGAME-09) 안내가 끝날 때까지는 종료 판정을 하지 않으므로, 상한을 두지 않으면
+ * 안내 길이만큼 60초를 넘어 버린다. 그러면 서버가 플레이 시간을 0~60초로
+ * 검증하다 결과를 거부하고, 아이가 1분 동안 한 것이 통째로 사라진다.
+ */
+function advanceTimer(engine: Engine, dt: number): number {
+  return Math.min(engine.playElapsedMs + dt * 1000, CFG.durationSec * 1000)
+}
+
 function releaseAllHeld(engine: Engine): void {
   for (const slot of HAND_SLOTS) {
     const heldUid = engine.aim[slot].heldUid
@@ -532,7 +544,7 @@ export function useRecycleGame(
             break
           }
 
-          engine.playElapsedMs += dt * 1000
+          engine.playElapsedMs = advanceTimer(engine, dt)
           engine.msUntilNextSpawn -= dt * 1000
           if (engine.msUntilNextSpawn <= 0) {
             spawnItem(engine, now)
@@ -546,7 +558,7 @@ export function useRecycleGame(
           break
         case 'guide':
           // 안내 중에도 타이머는 흐른다(RGAME-09). 생성·이동·입력은 멈춘다.
-          engine.playElapsedMs += dt * 1000
+          engine.playElapsedMs = advanceTimer(engine, dt)
           if (now >= engine.guideUntil) {
             engine.guide = null
             // 안내 중 시간이 끝났으면 재개하지 않고 바로 종료한다(RGAME-10).

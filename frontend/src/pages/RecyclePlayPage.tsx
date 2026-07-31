@@ -81,10 +81,15 @@ export function RecyclePlayPage() {
   const selectedAtRef = useRef(nowAsLocalDateTime())
   const playStartedAtRef = useRef<string | null>(null)
   const clientPlayIdRef = useRef(crypto.randomUUID())
-  // 효과음이 묻히지 않도록 배경 음악은 낮게 깐다.
-  const { audioRef, isBgmPlaying, playBgm, toggleBgm } = useBgmPlayer({
-    volume: 0.22,
-  })
+  /*
+    음량은 훅 기본값(0.4)을 그대로 쓴다.
+
+    한때 효과음이 묻히지 않게 낮춰 뒀는데, 게임 방법 화면은 기본값을 쓰기 때문에
+    튜토리얼에서 넘어오는 순간 음악이 작아졌다. 같은 게임 안에서 화면만 옮겼는데
+    소리가 달라지면 고장난 것처럼 들린다. 효과음이 묻히면 효과음 쪽 gain을
+    올리는 게 맞다.
+  */
+  const { audioRef, isBgmPlaying, playBgm, toggleBgm } = useBgmPlayer()
   const { gesturesRef, modelReady } = useHandGestures(
     videoRef,
     status === 'granted',

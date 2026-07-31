@@ -45,6 +45,19 @@ const DEFAULT_SMOOTHING = 0.45
 /** 랜드마크가 잠깐 끊겨도 포인터를 유지하는 시간(ms) */
 const HOLD_MS = 220
 
+/**
+ * 손이 카메라 밖으로 나갔다고 볼 여유(정규화 좌표).
+ *
+ * MediaPipe는 손이 화면을 벗어나는 동안에도 좌표를 계속 내보낸다. 값이 0~1을
+ * 넘어가거나 테두리에 붙은 채로 남는데, 게임 쪽에서는 그 좌표를 화면 안으로
+ * 눌러 쓰기 때문에 포인터가 가장자리에 붙어 있고 "손이 잡힌" 상태로 이어진다.
+ * 그러면 손을 내려도 자동 중단이 걸리지 않는다.
+ *
+ * 그래서 프레임을 이만큼 넘어간 손은 없는 것으로 본다. 조금 여유를 두는 이유는
+ * 화면 끝을 짚으려고 손을 바짝 붙인 것까지 끊어 버리면 안 되기 때문이다.
+ */
+const OUT_OF_FRAME_MARGIN = 0.06
+
 /** 두 손을 구분하는 슬롯. 표시 색만 다르고 실제 좌우 의미는 두지 않는다. */
 export type HandSlot = 'a' | 'b'
 
@@ -124,8 +137,25 @@ export function useHandGestures(
 
   const handleResult = useCallback((result: HandLandmarkerResult) => {
     const now = performance.now()
-    const hands = result.landmarks ?? []
-    const labels = result.handedness ?? result.handednesses ?? []
+    const rawHands = result.landmarks ?? []
+    const rawLabels = result.handedness ?? result.handednesses ?? []
+
+    /*
+      카메라 밖으로 나간 손은 없는 것으로 본다.
+
+      MediaPipe는 손이 프레임을 벗어나는 동안에도 좌표를 계속 내보낸다. 게임은 그
+      좌표를 화면 안으로 눌러 쓰기 때문에, 걸러 내지 않으면 포인터가 가장자리에
+      붙은 채 "손이 잡혀 있는" 상태로 남고 자동 중단이 영영 걸리지 않는다.
+    */
+    const keep = rawHands.map(
+      (points) =>
+        points[LM.middleMcp].x >= -OUT_OF_FRAME_MARGIN &&
+        points[LM.middleMcp].x <= 1 + OUT_OF_FRAME_MARGIN &&
+        points[LM.middleMcp].y >= -OUT_OF_FRAME_MARGIN &&
+        points[LM.middleMcp].y <= 1 + OUT_OF_FRAME_MARGIN,
+    )
+    const hands = rawHands.filter((_, index) => keep[index])
+    const labels = rawLabels.filter((_, index) => keep[index])
 
     const bySlot: Record<HandSlot, number | null> = { a: null, b: null }
 

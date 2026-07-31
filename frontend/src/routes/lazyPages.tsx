@@ -68,6 +68,11 @@ export const WordMatchPlayPage = lazy(() =>
     default: WordMatchPlayPage,
   })),
 )
+export const WordMatchResultPage = lazy(() =>
+  import('@/pages/WordMatchResultPage').then(({ WordMatchResultPage }) => ({
+    default: WordMatchResultPage,
+  })),
+)
 export const RecyclePlayPage = lazy(() =>
   import('@/pages/RecyclePlayPage').then(({ RecyclePlayPage }) => ({
     default: RecyclePlayPage,

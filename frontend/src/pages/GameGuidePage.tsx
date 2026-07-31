@@ -10,6 +10,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import dobbleBgmUrl from '@/assets/audio/dobble-game/dobble-bgm.mp3'
 import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import recycleBgmUrl from '@/assets/audio/recycle-game/river-recycle.mp3'
+import wordMatchBgmUrl from '@/assets/audio/wordmatch-game/alphabet-gather.mp3'
 import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
 import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
 import guideStartButtonUrl from '@/assets/images/game-entry/guide-start-btn.webp'
@@ -37,6 +38,7 @@ import {
 } from '@/features/games/tutorial/TutorialMedia'
 import { TutorialCamera } from '@/features/games/tutorial/TutorialCamera'
 import {
+  hasTutorialPractice,
   isInteractiveTutorialGame,
   TUTORIAL_STEPS,
   usesHandGestures,
@@ -90,13 +92,21 @@ export function GameGuidePage() {
   // 흔들리면 안 되므로, 화면 이탈 판단은 훅을 다 부른 뒤에 한다.
   const game = getGameById(gameId)
   const tutorialGameId: GameId = game?.id ?? 'fruit'
-  // 아직 만들지 않은 게임은 인식·실습 판정이 없다. 카메라도 켜지 않는다.
+  /*
+    인식과 실습을 따로 본다.
+
+    낱말 맞추기는 인식 단계는 실제로 돌지만 연습 판이 아직 없다. 하나로 묶으면
+    연습에서 통과 조건을 못 채워 아이가 그 단계에 갇힌다.
+  */
   const interactive = game ? isInteractiveTutorialGame(game.id) : false
+  const practiceReady = game ? hasTutorialPractice(game.id) : false
 
   const steps = TUTORIAL_STEPS[tutorialGameId]
   const step = steps[Math.min(stepIndex, steps.length - 1)]
+  // 카메라는 실제로 쓰는 단계에서만 요청한다.
   const needsCamera =
-    interactive && (step.kind === 'detect' || step.kind === 'practice')
+    (step.kind === 'detect' && interactive) ||
+    (step.kind === 'practice' && practiceReady)
 
   const { requestCamera, status, streamRef, videoRef } = useCameraStream()
   // 게임마다 필요한 모델이 다르다. 둘을 동시에 올리면 낭비라 한쪽만 켠다.
@@ -134,11 +144,17 @@ export function GameGuidePage() {
       return hand.playHandRef.current !== null
     }
     const frame = gestures.gesturesRef.current
-    // 도블만 두 손을 다 써야 하는 게임이라 둘 다 잡혀야 통과시킨다. 분리수거와
-    // 낱말 맞추기는 한 손으로 하므로(RGAME-05, WGAME-04) 한 손이면 통과다.
+    // 도블만 두 손을 다 써야 하는 게임이라 둘 다 잡혀야 통과시킨다.
     if (tutorialGameId === 'dobble') {
       return frame.a !== null && frame.b !== null
     }
+    // 낱말 맞추기는 손을 편 상태까지 확인한다(WGAME-02). 글자를 잡는 동작이
+    // 주먹이라, 주먹으로도 통과되면 아이가 무엇을 배웠는지 모르고 넘어간다.
+    if (tutorialGameId === 'wordmatch') {
+      const oneHand = frame.a ?? frame.b
+      return oneHand !== null && !oneHand.fist
+    }
+    // 분리수거는 한 손만으로도 할 수 있어(RGAME-05) 한 손이 잡히면 통과시킨다.
     return frame.a !== null || frame.b !== null
   }, [gestures.gesturesRef, hand.playHandRef, tutorialGameId])
 
@@ -212,7 +228,9 @@ export function GameGuidePage() {
               ? fruitBgmUrl
               : tutorialGameId === 'recycle'
                 ? recycleBgmUrl
-                : dobbleBgmUrl
+                : tutorialGameId === 'wordmatch'
+                  ? wordMatchBgmUrl
+                  : dobbleBgmUrl
           }
         />
 
@@ -286,6 +304,7 @@ export function GameGuidePage() {
                 interactive={interactive}
                 kind={step.kind}
                 practice={practice}
+                practiceReady={practiceReady}
                 recyclePractice={recyclePractice}
                 speech={step.speech}
               />
@@ -302,6 +321,7 @@ export function GameGuidePage() {
                 cameraUsable={cameraUsable}
                 interactive={interactive}
                 kind={step.kind}
+                practiceReady={practiceReady}
                 onNext={goNext}
                 onPrev={goPrev}
                 onQuit={backToSelect}
@@ -313,7 +333,7 @@ export function GameGuidePage() {
             }
             // 실습만 제목 자리를 본문에 넘긴다. 판정 없는 게임의 실습 단계는
             // 다른 안내 단계와 똑같이 생겨야 하므로 제목을 그대로 둔다.
-            showTitle={step.kind !== 'practice' || !interactive}
+            showTitle={step.kind !== 'practice' || !practiceReady}
             stepCount={steps.length}
             stepIndex={stepIndex}
           />
@@ -414,6 +434,7 @@ function StepBody({
   interactive,
   kind,
   practice,
+  practiceReady,
   recyclePractice,
   speech,
 }: {
@@ -421,16 +442,27 @@ function StepBody({
   cardImageUrl: string
   dobblePractice: DobblePracticeState
   gameId: GameId
-  /** 인식·실습 판정이 구현된 게임인지 */
+  /** 카메라 인식이 실제로 도는 게임인지 */
   interactive: boolean
   kind: TutorialStepKind
   practice: FruitPracticeState
+  /** 직접 해 보는 연습 판이 만들어진 게임인지 */
+  practiceReady: boolean
   recyclePractice: RecyclePracticeState
   speech: string
 }) {
-  // 인사와 시작은 게임과 무관한 빵긋이 화면이라 어느 게임이든 그대로 쓴다.
-  // 시범 단계는 공룡 동작 그림이 있으면 그것을, 없으면 카드 그림을 보여 준다.
-  if (!interactive && kind !== 'intro' && kind !== 'ready') {
+  /*
+    안내만 보여 주고 넘어가는 단계.
+
+    인사와 시작은 게임과 무관한 빵긋이 화면이라 어느 게임이든 그대로 쓴다. 그
+    사이 단계는 구현이 있으면 실제로 돌리고, 없으면 여기서 안내로 대신한다 —
+    낱말 맞추기는 인식은 돌지만 연습 판이 없어 실습만 이 길로 온다.
+  */
+  const showsGuideOnly =
+    (!interactive && kind !== 'intro' && kind !== 'ready') ||
+    (kind === 'practice' && !practiceReady)
+
+  if (showsGuideOnly) {
     const cardImage = (
       <img
         alt=""
@@ -518,7 +550,12 @@ function StepBody({
         ? fruitCoaching(practice)
         : gameId === 'recycle'
           ? recycleCoaching(recyclePractice.feedback)
-          : dobbleCoaching(dobblePractice.feedback)
+          : gameId === 'wordmatch'
+            ? {
+                text: '손을 0.3초 모으고 주먹으로 잡아 칸에 놓아 봐!',
+                tone: 'guide' as const,
+              }
+            : dobbleCoaching(dobblePractice.feedback)
 
     return (
       <div className="flex h-full w-full flex-col items-center gap-1.5">
@@ -903,13 +940,16 @@ function StepFooter({
   onRelearn,
   onStart,
   playable,
+  practiceReady,
   showPrev,
 }: {
   /** 카메라를 쓸 수 있는지. 못 쓰면 인식 단계를 건너뛸 길을 열어 준다. */
   cameraUsable: boolean
-  /** 인식·실습 판정이 구현된 게임인지 */
+  /** 카메라 인식이 실제로 도는 게임인지 */
   interactive: boolean
   kind: TutorialStepKind
+  /** 직접 해 보는 연습 판이 만들어진 게임인지 */
+  practiceReady: boolean
   onNext: () => void
   onPrev: () => void
   onQuit: () => void
@@ -962,7 +1002,9 @@ function StepFooter({
     판정 자체가 없는 게임도 마찬가지다 — 해낼 방법이 없으니 막으면 갇힌다.
   */
   const mustFinish =
-    (kind === 'detect' || kind === 'practice') && cameraUsable && interactive
+    cameraUsable &&
+    ((kind === 'detect' && interactive) ||
+      (kind === 'practice' && practiceReady))
 
   /*
     실습은 버튼을 아예 두지 않는다. 몸으로 하는 단계라 손에 칼이 붙어 있고 손을
@@ -971,7 +1013,7 @@ function StepFooter({
 
     판정이 없는 게임은 몸으로 할 것이 없다. 그때는 이전 버튼을 남겨 둔다.
   */
-  const hidePrev = kind === 'practice' && cameraUsable && interactive
+  const hidePrev = kind === 'practice' && cameraUsable && practiceReady
   // 판정 없는 게임은 시범·인식·실습이 다 같은 안내 화면이라 버튼 배치도 맞춘다.
   const alignWithIntroButtons =
     kind === 'demo' ||
@@ -1002,7 +1044,8 @@ function StepFooter({
         <GuideButton
           imageUrl={guideStartButtonUrl}
           label={
-            interactive && (kind === 'detect' || kind === 'practice')
+            (kind === 'detect' && interactive) ||
+            (kind === 'practice' && practiceReady)
               ? '건너뛰기'
               : '다음'
           }

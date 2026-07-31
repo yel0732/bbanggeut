@@ -113,6 +113,7 @@ def create_app(
             provider=child_diary_client,
             timeout_seconds=resolved_settings.gms_timeout_seconds,
             max_attempts=resolved_settings.gms_max_attempts,
+            logger=logging.getLogger("app.child_diary.generator"),
         )
 
         redis_client = create_redis_client(

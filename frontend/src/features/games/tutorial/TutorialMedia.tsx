@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import celebrationUrl from '@/assets/images/tutorial/common/common-celebration.webm'
 import greetingUrl from '@/assets/images/tutorial/common/common-greeting.webm'
 import dobbleDemoUrl from '@/assets/images/tutorial/dobble/dobble-open-fist-demo.webm'
@@ -5,6 +7,13 @@ import handsFistUrl from '@/assets/images/tutorial/dobble/dino-hands-fist.png'
 import handsOpenUrl from '@/assets/images/tutorial/dobble/dino-hands-open.png'
 import fruitDemoUrl from '@/assets/images/tutorial/fruit/fruit-slice-demo.webm'
 import fruitPosesUrl from '@/assets/images/tutorial/fruit/dino-fruit-left-arm-2poses-low.png'
+import type { GameId } from '@/features/games/games'
+
+import {
+  UPCOMING_DEMO_HEIGHT,
+  UPCOMING_DEMOS,
+  upcomingDemoWidth,
+} from './upcomingDemos'
 
 /**
  * 튜토리얼 그림·영상.
@@ -183,3 +192,37 @@ export function DobbleHands({
 
 /** 포즈 시트 한 컷의 원본 크기 — 배치 계산이 필요할 때 쓴다. */
 export const FRUIT_POSE_SOURCE_SIZE = FRUIT_POSE_FRAME
+
+/**
+ * 나중에 추가한 게임의 시범 동작 그림.
+ *
+ * 에셋이 없는 게임이면 `fallback`을 그린다. 부르는 쪽이 에셋 유무를 따로
+ * 물어보지 않아도 되게 여기서 갈라 준다. 에셋 목록과 크기는
+ * `upcomingDemos.ts`에 있다.
+ */
+export function UpcomingGameDemo({
+  fallback = null,
+  gameId,
+  height = UPCOMING_DEMO_HEIGHT,
+}: {
+  fallback?: ReactNode
+  gameId: GameId
+  height?: number
+}) {
+  const demo = UPCOMING_DEMOS[gameId]
+
+  if (!demo) {
+    return fallback
+  }
+
+  return (
+    <img
+      alt={demo.label}
+      className="block shrink-0 object-contain drop-shadow-[0_10px_16px_rgba(60,40,15,0.24)]"
+      decoding="async"
+      draggable={false}
+      src={demo.url}
+      style={{ height, width: upcomingDemoWidth(height) }}
+    />
+  )
+}

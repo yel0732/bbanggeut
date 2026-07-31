@@ -52,8 +52,8 @@ export const GAMES: GameInfo[] = [
     playable: true,
     page: 1,
   },
-  // 아래 두 게임은 플레이 화면이 아직 없다. 게임 방법 화면은 안내 단계만
-  // 보여 주고, 플레이로 들어가려 하면 게임 방법으로 되돌린다.
+  // 아래 두 게임은 배경·BGM·HUD 자리만 잡은 플레이 화면이 있다. 놀이판과
+  // 판정은 아직 없어서 게임 방법의 인식·실습 단계도 안내만 보여 준다.
   {
     id: 'wordmatch',
     label: '낱말 맞추기',
@@ -62,7 +62,7 @@ export const GAMES: GameInfo[] = [
     cardImageUrl: wordmatchCardUrl,
     floatClassName: '[animation-delay:-0.4s]',
     positionClassName: 'top-[93px] left-[154px]',
-    playable: false,
+    playable: true,
     page: 2,
   },
   {
@@ -73,7 +73,7 @@ export const GAMES: GameInfo[] = [
     cardImageUrl: recycleCardUrl,
     floatClassName: '[animation-delay:-1.7s]',
     positionClassName: 'top-[93px] right-[154px]',
-    playable: false,
+    playable: true,
     page: 2,
   },
 ]

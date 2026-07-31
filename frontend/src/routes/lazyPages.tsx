@@ -63,6 +63,21 @@ export const DobblePlayPage = lazy(() =>
     default: DobblePlayPage,
   })),
 )
+export const WordMatchPlayPage = lazy(() =>
+  import('@/pages/WordMatchPlayPage').then(({ WordMatchPlayPage }) => ({
+    default: WordMatchPlayPage,
+  })),
+)
+export const RecyclePlayPage = lazy(() =>
+  import('@/pages/RecyclePlayPage').then(({ RecyclePlayPage }) => ({
+    default: RecyclePlayPage,
+  })),
+)
+export const RecycleResultPage = lazy(() =>
+  import('@/pages/RecycleResultPage').then(({ RecycleResultPage }) => ({
+    default: RecycleResultPage,
+  })),
+)
 export const DobbleResultPage = lazy(() =>
   import('@/pages/DobbleResultPage').then(({ DobbleResultPage }) => ({
     default: DobbleResultPage,

@@ -40,27 +40,3 @@ export function playWrongSfx(): void {
     { from: 330, delay: 0.12, duration: 0.2, gain: 0.11 },
   ])
 }
-
-/**
- * 완성한 낱말을 읽어 준다 (WGAME-08).
- *
- * 음성 파일이 없어 브라우저 음성 합성을 쓴다. 한국어 목소리가 없는 환경에서는
- * 조용히 넘긴다 — 소리가 안 나도 게임은 그대로 진행된다.
- */
-export function speakWord(word: string): void {
-  if (typeof window === 'undefined' || !window.speechSynthesis) {
-    return
-  }
-
-  try {
-    const utterance = new SpeechSynthesisUtterance(word)
-    utterance.lang = 'ko-KR'
-    // 유아가 따라 말할 수 있게 천천히, 조금 높은 톤으로.
-    utterance.rate = 0.85
-    utterance.pitch = 1.15
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
-  } catch {
-    // 음성 합성이 막힌 환경에서도 게임은 계속돼야 한다.
-  }
-}

@@ -35,7 +35,6 @@ import {
   playGrabSfx,
   playPlaceSfx,
   playWrongSfx,
-  speakWord,
 } from '@/features/games/wordmatch/wordMatchSfx'
 import {
   useWordMatchGame,
@@ -115,11 +114,6 @@ export function WordMatchPlayPage() {
     void requestCamera()
   }, [requestCamera])
 
-  const handleCorrect = useCallback((answer: string) => {
-    playCorrectSfx()
-    speakWord(answer)
-  }, [])
-
   const handleEnd = useCallback(
     (result: WordMatchResult) => {
       const goResult = (extra: Record<string, unknown>) =>
@@ -178,7 +172,7 @@ export function WordMatchPlayPage() {
     status === 'granted' || status === 'error',
     handleEnd,
     {
-      onCorrect: handleCorrect,
+      onCorrect: playCorrectSfx,
       onGrab: playGrabSfx,
       onPlace: playPlaceSfx,
       onWrong: playWrongSfx,

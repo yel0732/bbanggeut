@@ -237,7 +237,7 @@ export function useWordMatchGame(
   handlers: {
     onGrab?: () => void
     onPlace?: () => void
-    onCorrect?: (word: string) => void
+    onCorrect?: () => void
     onWrong?: () => void
   } = {},
   cameraError?: boolean,
@@ -390,7 +390,7 @@ export function useWordMatchGame(
         engine.judge = 'correct'
         engine.inputLockedUntil = now + CFG.correctFeedbackMs
         engine.pendingAfterJudge = 'next-problem'
-        handlersRef.current.onCorrect?.(round.problem.answer)
+        handlersRef.current.onCorrect?.()
         return
       }
 

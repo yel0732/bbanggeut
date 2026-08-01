@@ -213,10 +213,13 @@ export function WordMatchPracticeStage({
       {/*
         자기 모습 확인용이자, 동작 인식이 프레임을 읽을 video를 붙잡아 두는
         자리다. 이 엘리먼트가 없으면 MediaPipe가 볼 영상이 사라진다.
+
+        위쪽 구석에 둔다. 아래쪽은 글자 카드가 화면 끝까지 늘어서는 자리라
+        미리보기가 그 위에 얹히면 카드를 가린다.
       */}
       <video
         autoPlay
-        className="pointer-events-none absolute right-1 bottom-1 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-[0_3px_8px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none absolute top-1 right-1 h-[74px] w-[98px] scale-x-[-1] rounded-[10px] border-2 border-white/70 object-cover shadow-[0_3px_8px_rgba(0,0,0,0.3)]"
         muted
         playsInline
         ref={videoRef}

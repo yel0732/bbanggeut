@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import {
@@ -13,6 +13,11 @@ import backButtonUrl from '@/assets/images/report/left-btn.webp'
 import reportPaperUrl from '@/assets/images/report/report-paper.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { ConversationSummaryView } from '@/features/reports/ConversationSummaryView'
+import {
+  toConversationView,
+  type ReportConversationView,
+} from '@/features/reports/conversationSummary'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useParentBgm } from '@/hooks/useParentBgm'
 import { makeDemoReportDetail } from '@/lib/reportDemo'
@@ -191,10 +196,21 @@ export function ReportPaperContent({
     report.status === 'COMPLETED' &&
     report.dataAvailability.hasGameData &&
     report.gameResults.length > 0
-  const hasConversation =
-    report.status === 'COMPLETED' &&
-    report.dataAvailability.hasConversationData &&
-    report.conversationSummary
+  /*
+    대화가 실제로 있었을 때만 대화 자리를 연다.
+
+    서버는 대화가 0건이어도 그날 게임 기록으로 요약 본문을 채워 보낼 때가 있다.
+    그대로 그리면 대화 요약 자리에 게임 이야기가 앉는다. 판단은
+    toConversationView 한곳에 모아 두 화면이 같게 움직이게 한다.
+  */
+  const conversation = useMemo(
+    () =>
+      report.status === 'COMPLETED' &&
+      report.dataAvailability.hasConversationData
+        ? toConversationView(report.conversationSummary)
+        : null,
+    [report],
+  )
   const gameSlots = [
     {
       name: '그림 맞추기',
@@ -295,30 +311,10 @@ export function ReportPaperContent({
             <h3 className="absolute top-0 -left-1 flex h-[12.5%] w-[43.5%] min-w-[300px] items-center justify-center px-3 text-[22px] text-[#55783b]">
               {childName}와 캐릭터의 대화 요약
             </h3>
-            <div className="absolute top-[16%] right-0 bottom-0 left-0 flex flex-col overflow-hidden rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
-              {hasConversation ? (
-                <>
-                  <h4 className="text-[25px] text-[#5a4a2a]">
-                    {report.conversationSummary!.diaryTitle}
-                  </h4>
-                  <p className="mt-2 min-h-0 flex-1 text-[17px] leading-6 whitespace-pre-line">
-                    {report.conversationSummary!.diaryContent}
-                  </p>
-                  <div className="grid min-h-[104px] grid-cols-3 items-stretch gap-3">
-                    <PaperSummaryList
-                      label="주요 사건"
-                      values={report.conversationSummary!.mainEvents}
-                    />
-                    <PaperSummaryList
-                      label="감정"
-                      values={report.conversationSummary!.expressedEmotions}
-                    />
-                    <PaperSummaryList
-                      label="관심사"
-                      values={report.conversationSummary!.interests}
-                    />
-                  </div>
-                </>
+            {/* 항목이 여럿이라 종이 안에서 넘칠 수 있다. 이 칸만 스크롤한다. */}
+            <div className="absolute top-[16%] right-0 bottom-0 left-0 flex [scrollbar-width:thin] [scrollbar-color:#cdbb92_transparent] flex-col overflow-y-auto rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
+              {conversation ? (
+                <ConversationSummaryView compact view={conversation} />
               ) : (
                 <div className="flex flex-1 items-center justify-center text-[25px] text-[#85744f]">
                   오늘은 대화를 나누지 않았어요.
@@ -328,23 +324,6 @@ export function ReportPaperContent({
           </section>
         </>
       )}
-    </div>
-  )
-}
-
-function PaperSummaryList({
-  label,
-  values,
-}: {
-  label: string
-  values: string[]
-}) {
-  return (
-    <div className="h-full rounded-xl bg-[rgba(233,241,216,.82)] px-3 py-2">
-      <h4 className="text-[16px] text-[#55783b]">{label}</h4>
-      <p className="mt-0.5 truncate text-[13px]">
-        {values.length ? `• ${values.join(', ')}` : '기록 없음'}
-      </p>
     </div>
   )
 }
@@ -393,15 +372,15 @@ export function ReportContent({
 
   const hasGames =
     report.dataAvailability.hasGameData && report.gameResults.length > 0
-  const hasConversation =
-    report.dataAvailability.hasConversationData && report.conversationSummary
+  // 판단 근거는 종이 화면과 같다. 두 화면이 다르게 보이면 안 된다.
+  const conversation = report.dataAvailability.hasConversationData
+    ? toConversationView(report.conversationSummary)
+    : null
 
   return (
     <div className="space-y-8" style={jua}>
       <GameSection games={hasGames ? report.gameResults : []} />
-      <ConversationSection
-        summary={hasConversation ? report.conversationSummary! : null}
-      />
+      <ConversationSection view={conversation} />
     </div>
   )
 }
@@ -440,50 +419,21 @@ function GameSection({ games }: { games: ReportGameResult[] }) {
 }
 
 function ConversationSection({
-  summary,
+  view,
 }: {
-  summary: ReportDetailResponse['conversationSummary']
+  view: ReportConversationView | null
 }) {
   return (
     <section className="rounded-[24px] border-2 border-[#decda1] bg-[rgba(255,252,239,.82)] p-5 text-[#675636]">
-      <h2 className="text-[25px] text-[#55783b]">대화 요약</h2>
-      {summary ? (
-        <>
-          <h3 className="mt-2 text-[22px] text-[#5a4a2a]">
-            {summary.diaryTitle}
-          </h3>
-          <p className="mt-2 text-[17px] leading-7 whitespace-pre-line">
-            {summary.diaryContent}
-          </p>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <SummaryList label="주요 사건" values={summary.mainEvents} />
-            <SummaryList label="감정" values={summary.expressedEmotions} />
-            <SummaryList label="관심사" values={summary.interests} />
-          </div>
-        </>
+      <h2 className="mb-3 text-[25px] text-[#55783b]">대화 요약</h2>
+      {view ? (
+        <ConversationSummaryView view={view} />
       ) : (
         <p className="mt-3 rounded-2xl bg-[#eef3df] p-5 text-[18px] text-[#675636]">
           오늘은 대화를 나누지 않았어요.
         </p>
       )}
     </section>
-  )
-}
-
-function SummaryList({ label, values }: { label: string; values: string[] }) {
-  return (
-    <div className="rounded-2xl bg-[#eef3df] p-3">
-      <h4 className="text-[17px] text-[#55783b]">{label}</h4>
-      {values.length ? (
-        values.map((value) => (
-          <p className="mt-1 text-[14px]" key={value}>
-            • {value}
-          </p>
-        ))
-      ) : (
-        <p className="mt-1 text-[14px] text-[#95876b]">기록 없음</p>
-      )}
-    </div>
   )
 }
 
@@ -509,25 +459,47 @@ function formatDuration(seconds: number) {
   return minutes ? `${minutes}분 ${rest}초` : `${rest}초`
 }
 
+/*
+  게임 기록 항목 이름.
+
+  부모가 보는 화면이라 영어 필드명이 그대로 나오면 안 된다. 서버가 보내는 키를
+  모두 적어 둔다 — 여기 없는 키는 화면에서 아예 뺀다. 뜻을 모르는 값을 영어로
+  보여 주느니 안 보여 주는 편이 낫고, 새 게임이 붙어 항목이 빠지면 이 목록에
+  한 줄 더하면 된다.
+*/
+const METRIC_LABELS: Record<string, string> = {
+  // 그림 맞추기
+  solvedCardCount: '맞힌 카드',
+  perfectCount: '아주 잘한 카드',
+  excellentCount: '잘한 카드',
+  goodCount: '해낸 카드',
+  incompleteCardCount: '못 맞힌 카드',
+  // 과일 자르기
+  totalFruitCount: '전체 과일 수',
+  slicedFruitCount: '자른 과일',
+  // 숲 속 청소하기
+  successfulCount: '알맞게 넣은 쓰레기',
+  wrongCount: '잘못 넣은 쓰레기',
+  // 낱말 맞추기
+  solvedWordCount: '맞힌 낱말',
+  incompleteWordCount: '못 맞힌 낱말',
+  hintUsedCount: '힌트 쓴 횟수',
+}
+
+/** 화면에 한 게임당 보여 줄 항목 수. 칸이 좁아 넘치면 카드가 밀린다. */
+const MAX_METRICS_PER_GAME = 4
+
 function metricEntries(metrics: Record<string, unknown> | null) {
   if (!metrics) return []
   return Object.entries(metrics)
-    .filter(([key]) => key !== 'rulesVersion')
+    .filter(([key]) => key in METRIC_LABELS)
     .filter(([, value]) =>
       ['string', 'number', 'boolean'].includes(typeof value),
     )
-    .slice(0, 3)
+    .slice(0, MAX_METRICS_PER_GAME)
     .map(([key, value]) => [key, String(value)] as const)
 }
 
 function formatMetricKey(key: string) {
-  const labels: Record<string, string> = {
-    solvedCardCount: '맞힌 카드',
-    correctCount: '정답',
-    wrongCount: '오답',
-    slicedFruitCount: '자른 과일',
-    totalFruitCount: '전체 과일 수',
-    maxCombo: '최대 콤보',
-  }
-  return `${labels[key] ?? key}:`
+  return `${METRIC_LABELS[key]}:`
 }

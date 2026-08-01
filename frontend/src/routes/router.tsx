@@ -8,7 +8,6 @@ import { ConversationBgmLayout } from '@/components/conversation/ConversationBgm
 import { ParentBgmLayout } from '@/components/parent/ParentBgmLayout'
 import {
   ChildHomePage,
-  ChildProfileListPage,
   ConversationPage,
   DiaryListPage,
   DobblePlayPage,
@@ -82,10 +81,6 @@ export const router = createBrowserRouter([
           {
             path: '/profiles/new',
             element: <ParentProfilePage />,
-          },
-          {
-            path: '/profiles/children',
-            element: <ChildProfileListPage />,
           },
         ],
       },

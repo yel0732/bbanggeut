@@ -6,6 +6,7 @@ import bedUrl from '@/assets/images/wordmatch-game/words/bed.webp'
 import bicycleUrl from '@/assets/images/wordmatch-game/words/bicycle.webp'
 import blocksUrl from '@/assets/images/wordmatch-game/words/blocks.webp'
 import breadUrl from '@/assets/images/wordmatch-game/words/bread.webp'
+import broccoliUrl from '@/assets/images/wordmatch-game/words/broccoli.webp'
 import busUrl from '@/assets/images/wordmatch-game/words/bus.webp'
 import cakeUrl from '@/assets/images/wordmatch-game/words/cake.webp'
 import cameraUrl from '@/assets/images/wordmatch-game/words/camera.webp'
@@ -13,26 +14,35 @@ import candyUrl from '@/assets/images/wordmatch-game/words/candy.webp'
 import carUrl from '@/assets/images/wordmatch-game/words/car.webp'
 import catUrl from '@/assets/images/wordmatch-game/words/cat.webp'
 import chairUrl from '@/assets/images/wordmatch-game/words/chair.webp'
+import chameleonUrl from '@/assets/images/wordmatch-game/words/chameleon.webp'
 import cheeseUrl from '@/assets/images/wordmatch-game/words/cheese.webp'
+import childrensDayUrl from '@/assets/images/wordmatch-game/words/childrensday.webp'
 import chopsticksUrl from '@/assets/images/wordmatch-game/words/chopsticks.webp'
 import clockUrl from '@/assets/images/wordmatch-game/words/clock.webp'
 import computerUrl from '@/assets/images/wordmatch-game/words/computer.webp'
+import cosmosUrl from '@/assets/images/wordmatch-game/words/cosmos.webp'
+import crayonsUrl from '@/assets/images/wordmatch-game/words/crayons.webp'
 import deskUrl from '@/assets/images/wordmatch-game/words/desk.webp'
 import dollUrl from '@/assets/images/wordmatch-game/words/doll.webp'
 import eggUrl from '@/assets/images/wordmatch-game/words/egg.webp'
+import fireflyUrl from '@/assets/images/wordmatch-game/words/firefly.webp'
 import firetruckUrl from '@/assets/images/wordmatch-game/words/firetruck.webp'
 import gimbapUrl from '@/assets/images/wordmatch-game/words/gimbap.webp'
+import ginkgoUrl from '@/assets/images/wordmatch-game/words/ginkgo.webp'
 import glassesUrl from '@/assets/images/wordmatch-game/words/glasses.webp'
+import grandfatherUrl from '@/assets/images/wordmatch-game/words/grandfather.webp'
 import hamburgerUrl from '@/assets/images/wordmatch-game/words/hamburger.webp'
 import hammerUrl from '@/assets/images/wordmatch-game/words/hammer.webp'
 import hatUrl from '@/assets/images/wordmatch-game/words/hat.webp'
 import helicopterUrl from '@/assets/images/wordmatch-game/words/helicopter.webp'
 import kettleUrl from '@/assets/images/wordmatch-game/words/kettle.webp'
 import keyUrl from '@/assets/images/wordmatch-game/words/key.webp'
+import ladybugUrl from '@/assets/images/wordmatch-game/words/ladybug.webp'
 import milkUrl from '@/assets/images/wordmatch-game/words/milk.webp'
 import mirrorUrl from '@/assets/images/wordmatch-game/words/mirror.webp'
 import padlockUrl from '@/assets/images/wordmatch-game/words/padlock.webp'
 import pencilUrl from '@/assets/images/wordmatch-game/words/pencil.webp'
+import pineappleUrl from '@/assets/images/wordmatch-game/words/pineapple.webp'
 import pizzaUrl from '@/assets/images/wordmatch-game/words/pizza.webp'
 import plateUrl from '@/assets/images/wordmatch-game/words/plate.webp'
 import policecarUrl from '@/assets/images/wordmatch-game/words/policecar.webp'
@@ -43,19 +53,24 @@ import rabbitUrl from '@/assets/images/wordmatch-game/words/rabbit.webp'
 import rainbowUrl from '@/assets/images/wordmatch-game/words/rainbow.webp'
 import robotUrl from '@/assets/images/wordmatch-game/words/robot.webp'
 import sailboatUrl from '@/assets/images/wordmatch-game/words/sailboat.webp'
+import schoolUrl from '@/assets/images/wordmatch-game/words/school.webp'
 import scissorsUrl from '@/assets/images/wordmatch-game/words/scissors.webp'
 import shoesUrl from '@/assets/images/wordmatch-game/words/shoes.webp'
+import slideUrl from '@/assets/images/wordmatch-game/words/slide.webp'
 import snowmanUrl from '@/assets/images/wordmatch-game/words/snowman.webp'
 import soapUrl from '@/assets/images/wordmatch-game/words/soap.webp'
 import soccerballUrl from '@/assets/images/wordmatch-game/words/soccerball.webp'
 import spaceshipUrl from '@/assets/images/wordmatch-game/words/spaceship.webp'
 import spoonUrl from '@/assets/images/wordmatch-game/words/spoon.webp'
+import stagBeetleUrl from '@/assets/images/wordmatch-game/words/stagbeetle.webp'
 import storybookUrl from '@/assets/images/wordmatch-game/words/storybook.webp'
+import sunflowerUrl from '@/assets/images/wordmatch-game/words/sunflower.webp'
 import telephoneUrl from '@/assets/images/wordmatch-game/words/telephone.webp'
 import toothbrushUrl from '@/assets/images/wordmatch-game/words/toothbrush.webp'
 import towelUrl from '@/assets/images/wordmatch-game/words/towel.webp'
 import trainUrl from '@/assets/images/wordmatch-game/words/train.webp'
 import umbrellaUrl from '@/assets/images/wordmatch-game/words/umbrella.webp'
+import woodpeckerUrl from '@/assets/images/wordmatch-game/words/woodpecker.webp'
 
 import { WORD_MATCH_CONFIG as CFG } from './wordMatchConfig'
 
@@ -136,6 +151,21 @@ export const WORD_PROBLEMS: WordProblem[] = [
   { code: 'COMPUTER', answer: '컴퓨터', imageUrl: computerUrl },
   { code: 'CAKE', answer: '케이크', imageUrl: cakeUrl },
   { code: 'HAMBURGER', answer: '햄버거', imageUrl: hamburgerUrl },
+  { code: 'STAGBEETLE', answer: '사슴벌레', imageUrl: stagBeetleUrl },
+  { code: 'FIREFLY', answer: '반딧불이', imageUrl: fireflyUrl },
+  { code: 'LADYBUG', answer: '무당벌레', imageUrl: ladybugUrl },
+  { code: 'WOODPECKER', answer: '딱따구리', imageUrl: woodpeckerUrl },
+  { code: 'CHAMELEON', answer: '카멜레온', imageUrl: chameleonUrl },
+  { code: 'SUNFLOWER', answer: '해바라기', imageUrl: sunflowerUrl },
+  { code: 'COSMOS', answer: '코스모스', imageUrl: cosmosUrl },
+  { code: 'GINKGO', answer: '은행나무', imageUrl: ginkgoUrl },
+  { code: 'SLIDE', answer: '미끄럼틀', imageUrl: slideUrl },
+  { code: 'GRANDFATHER', answer: '할아버지', imageUrl: grandfatherUrl },
+  { code: 'SCHOOL', answer: '초등학교', imageUrl: schoolUrl },
+  { code: 'CHILDRENS_DAY', answer: '어린이날', imageUrl: childrensDayUrl },
+  { code: 'PINEAPPLE', answer: '파인애플', imageUrl: pineappleUrl },
+  { code: 'BROCCOLI', answer: '브로콜리', imageUrl: broccoliUrl },
+  { code: 'CRAYONS', answer: '크레파스', imageUrl: crayonsUrl },
 ]
 
 /**
@@ -216,9 +246,9 @@ export function wordLengthForSolvedCount(solvedCount: number): number {
  * 이미 낸 문제는 다시 내지 않는다(WGAME-12). 서버도 한 판에 같은 코드가 두 번
  * 오면 결과를 거부하므로 이건 표시 문제가 아니라 저장 조건이다.
  *
- * 목표 길이의 문제가 남지 않으면 길이를 낮춰 가며 찾는다. 지금 문제 목록에는
- * 4글자 낱말이 없어서 마지막 단계에 가면 반드시 이 경로를 탄다. 남은 문제가 아예
- * 없으면 null을 주고, 부르는 쪽이 게임을 끝낸다.
+ * 목표 길이의 문제가 남지 않으면 길이를 낮춰 가며 찾는다. 한 판에서 4글자를
+ * 열다섯 개까지 풀 일은 없지만, 다 떨어져도 게임이 멈추지 않게 해 둔다. 남은
+ * 문제가 아예 없으면 null을 주고, 부르는 쪽이 게임을 끝낸다.
  */
 export function pickNextProblem(
   usedCodes: readonly string[],

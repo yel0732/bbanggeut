@@ -259,6 +259,29 @@
   }
 }
 
+/*
+  낱말 맞추기 힌트 깜빡임.
+
+  도블 것을 그대로 쓸 수 없다. 그쪽은 left/top 50%로 놓인 요소라 키프레임에
+  translate(-50%, -50%)가 들어 있는데, 여기서는 상자를 꽉 채운 그림에 걸어서 그
+  이동이 그대로 먹으면 그림만 왼쪽 위로 반쪽 밀려난다.
+
+  글자가 읽혀야 하므로 옅어지는 정도도 얕게 둔다.
+*/
+@keyframes wordmatch-hint-pulse {
+  0%,
+  62%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+  22%,
+  46% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
 @keyframes dobble-match-burst {
   0% {
     opacity: 0;

@@ -383,7 +383,7 @@ function PlayField({
                   src={answerSlotUrl}
                   style={{
                     animation: hinted
-                      ? 'dobble-guide-pulse 1.5s ease-in-out infinite'
+                      ? 'wordmatch-hint-pulse 1.5s ease-in-out infinite'
                       : undefined,
                     filter: hinted
                       ? 'drop-shadow(0 0 14px rgba(255,206,42,1)) drop-shadow(0 0 26px rgba(255,170,20,0.85))'
@@ -443,7 +443,7 @@ function PlayField({
                   src={letterCardUrl}
                   style={{
                     animation: hinted
-                      ? 'dobble-guide-pulse 1.5s ease-in-out infinite'
+                      ? 'wordmatch-hint-pulse 1.5s ease-in-out infinite'
                       : undefined,
                     filter: held
                       ? 'drop-shadow(0 0 16px rgba(255,206,42,0.95))'

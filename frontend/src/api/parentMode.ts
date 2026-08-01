@@ -33,12 +33,44 @@ export type ReportGameResult = {
   completedAt: string
 }
 
+/** 아이가 보인 감정 하나와 그 까닭 */
+export type ReportEmotionDetail = {
+  emotion: string
+  reason: string
+}
+
+/** 부모가 아이와 이어서 나눌 이야깃거리 */
+export type ReportConversationGuide = {
+  title?: string | null
+  description?: string | null
+  questions?: string[] | null
+}
+
+/*
+  대화 요약.
+
+  서버가 한 문단짜리 일기에서 섹션별 리포트로 옮겨가는 중이라, 옛 응답과 새 응답을
+  모두 받는다. 지금 붙어 있는 서버가 어느 쪽이든 화면이 깨지지 않아야 한다.
+
+  그래서 sourceConversationCount 말고는 전부 없을 수 있는 것으로 둔다. 있는 것만
+  골라 그리는 일은 화면 쪽에서 한다.
+*/
 export type ReportConversationSummary = {
-  diaryTitle: string
-  diaryContent: string
-  mainEvents: string[]
-  expressedEmotions: string[]
-  interests: string[]
+  /** 옛 응답의 제목 */
+  diaryTitle?: string | null
+  /** 옛 응답의 본문 */
+  diaryContent?: string | null
+  /** 새 응답의 본문 — 오늘의 이야기 */
+  dailyStory?: string | null
+  mainEvents?: string[] | null
+  /** 옛 응답의 감정. 까닭 없이 이름만 온다 */
+  expressedEmotions?: string[] | null
+  /** 새 응답의 감정. 까닭이 함께 온다 */
+  emotionDetails?: ReportEmotionDetail[] | null
+  interests?: string[] | null
+  /** 아이가 실제로 한 말 */
+  notableQuotes?: string[] | null
+  conversationGuide?: ReportConversationGuide | null
   sourceConversationCount: number
   generatedAt: string
 }

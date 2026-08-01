@@ -38,11 +38,6 @@ export const ParentProfilePage = lazy(() =>
     default: ParentProfilePage,
   })),
 )
-export const ChildProfileListPage = lazy(() =>
-  import('@/pages/ChildProfileListPage').then(({ ChildProfileListPage }) => ({
-    default: ChildProfileListPage,
-  })),
-)
 export const GameGuidePage = lazy(() =>
   import('@/pages/GameGuidePage').then(({ GameGuidePage }) => ({
     default: GameGuidePage,

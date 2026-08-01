@@ -259,16 +259,39 @@ export function useRealtimeConversation() {
           break
 
         case CONVERSATION_EVENT.ASSISTANT_AUDIO_COMPLETED:
-        case CONVERSATION_EVENT.ASSISTANT_AUDIO_FAILED:
+        case CONVERSATION_EVENT.ASSISTANT_AUDIO_FAILED: {
           // AI 발화가 끝나야 서버가 아이의 입력을 다시 받는다(ADR-020).
-          setState((current) => ({ ...current, voice: 'listening' }))
+          const isClosing = phaseRef.current === 'closing'
+
+          /*
+            아이 차례가 오면 마이크를 다시 연다.
+
+            마이크 버튼은 아이가 눌러 놓고 잊기 쉬운 자리에 있다. 끈 상태를 그대로
+            두면 화면은 "듣고 있어"라고 하는데 소리는 서버로 가지 않아, 아이는
+            아무리 말해도 대답이 없는 대화에 갇힌다. 매 차례 열어 주는 편이
+            유아에게는 예측 가능하다.
+
+            마무리 인사 중(closing)에는 열지 않는다. 그때는 대화가 이미 끝나
+            일부러 닫아 둔 것이다.
+          */
+          if (!isClosing) {
+            clientRef.current?.setMicEnabled(true)
+            micEnabledRef.current = true
+          }
+          setState((current) => ({
+            ...current,
+            micEnabled: isClosing ? current.micEnabled : true,
+            voice: 'listening',
+          }))
+
           if (
-            phaseRef.current === 'closing' &&
+            isClosing &&
             envelope.responseId === closingResponseIdRef.current
           ) {
             finalizeCompletion()
           }
           break
+        }
 
         case CONVERSATION_EVENT.STT_FINAL: {
           const { text } = readSttFinal(envelope.payload)

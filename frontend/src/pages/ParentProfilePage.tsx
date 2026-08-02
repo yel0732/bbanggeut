@@ -13,7 +13,6 @@ import backgroundUrl from '@/assets/images/profile/background.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
 import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
 import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
-import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import frameUrl from '@/assets/images/parent-profile/frame-square.webp'
 import keypadButtonUrl from '@/assets/images/parent-profile/keypad-panel.webp'
@@ -23,8 +22,12 @@ import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
-const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
-const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
+/*
+  핀 확인을 마치면 곧바로 프로필 선택으로 넘어간다. 화면이 즉시 바뀌면 방금 무엇이
+  저장됐는지 읽을 틈이 없어 안내 문구를 볼 시간만큼 머무른다.
+*/
+const LEAVE_DELAY_MS = 1200
+const LEAVE_DELAY_ON_PHOTO_ERROR_MS = 2000
 
 function isDataImageUrl(value: string | null): value is string {
   return typeof value === 'string' && value.startsWith('data:image/')
@@ -34,17 +37,8 @@ async function dataImageUrlToBlob(dataUrl: string) {
   return await fetch(dataUrl).then((response) => response.blob())
 }
 
-function loadOnboardingPinDraft() {
-  try {
-    const pin = window.sessionStorage.getItem(ONBOARDING_PIN_DRAFT_KEY)
-    return /^\d{4}$/.test(pin ?? '') ? pin : null
-  } catch {
-    return null
-  }
-}
-
-function isOnboardingPinSaved() {
-  return window.sessionStorage.getItem(ONBOARDING_PIN_SAVED_KEY) === 'true'
+async function wait(ms: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 
@@ -56,20 +50,18 @@ export function ParentProfilePage() {
   const parentStreamRef = useRef<MediaStream | null>(null)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [isParentCameraOn, setIsParentCameraOn] = useState(false)
-  const [pin, setPin] = useState(() => loadOnboardingPinDraft() ?? '')
-  const [firstPin, setFirstPin] = useState<string | null>(() =>
-    loadOnboardingPinDraft(),
-  )
+  const [pin, setPin] = useState('')
+  const [firstPin, setFirstPin] = useState<string | null>(null)
   const [pinMessage, setPinMessage] = useState('')
   const [isPinError, setIsPinError] = useState(false)
-  const [isPinSaved, setIsPinSaved] = useState(isOnboardingPinSaved)
+  const [isPinSaved, setIsPinSaved] = useState(false)
   const isPinConfirmed = firstPin !== null && pin === firstPin && isPinSaved
 
   /*
     핀을 이미 만든 사람은 여기 있을 이유가 없다.
 
-    주소를 직접 열었거나, 다른 탭에서 먼저 마친 경우다. 그대로 두면 완료를 누르는
-    순간 서버가 PIN_ALREADY_SET(403)을 돌려줘 무엇이 잘못됐는지 알 수 없다.
+    주소를 직접 열었거나, 다른 탭에서 먼저 마친 경우다. 그대로 두면 핀 확인을
+    마치는 순간 서버가 PIN_ALREADY_SET(403)을 돌려줘 무엇이 잘못됐는지 알 수 없다.
   */
   useEffect(() => {
     if (!getStoredAccessToken()) return
@@ -127,16 +119,10 @@ export function ParentProfilePage() {
       }
 
       if (nextPin === firstPin) {
-        void setParentPin(nextPin)
-          .then(() => {
-            window.sessionStorage.setItem(ONBOARDING_PIN_DRAFT_KEY, nextPin)
-            window.sessionStorage.setItem(ONBOARDING_PIN_SAVED_KEY, 'true')
-            setIsPinSaved(true)
-            setPinMessage('PIN 번호가 설정되었습니다.')
-          })
-          .catch((error: unknown) => {
-            window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
-            window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
+        void (async () => {
+          try {
+            await setParentPin(nextPin)
+          } catch (error) {
             setIsPinSaved(false)
             setFirstPin(null)
             setPin('')
@@ -146,7 +132,36 @@ export function ParentProfilePage() {
                 ? error.message
                 : 'PIN 번호를 설정하지 못했어요.',
             )
-          })
+            return
+          }
+
+          setIsPinSaved(true)
+          setPinMessage('핀번호를 저장했어요. 프로필을 고르러 가요!')
+
+          /*
+            사진은 핀과 달리 이 순간에만 올라간다. 완료 버튼이 없어 실패했다고
+            여기 붙잡아 두면 사용자가 다시 시도할 수단이 없으므로, 알리기만 하고
+            넘어간다 — 사진은 부모 모드에서 언제든 다시 바꿀 수 있다.
+          */
+          let hasPhotoError = false
+          if (getStoredAccessToken() && isDataImageUrl(photoUrl)) {
+            try {
+              await uploadParentProfileImage(await dataImageUrlToBlob(photoUrl))
+            } catch {
+              hasPhotoError = true
+              setIsPinError(true)
+              setPinMessage(
+                '사진은 저장하지 못했어요. 부모 모드에서 다시 바꿀 수 있어요.',
+              )
+            }
+          }
+
+          await wait(
+            hasPhotoError ? LEAVE_DELAY_ON_PHOTO_ERROR_MS : LEAVE_DELAY_MS,
+          )
+          completeNewSignupOnboarding()
+          navigate('/profiles')
+        })()
         return
       }
 
@@ -157,7 +172,7 @@ export function ParentProfilePage() {
         setPin('')
       }, 450)
     },
-    [firstPin, isPinConfirmed, pin],
+    [firstPin, isPinConfirmed, navigate, photoUrl, pin],
   )
 
   useEffect(() => {
@@ -213,34 +228,6 @@ export function ParentProfilePage() {
       }
     }
     stopParentCamera()
-  }
-
-  const finish = async () => {
-    if (!isPinConfirmed) {
-      setIsPinError(true)
-      setPinMessage('핀번호 설정과 확인을 완료해 주세요.')
-      return
-    }
-    try {
-      if (getStoredAccessToken() && firstPin && !isPinSaved) {
-        await setParentPin(firstPin)
-      }
-      if (getStoredAccessToken() && isDataImageUrl(photoUrl)) {
-        await uploadParentProfileImage(await dataImageUrlToBlob(photoUrl))
-      }
-    } catch (error) {
-      setIsPinError(true)
-      setPinMessage(
-        error instanceof Error
-          ? error.message
-          : 'PIN 번호를 저장하지 못했어요.',
-      )
-      return
-    }
-    window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
-    window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
-    completeNewSignupOnboarding()
-    navigate('/profiles')
   }
 
   const pinLabel =
@@ -302,10 +289,27 @@ export function ParentProfilePage() {
             부모 프로필 만들기
           </h1>
 
+          {/*
+            제목 바로 아래. 핀을 누르기 전에 이 화면이 끝이 아니라는 것과 다음에
+            무엇을 하면 되는지를 먼저 읽히게 한다. 아래 요소들은 이 문구 높이만큼
+            내려가 있다.
+          */}
+          <div
+            className="absolute top-[18.5%] left-1/2 w-[500px] -translate-x-1/2 text-left text-[16px] leading-[1.45] text-[#6b5a34]"
+            style={jua}
+          >
+            <p>🔒 부모 프로필은 핀번호를 입력하면 들어가요.</p>
+            <p>
+              👶 아이 프로필은 부모 모드의 &lsquo;아이 프로필 관리&rsquo;에서
+              만들어요.
+            </p>
+            <p>✏️ 핀번호와 프로필 사진은 나중에 언제든 바꿀 수 있어요.</p>
+          </div>
+
           {isParentCameraOn ? (
             <video
               autoPlay
-              className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
+              className="absolute top-[30%] left-[38.5%] size-[122px] -translate-x-1/2 -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
               muted
               playsInline
               ref={parentVideoRef}
@@ -313,12 +317,12 @@ export function ParentProfilePage() {
           ) : (
             <img
               alt="부모 프로필"
-              className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
+              className="absolute top-[30%] left-[38.5%] size-[122px] -translate-x-1/2 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
               src={photoUrl ?? parentAvatarUrl}
             />
           )}
           <button
-            className="absolute top-[19%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
+            className="absolute top-[29.5%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
             onClick={() => void toggleParentCamera()}
             style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
             type="button"
@@ -326,7 +330,7 @@ export function ParentProfilePage() {
             {isParentCameraOn ? '사진 찍기' : '웹캠 촬영'}
           </button>
           <button
-            className="absolute top-[25.5%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
+            className="absolute top-[36%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
             onClick={() => {
               stopParentCamera()
               setPhotoUrl(null)
@@ -337,15 +341,15 @@ export function ParentProfilePage() {
             기본으로 사용
           </button>
 
-          <div className="absolute top-[37%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
+          <div className="absolute top-[48.5%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
           <div
-            className="absolute top-[37.5%] left-1/2 -translate-x-1/2 text-[26px] whitespace-nowrap text-[#3a7d2c]"
+            className="absolute top-[50%] left-1/2 -translate-x-1/2 text-[26px] whitespace-nowrap text-[#3a7d2c]"
             style={jua}
           >
             {pinLabel}
           </div>
           <div
-            className="absolute top-[42.1%] left-1/2 -translate-x-1/2 text-[13px] whitespace-nowrap"
+            className="absolute top-[54.6%] left-1/2 -translate-x-1/2 text-[13px] whitespace-nowrap"
             style={{
               ...jua,
               color: isPinError
@@ -357,7 +361,7 @@ export function ParentProfilePage() {
           >
             {pinMessage}
           </div>
-          <div className="absolute top-[43.5%] left-1/2 flex -translate-x-1/2 gap-1">
+          <div className="absolute top-[57%] left-1/2 flex -translate-x-1/2 gap-1">
             {Array.from({ length: PIN_LENGTH }).map((_, index) => (
               <img
                 alt=""
@@ -368,7 +372,7 @@ export function ParentProfilePage() {
             ))}
           </div>
 
-          <div className="absolute top-1/2 left-1/2 grid -translate-x-1/2 grid-cols-[repeat(3,95px)] justify-center">
+          <div className="absolute top-[63.5%] left-1/2 grid -translate-x-1/2 grid-cols-[repeat(3,95px)] justify-center">
             {KEYPAD_KEYS.map((key, index) =>
               key ? (
                 <button
@@ -385,24 +389,6 @@ export function ParentProfilePage() {
               ),
             )}
           </div>
-
-          {/*
-            완료는 핀번호 바로 아래, 판 안에 둔다. 화면 구석에 떨어져 있으면
-            무엇을 끝내는 버튼인지 눈으로 잇기 어렵다.
-          */}
-          <button
-            className="absolute top-[76%] left-1/2 h-[110px] w-[350px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[28px] text-white active:translate-y-0.5"
-            onClick={() => void finish()}
-            style={{
-              ...jua,
-              backgroundImage: `url(${completeButtonUrl})`,
-              paintOrder: 'stroke fill',
-              WebkitTextStroke: '3px #4a7d1e',
-            }}
-            type="button"
-          >
-            완료
-          </button>
         </main>
       </div>
     </div>

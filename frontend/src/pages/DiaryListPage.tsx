@@ -349,7 +349,7 @@ export function DiaryListPage() {
           {hasPrevDiary ? (
             <button
               aria-label="이전 일기"
-              className="absolute top-1/2 left-[7%] z-10 size-[62px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_4px_7px_rgba(60,90,20,.32)] transition hover:scale-110 active:scale-95"
+              className="absolute top-[55%] left-[8%] z-10 size-[50px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_4px_7px_rgba(60,90,20,.32)] transition hover:scale-110 active:scale-95"
               onClick={() => setDiaryIndex((current) => current - 1)}
               type="button"
             >
@@ -363,7 +363,7 @@ export function DiaryListPage() {
           {hasNextDiary ? (
             <button
               aria-label="다음 일기"
-              className="absolute top-1/2 right-[8%] z-10 size-[62px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_4px_7px_rgba(60,90,20,.32)] transition hover:scale-110 active:scale-95"
+              className="absolute top-[55%] right-[9%] z-10 size-[50px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_4px_7px_rgba(60,90,20,.32)] transition hover:scale-110 active:scale-95"
               onClick={() => setDiaryIndex((current) => current + 1)}
               type="button"
             >

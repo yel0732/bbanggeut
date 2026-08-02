@@ -97,6 +97,10 @@ type NotificationSettings = {
 }
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
+/** 알림 쪽지가 화면에 머무는 시간(ms). */
+const TOAST_VISIBLE_MS = 4500
+/** 완료 문구를 읽을 수 있을 만큼만 두었다가 팝업을 닫는 시간(ms). */
+const POPUP_CLOSE_DELAY_MS = 1400
 const PARENT_PHOTO_KEY = 'bbanggut-parent-photo'
 const NOTIFICATION_KEY = 'bbanggut-report-notification'
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
@@ -339,6 +343,25 @@ export function ParentModePage() {
   const [savedMessage, setSavedMessage] = useState('')
   const [reportCounts, setReportCounts] = useState<Record<string, number>>({})
   const [notificationToast, setNotificationToast] = useState('')
+
+  /*
+    알림 쪽지는 몇 초 뒤 스스로 사라진다.
+
+    "저장했어요" 같은 쪽지가 화면 구석에 계속 붙어 있으면, 방금 한 일인지 아까
+    한 일인지 알 수 없어 부모가 저장이 되긴 한 건지 다시 확인하게 된다.
+
+    쪽지를 띄우는 자리가 여러 곳(사진 저장·웹캠 실패·프로필 생성/수정·리포트
+    도착)이라 각자 시계를 달지 않고 여기 한 곳에 모은다. 새 쪽지가 뜨면 시계도
+    다시 시작한다 — 마지막에 뜬 것을 기준으로 세야 한다.
+  */
+  useEffect(() => {
+    if (!notificationToast) return
+    const timer = window.setTimeout(
+      () => setNotificationToast(''),
+      TOAST_VISIBLE_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [notificationToast])
   const [reportArrivals, setReportArrivals] = useState(loadReportArrivals)
   const [isArrivalListOpen, setIsArrivalListOpen] = useState(false)
   const [isUnreadReportNoticeVisible, setIsUnreadReportNoticeVisible] =
@@ -539,7 +562,6 @@ export function ParentModePage() {
     if (!getStoredAccessToken() || !notification.enabled) return
     const controller = new AbortController()
     let reconnectTimer: number | null = null
-    let toastTimer: number | null = null
     let retryDelay = 1000
     const maxRetryDelay = 30_000
 
@@ -577,11 +599,6 @@ export function ParentModePage() {
         ? `${childName}이의 일일 리포트가 도착했어요!`
         : event.message
       setNotificationToast(message)
-      if (toastTimer !== null) window.clearTimeout(toastTimer)
-      toastTimer = window.setTimeout(() => {
-        toastTimer = null
-        if (!controller.signal.aborted) setNotificationToast('')
-      }, 4500)
       if (event.type !== 'REPORT_COMPLETED' || !childName) return
       const matchedProfile = profiles.find(
         (profile) =>
@@ -637,7 +654,6 @@ export function ParentModePage() {
     return () => {
       controller.abort()
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
-      if (toastTimer !== null) window.clearTimeout(toastTimer)
     }
   }, [notification.enabled, profiles])
 
@@ -685,6 +701,27 @@ export function ParentModePage() {
     navigate(
       `/reports?childId=${encodeURIComponent(profile.id)}&childName=${encodeURIComponent(profile.name)}&reportDate=${encodeURIComponent(arrival.reportDate)}`,
     )
+  }
+
+  /*
+    비밀번호 칸은 그 화면을 벗어나는 순간 비운다.
+
+    뒤로 갔다 다시 들어왔을 때 아까 치던 비밀번호가 그대로 남아 있으면, 잠깐
+    자리를 비운 사이 기기를 집어 든 사람에게 그대로 보인다. 핀으로 막아 둔
+    자리인 만큼 안에서도 흘리지 않는다.
+  */
+  useEffect(() => {
+    if (profileView === 'password') return
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordErrors({ current: '', next: '', confirm: '' })
+    setPasswordSuccess('')
+  }, [profileView])
+
+  /** 완료 문구를 잠깐 보여 준 뒤 팝업을 닫는다. */
+  const closePopupAfterMessage = () => {
+    window.setTimeout(() => setPopup(null), POPUP_CLOSE_DELAY_MS)
   }
 
   const openPopup = (nextPopup: Exclude<PopupType, null>) => {
@@ -757,7 +794,9 @@ export function ParentModePage() {
         : await updateParentProfileImage(PARENT_DEFAULT_IMAGE_KEY)
       setParentPhoto(result.profileImageUrl)
       window.localStorage.removeItem(PARENT_PHOTO_KEY)
+      // 저장했다는 쪽지는 팝업 밖(오른쪽 아래)에 뜨므로 바로 닫아도 보인다.
       setNotificationToast('프로필 사진을 저장했어요.')
+      setPopup(null)
     } catch (error) {
       setNotificationToast(
         error instanceof Error
@@ -999,7 +1038,10 @@ export function ParentModePage() {
 
     if (nextPin === newPin) {
       void changeParentPin(verifiedCurrentPin, newPin)
-        .then(() => setPinMessage('PIN 번호가 변경되었어요.'))
+        .then(() => {
+          setPinMessage('PIN 번호가 변경되었어요.')
+          closePopupAfterMessage()
+        })
         .catch((error: unknown) => {
           setPin('')
           setVerifiedCurrentPin('')
@@ -1044,6 +1086,40 @@ export function ParentModePage() {
     return () => window.removeEventListener('keydown', handlePinKeyboard)
   })
 
+  /*
+    입력하는 동안 바로 알려 주는 안내.
+
+    회원가입 화면은 글자를 넣는 즉시 규칙을 만족했는지 보여 준다. 여기만 "완료"를
+    누른 뒤에야 빨간 글씨가 떠서, 부모는 무엇이 잘못됐는지 모른 채 여러 번 다시
+    눌러야 했다. 같은 방식으로 맞춘다.
+
+    제출할 때 잡힌 오류(passwordErrors)가 우선이다. 서버가 돌려준 "현재 비밀번호가
+    다릅니다" 같은 것은 입력만 봐서는 알 수 없다.
+  */
+  const newPasswordIssue = newPassword ? validatePassword(newPassword) : null
+  const passwordHints: Record<
+    keyof PasswordErrors,
+    { text: string; tone: 'error' | 'ok' } | null
+  > = {
+    confirm: passwordErrors.confirm
+      ? { text: passwordErrors.confirm, tone: 'error' }
+      : !confirmPassword
+        ? null
+        : confirmPassword === newPassword
+          ? { text: '비밀번호가 일치해요!', tone: 'ok' }
+          : { text: '비밀번호가 일치하지 않아요.', tone: 'error' },
+    current: passwordErrors.current
+      ? { text: passwordErrors.current, tone: 'error' }
+      : null,
+    next: passwordErrors.next
+      ? { text: passwordErrors.next, tone: 'error' }
+      : !newPassword
+        ? null
+        : newPasswordIssue
+          ? { text: newPasswordIssue, tone: 'error' }
+          : { text: '사용할 수 있는 비밀번호예요!', tone: 'ok' },
+  }
+
   const changePassword = () => {
     const errors: PasswordErrors = { current: '', next: '', confirm: '' }
     if (!currentPassword) {
@@ -1069,6 +1145,7 @@ export function ParentModePage() {
         setNewPassword('')
         setConfirmPassword('')
         setPasswordSuccess('비밀번호가 변경되었어요.')
+        closePopupAfterMessage()
       })
       .catch((error: unknown) => {
         setPasswordErrors({
@@ -2041,24 +2118,24 @@ export function ParentModePage() {
                   {[
                     {
                       autoComplete: 'current-password',
-                      error: passwordErrors.current,
                       field: 'current' as const,
+                      hint: passwordHints.current,
                       placeholder: '현재 비밀번호',
                       setter: setCurrentPassword,
                       value: currentPassword,
                     },
                     {
                       autoComplete: 'new-password',
-                      error: passwordErrors.next,
                       field: 'next' as const,
+                      hint: passwordHints.next,
                       placeholder: '새 비밀번호',
                       setter: setNewPassword,
                       value: newPassword,
                     },
                     {
                       autoComplete: 'new-password',
-                      error: passwordErrors.confirm,
                       field: 'confirm' as const,
+                      hint: passwordHints.confirm,
                       placeholder: '새 비밀번호 확인',
                       setter: setConfirmPassword,
                       value: confirmPassword,
@@ -2066,18 +2143,20 @@ export function ParentModePage() {
                   ].map(
                     ({
                       autoComplete,
-                      error,
                       field,
+                      hint,
                       placeholder,
                       setter,
                       value,
                     }) => (
                       <label className="mb-2 block" key={field}>
                         <input
-                          aria-invalid={Boolean(error)}
+                          aria-invalid={hint?.tone === 'error'}
                           autoComplete={autoComplete}
                           className={`h-[54px] w-full rounded-xl border-2 bg-[#fdf6e3] px-4 text-[22px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f] ${
-                            error ? 'border-[#c7563a]' : 'border-[#cdbb92]'
+                            hint?.tone === 'error'
+                              ? 'border-[#c7563a]'
+                              : 'border-[#cdbb92]'
                           }`}
                           onChange={(event) => {
                             setter(event.target.value)
@@ -2093,10 +2172,13 @@ export function ParentModePage() {
                           value={value}
                         />
                         <span
-                          className="block h-[18px] px-1 text-[12px] leading-[18px] text-[#c7563a]"
-                          style={jua}
+                          className="block h-[18px] px-1 text-[12px] leading-[18px]"
+                          style={{
+                            ...jua,
+                            color: hint?.tone === 'ok' ? '#3a7d2c' : '#c7563a',
+                          }}
                         >
-                          {error}
+                          {hint?.text ?? ''}
                         </span>
                       </label>
                     ),

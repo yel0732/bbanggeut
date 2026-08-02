@@ -20,7 +20,6 @@ import {
 } from '@/features/reports/conversationSummary'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useParentBgm } from '@/hooks/useParentBgm'
-import { makeDemoReportDetail } from '@/lib/reportDemo'
 import { removeReadReportArrival } from '@/lib/reportArrivals'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -43,14 +42,8 @@ export function ReportDetailPage() {
     async function loadReport() {
       setIsLoading(true)
       setError('')
-      if (!childId || !reportDate) {
+      if (!childId || !reportDate || !isBackendChildId(childId)) {
         setError('리포트를 찾기 위한 정보가 부족해요.')
-        setIsLoading(false)
-        return
-      }
-      if (!isBackendChildId(childId)) {
-        setReport(makeDemoReportDetail(reportDate))
-        removeReadReportArrival({ childId, childName, reportDate })
         setIsLoading(false)
         return
       }
@@ -80,13 +73,6 @@ export function ReportDetailPage() {
   }, [childId, childName, reportDate])
 
   async function requestRegeneration() {
-    if (!isBackendChildId(childId)) {
-      setRetryMessage('리포트 재생성을 요청했어요.')
-      setReport((current) =>
-        current ? { ...current, status: 'PENDING', failure: null } : current,
-      )
-      return
-    }
     setIsRetrying(true)
     setRetryMessage('')
     try {

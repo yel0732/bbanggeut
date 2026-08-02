@@ -1,6 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom'
 
-import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { AdventureBgmLayout } from '@/components/adventure/AdventureBgmLayout'
 import { ChildRouteGuard } from '@/components/auth/ChildRouteGuard'
 import { ParentRouteGuard } from '@/components/auth/ParentRouteGuard'
@@ -116,16 +115,6 @@ export const router = createBrowserRouter([
         ],
       },
     ],
-  },
-  {
-    path: '/auth',
-    element: (
-      <PlaceholderPage
-        eyebrow="Auth"
-        title="부모 모드 인증"
-        description="프로필 선택 후 부모 모드로 들어갈 때 거치는 PIN·비밀번호 인증 화면을 연결할 자리입니다."
-      />
-    ),
   },
   {
     element: <ParentRouteGuard />,

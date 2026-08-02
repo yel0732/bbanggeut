@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
   getStoredAccessToken,
-  hasPendingNewSignupOnboarding,
   isPinLockedError,
   isPinMismatchError,
   logout,
   verifyParentPin,
 } from '@/api/auth'
-import { getChildProfiles as getBackendChildProfiles } from '@/api/profiles'
+import {
+  getChildProfiles as getBackendChildProfiles,
+  needsParentOnboarding,
+} from '@/api/profiles'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
@@ -71,13 +73,24 @@ export function ProfileSelectPage() {
     revokeParentAccess()
   }, [])
 
+  /*
+    핀을 아직 설정하지 않았으면 부모 프로필 생성으로 돌려보낸다.
+
+    로그인할 때 이미 갈 곳을 정하지만, 주소를 직접 열거나 새로고침한 경우를 위한
+    뒷문이다. 서버에 물어봐야 알 수 있어 화면이 한 번 그려진 뒤에 넘어간다.
+  */
   useEffect(() => {
-    if (hasPendingNewSignupOnboarding()) {
-      navigate('/profiles/new', { replace: true })
-      return
-    }
     if (!getStoredAccessToken()) {
       navigate('/', { replace: true })
+      return
+    }
+    let active = true
+    void needsParentOnboarding().then((needsOnboarding) => {
+      if (active && needsOnboarding)
+        navigate('/profiles/new', { replace: true })
+    })
+    return () => {
+      active = false
     }
   }, [navigate])
 
@@ -277,10 +290,6 @@ export function ProfileSelectPage() {
     window.addEventListener('keydown', handlePinKeyboard)
     return () => window.removeEventListener('keydown', handlePinKeyboard)
   })
-
-  if (hasPendingNewSignupOnboarding()) {
-    return <Navigate replace to="/profiles/new" />
-  }
 
   return (
     <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,_#12241a_0%,_#0b140e_100%)]">

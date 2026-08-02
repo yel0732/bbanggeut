@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { hasPendingNewSignupOnboarding, restoreSession } from '@/api/auth'
+import { restoreSession } from '@/api/auth'
+import { needsParentOnboarding } from '@/api/profiles'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import greenButtonUrl from '@/assets/images/start/light-green-button.webp'
@@ -18,6 +19,21 @@ import { cn } from '@/lib/utils'
 type StartPageLocationState = {
   openLoginModal?: boolean
 }
+
+/*
+  실제로 눌리는 영역.
+
+  버튼 그림은 넓은 네모 안에 알약 하나가 놓인 모양이고 그 바깥은 전부 투명하다.
+  상자를 그대로 두면 그림이 없는 좌우 여백(각각 15~18%)을 눌러도 버튼이 눌린다.
+  알파 채널의 불투명 경계까지만 남기고 잘라 낸다.
+
+  값은 각 에셋의 불투명 경계 상자에서 뽑았다(위·오른쪽·아래·왼쪽 순). 모서리가
+  둥근 만큼은 남지만, 그래도 눌리는 자리의 91%가 실제 버튼이 된다. 에셋을 바꾸면
+  이 값도 다시 뽑아야 한다.
+*/
+const GREEN_BUTTON_CLIP = 'inset(4.55% 14.81% 6.71% 17.48%)'
+const WHITE_BUTTON_CLIP = 'inset(6.11% 14.36% 14% 16.98%)'
+const YELLOW_BUTTON_CLIP = 'inset(16.15% 15.53% 5.25% 18.3%)'
 
 export function StartPage() {
   const navigate = useNavigate()
@@ -38,7 +54,7 @@ export function StartPage() {
     try {
       if (await restoreSession()) {
         navigate(
-          hasPendingNewSignupOnboarding() ? '/profiles/new' : '/profiles',
+          (await needsParentOnboarding()) ? '/profiles/new' : '/profiles',
         )
         return
       }
@@ -75,6 +91,7 @@ export function StartPage() {
         <div className="absolute right-[120px] bottom-[48px] z-20">
           <MainStartButton
             busy={isCheckingSession}
+            clipPath={GREEN_BUTTON_CLIP}
             imageUrl={greenButtonUrl}
             label="숲 속 들어가기"
             onClick={() => {
@@ -138,6 +155,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
         <div className="absolute top-[24%] left-[318px] z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
           <GoogleLoginButton />
           <ModalMenuButton
+            clipPath={WHITE_BUTTON_CLIP}
             color="#5a4a2a"
             fontSize={32}
             imageUrl={whiteButtonUrl}
@@ -148,6 +166,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           />
           <ModalMenuButton
             className="mt-[8%]"
+            clipPath={GREEN_BUTTON_CLIP}
             color="#ffffff"
             fontSize={32}
             imageUrl={greenButtonUrl}
@@ -242,25 +261,34 @@ function GoogleLoginButton() {
   }, [navigate])
 
   return (
-    <div className="relative block w-full transition hover:scale-[1.04] active:scale-[0.99]">
-      <img
-        alt=""
-        className="pointer-events-none relative z-0 block w-full select-none"
-        decoding="async"
-        draggable={false}
-        src={yellowButtonUrl}
-      />
-      <span
-        className="pointer-events-none absolute top-[43%] left-[34%] z-10 flex w-fit items-center justify-center text-center text-[32px] leading-none whitespace-nowrap text-[#6a4a12]"
-        style={{ fontFamily: "'Jua', sans-serif" }}
-      >
-        구글로 들어가기
-      </span>
-      <div
-        aria-label="Google 계정으로 로그인"
-        className="absolute top-1/2 left-1/2 z-20 h-[44px] w-[400px] -translate-x-1/2 -translate-y-1/2 scale-x-[1.28] scale-y-[1.7] overflow-hidden opacity-[0.01]"
-        ref={googleButtonRef}
-      />
+    <div className="relative block w-full cursor-pointer transition hover:scale-[1.04] active:scale-[0.99]">
+      {/*
+        누르는 자리를 그림 모양으로 자르는 칸.
+
+        여기서 실제로 클릭을 받는 것은 구글 스크립트가 그려 넣는 투명한 버튼이고,
+        그 버튼은 알약 그림보다 좌우로 더 넓게 퍼져 있다. 안내 문구는 이 칸 밖에
+        둔다 — 안에 두면 잘려서 보이지 않는다.
+      */}
+      <div className="relative" style={{ clipPath: YELLOW_BUTTON_CLIP }}>
+        <img
+          alt=""
+          className="pointer-events-none relative z-0 block w-full select-none"
+          decoding="async"
+          draggable={false}
+          src={yellowButtonUrl}
+        />
+        <span
+          className="pointer-events-none absolute top-[43%] left-[34%] z-10 flex w-fit items-center justify-center text-center text-[32px] leading-none whitespace-nowrap text-[#6a4a12]"
+          style={{ fontFamily: "'Jua', sans-serif" }}
+        >
+          구글로 들어가기
+        </span>
+        <div
+          aria-label="Google 계정으로 로그인"
+          className="absolute top-1/2 left-1/2 z-20 h-[44px] w-[400px] -translate-x-1/2 -translate-y-1/2 scale-x-[1.28] scale-y-[1.7] overflow-hidden opacity-[0.01]"
+          ref={googleButtonRef}
+        />
+      </div>
       {loadError ? (
         <p
           className="absolute right-0 bottom-0 left-0 z-30 text-center text-[14px] text-[#b84b3a]"
@@ -275,6 +303,7 @@ function GoogleLoginButton() {
 
 type ModalMenuButtonProps = {
   className?: string
+  clipPath: string
   color: string
   fontSize: number
   imageUrl: string
@@ -289,12 +318,14 @@ type ModalMenuButtonProps = {
 
 function MainStartButton({
   busy,
+  clipPath,
   imageUrl,
   label,
   onClick,
 }: {
   /** 세션을 확인하는 동안 눌러도 반응이 없어 보이지 않게 표시한다. */
   busy: boolean
+  clipPath: string
   imageUrl: string
   label: string
   onClick: () => void
@@ -304,11 +335,12 @@ function MainStartButton({
       className="relative block w-[500px] cursor-pointer appearance-none border-0 bg-transparent p-0 transition hover:scale-[1.04] focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white/85 active:scale-[0.99] disabled:cursor-default disabled:hover:scale-100"
       disabled={busy}
       onClick={onClick}
-      style={
-        busy
+      style={{
+        clipPath,
+        ...(busy
           ? { animation: 'start-button-wait 900ms ease-in-out infinite' }
-          : undefined
-      }
+          : {}),
+      }}
       type="button"
     >
       <img
@@ -337,6 +369,7 @@ function MainStartButton({
 
 function ModalMenuButton({
   className,
+  clipPath,
   color,
   fontSize,
   imageUrl,
@@ -389,7 +422,12 @@ function ModalMenuButton({
 
   if (to) {
     return (
-      <Link className={commonClassName} onClick={onClick} to={to}>
+      <Link
+        className={commonClassName}
+        onClick={onClick}
+        style={{ clipPath }}
+        to={to}
+      >
         {content}
       </Link>
     )
@@ -402,6 +440,7 @@ function ModalMenuButton({
         'appearance-none border-0 bg-transparent p-0',
       )}
       onClick={onClick}
+      style={{ clipPath }}
       type="button"
     >
       {content}

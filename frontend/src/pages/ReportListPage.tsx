@@ -25,20 +25,11 @@ import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useParentBgm } from '@/hooks/useParentBgm'
 import { loadChildProfiles } from '@/lib/childProfiles'
-import { makeDemoReportDetail } from '@/lib/reportDemo'
 import { removeReadReportArrival } from '@/lib/reportArrivals'
 import { ReportPaperContent } from '@/pages/ReportDetailPage'
 
 const PAGE_SIZE = 4
 const jua = { fontFamily: "'Jua', sans-serif" } as const
-const DEMO_REPORTS: ReportListItem[] = [
-  makeDemoReport(23, true, true),
-  makeDemoReport(22, false, true),
-  makeDemoReport(21, true, false),
-  makeDemoReport(20, true, true),
-  makeDemoReport(19, true, true, 'FAILED'),
-  makeDemoReport(18, false, true),
-]
 
 export function ReportListPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
@@ -74,20 +65,9 @@ export function ReportListPage() {
     async function loadReports() {
       setIsLoading(true)
       setError('')
-      if (!childId) {
+      if (!childId || !isBackendChildId(childId)) {
         setReports([])
         setError('아이 프로필 정보가 없어요. 부모 홈에서 다시 선택해 주세요.')
-        setIsLoading(false)
-        return
-      }
-
-      if (!isBackendChildId(childId)) {
-        const filtered = dateFilter
-          ? DEMO_REPORTS.filter((report) => report.reportDate === dateFilter)
-          : DEMO_REPORTS
-        const start = page * PAGE_SIZE
-        setReports(filtered.slice(start, start + PAGE_SIZE))
-        setTotalPages(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)))
         setIsLoading(false)
         return
       }
@@ -127,12 +107,7 @@ export function ReportListPage() {
       setDetailError('')
       setRetryMessage('')
       if (!isBackendChildId(childId)) {
-        setSelectedReport(makeDemoReportDetail(selectedDate))
-        removeReadReportArrival({
-          childId,
-          childName,
-          reportDate: selectedDate,
-        })
+        setDetailError('리포트를 불러오지 못했어요.')
         setDetailLoading(false)
         return
       }
@@ -167,13 +142,6 @@ export function ReportListPage() {
 
   async function requestRegeneration() {
     if (!selectedDate) return
-    if (!isBackendChildId(childId)) {
-      setRetryMessage('리포트 재생성을 요청했어요.')
-      setSelectedReport((current) =>
-        current ? { ...current, status: 'PENDING', failure: null } : current,
-      )
-      return
-    }
     setIsRetrying(true)
     setRetryMessage('')
     try {
@@ -492,26 +460,6 @@ function DetailMessage({ children }: { children: string }) {
       {children}
     </div>
   )
-}
-
-function makeDemoReport(
-  day: number,
-  game: boolean,
-  conversation: boolean,
-  status: ReportListItem['status'] = 'COMPLETED',
-): ReportListItem {
-  const date = `2026-07-${String(day).padStart(2, '0')}`
-  return {
-    reportId: day,
-    reportDate: date,
-    status,
-    dataAvailability: {
-      hasGameData: status === 'COMPLETED' && game,
-      hasConversationData: status === 'COMPLETED' && conversation,
-    },
-    generatedAt: `${date}T21:00:00`,
-    createdAt: `${date}T21:00:00`,
-  }
 }
 
 function statusLabel(status: ReportListItem['status']) {

@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { completeNewSignupOnboarding, getStoredAccessToken } from '@/api/auth'
-import { setParentPin, uploadParentProfileImage } from '@/api/profiles'
+import {
+  needsParentOnboarding,
+  setParentPin,
+  uploadParentProfileImage,
+} from '@/api/profiles'
 
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import backgroundUrl from '@/assets/images/profile/background.webp'
@@ -60,6 +64,23 @@ export function ParentProfilePage() {
   const [isPinError, setIsPinError] = useState(false)
   const [isPinSaved, setIsPinSaved] = useState(isOnboardingPinSaved)
   const isPinConfirmed = firstPin !== null && pin === firstPin && isPinSaved
+
+  /*
+    핀을 이미 만든 사람은 여기 있을 이유가 없다.
+
+    주소를 직접 열었거나, 다른 탭에서 먼저 마친 경우다. 그대로 두면 완료를 누르는
+    순간 서버가 PIN_ALREADY_SET(403)을 돌려줘 무엇이 잘못됐는지 알 수 없다.
+  */
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void needsParentOnboarding().then((needsOnboarding) => {
+      if (active && !needsOnboarding) navigate('/profiles', { replace: true })
+    })
+    return () => {
+      active = false
+    }
+  }, [navigate])
 
   useEffect(() => {
     return () => {

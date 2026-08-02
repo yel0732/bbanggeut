@@ -2,15 +2,18 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { consumeNewSignup, loginWithEmail, storeLoginSession } from '@/api/auth'
+import { loginWithEmail, storeLoginSession } from '@/api/auth'
+import { needsParentOnboarding } from '@/api/profiles'
 import leftButtonUrl from '@/assets/images/auth/left-btn.webp'
 import loginBoardUrl from '@/assets/images/auth/login-board.webp'
 import backgroundUrl from '@/assets/images/start/game-start-bg.webp'
 import logoUrl from '@/assets/images/start/logo.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
+import { EMAIL_PATTERN } from '@/utils/validation'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const boardSize = {
@@ -30,22 +33,40 @@ export function EmailLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState('')
+  /*
+    입력이 덜 된 것을 알리는 쪽지.
+
+    브라우저에 맡기면 주소창 아래 흰 말풍선이 뜬다. 우리 나무 판 위에 뜬금없이
+    올라앉아 다른 화면처럼 보이므로, 회원가입 화면과 같은 팝업을 쓴다.
+  */
+  const [notice, setNotice] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isSubmitting) return
+
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail || !password) {
+      setNotice('이메일과 비밀번호를 모두 입력해 주세요.')
+      return
+    }
+    if (!EMAIL_PATTERN.test(trimmedEmail)) {
+      setNotice('올바른 이메일 형식을 입력해요.')
+      return
+    }
+
     setError('')
     setIsSubmitting(true)
     try {
       const response = await loginWithEmail({
         autoLogin: remember,
-        email: email.trim(),
+        email: trimmedEmail,
         password,
       })
       storeLoginSession(response, remember)
       navigate(
-        consumeNewSignup(response.email) ? '/profiles/new' : '/profiles',
+        (await needsParentOnboarding()) ? '/profiles/new' : '/profiles',
         {
           replace: true,
         },
@@ -108,6 +129,12 @@ export function EmailLoginPage() {
 
         <form
           className="relative z-20 -translate-y-3"
+          /*
+            검증은 우리가 한다. 브라우저에 맡기면 기본 말풍선이 떠서 화면 밖 물건
+            처럼 보인다. required·type=email은 그대로 둔다 — 보조 기술과 모바일
+            자판이 이 정보를 쓴다.
+          */
+          noValidate
           onSubmit={(event) => void handleSubmit(event)}
           style={boardSize}
         >
@@ -132,7 +159,7 @@ export function EmailLoginPage() {
           </span>
 
           <input
-            className="auth-transparent-input absolute top-[40%] left-[19%] z-20 h-[7.4%] w-[62%] appearance-none border-none bg-transparent px-[4%] text-[20px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+            className="auth-transparent-input absolute top-[39.5%] left-[19%] z-20 h-[7.4%] w-[62%] appearance-none border-none bg-transparent px-[4%] text-[23px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
             onChange={(event) => setEmail(event.target.value)}
             placeholder="이메일"
             required
@@ -142,7 +169,7 @@ export function EmailLoginPage() {
           />
 
           <input
-            className="auth-transparent-input absolute top-[51.2%] left-[19%] z-20 h-[7.4%] w-[54%] appearance-none border-none bg-transparent px-[4%] text-[20px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+            className="auth-transparent-input absolute top-[50.8%] left-[19%] z-20 h-[7.4%] w-[54%] appearance-none border-none bg-transparent px-[4%] text-[23px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
             onChange={(event) => setPassword(event.target.value)}
             placeholder="비밀번호"
             required
@@ -188,7 +215,7 @@ export function EmailLoginPage() {
           ) : null}
 
           <button
-            className="absolute top-[69.3%] left-[17%] z-20 flex h-[9%] w-[66%] items-center justify-center rounded-full text-[27px] text-white transition active:translate-y-0.5 disabled:cursor-wait disabled:opacity-70"
+            className="absolute top-[69%] left-[17%] z-20 flex h-[9%] w-[66%] items-center justify-center rounded-full text-[33px] text-white transition active:translate-y-0.5 disabled:cursor-wait disabled:opacity-70"
             disabled={isSubmitting}
             style={{
               ...jua,
@@ -210,6 +237,13 @@ export function EmailLoginPage() {
             </Link>
           </div>
         </form>
+        {notice ? (
+          <ParentNoticeDialog
+            confirmLabel="확인"
+            onConfirm={() => setNotice('')}
+            title={notice}
+          />
+        ) : null}
       </div>
     </div>
   )

@@ -481,7 +481,7 @@ export function GoogleBirthdatePage() {
             style={jua}
           >
             {stage === 'signin'
-              ? '구글로 들어가기'
+              ? '구글로 로그인하기'
               : stage === 'connecting'
                 ? '구글 계정 확인 중'
                 : stage === 'birthdate'

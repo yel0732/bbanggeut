@@ -155,7 +155,7 @@ export function EmailLoginPage() {
             className="pointer-events-none absolute top-[25%] left-1/2 z-20 -translate-x-1/2 text-[21px] whitespace-nowrap text-[#5a7d3a]"
             style={jua}
           >
-            이메일로 들어가기
+            이메일로 로그인하기
           </span>
 
           <input
@@ -233,7 +233,7 @@ export function EmailLoginPage() {
           >
             아직 계정이 없어요?{' '}
             <Link className="border-b text-[#3a7d2c]" to="/auth/signup">
-              이메일로 등록하기
+              이메일로 가입하기
             </Link>
           </div>
         </form>

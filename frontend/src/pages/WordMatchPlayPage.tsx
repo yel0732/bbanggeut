@@ -19,6 +19,7 @@ import {
   QuitButton,
 } from '@/components/game/PlayOverlays'
 import { getGameById } from '@/features/games/games'
+import { useCountdownBeep } from '@/features/games/useCountdownBeep'
 import { HandCursor } from '@/features/games/recycle/HandCursor'
 import { WORD_MATCH_CONFIG as CFG } from '@/features/games/wordmatch/wordMatchConfig'
 import {
@@ -185,6 +186,8 @@ export function WordMatchPlayPage() {
       playStartedAtRef.current = nowAsLocalDateTime()
     }
   }, [word.phase])
+
+  useCountdownBeep(word.phase === 'countdown', word.countdown)
 
   /*
     카메라 권한 창이 뜨는 동안 자동 재생이 막히면, 이 화면은 손으로만 조작해서

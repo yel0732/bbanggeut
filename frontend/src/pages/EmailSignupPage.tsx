@@ -97,6 +97,7 @@ export function EmailSignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
   const [birth, setBirth] = useState('')
+  const [privacyAgreed, setPrivacyAgreed] = useState(false)
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [requestError, setRequestError] = useState('')
@@ -163,6 +164,10 @@ export function EmailSignupPage() {
     }
     if (!ageValid) {
       setNotice('만 19세 이상만 가입할 수 있어요.')
+      return
+    }
+    if (!privacyAgreed) {
+      setNotice('개인정보 수집 및 이용에 동의해 주세요.')
       return
     }
     setIsSubmitting(true)
@@ -272,10 +277,10 @@ export function EmailSignupPage() {
             className="pointer-events-none absolute top-[22%] left-1/2 z-20 -translate-x-1/2 text-[24px] whitespace-nowrap text-[#5a7d3a]"
             style={jua}
           >
-            이메일로 등록하기
+            이메일로 가입하기
           </span>
           <input
-            className="auth-transparent-input absolute top-[29.7%] left-[17%] z-20 h-[8.5%] w-[46.8%] appearance-none border-none bg-transparent px-[3%] text-[20px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
+            className="auth-transparent-input absolute top-[29.7%] left-[17%] z-20 h-[8.5%] w-[46.8%] appearance-none border-none bg-transparent px-[3%] text-[23px] text-[#5a4a2a] placeholder:text-[#9db089] focus:bg-transparent focus:outline-none"
             onChange={(event) => {
               setEmail(event.target.value)
               setEmailChecked(false)
@@ -380,12 +385,31 @@ export function EmailSignupPage() {
           </div>
           {birthMessage ? (
             <p
-              className="absolute top-[75.1%] left-[16.2%] z-20 w-[67.6%] px-1 text-[11px] leading-none text-[#c7563a]"
+              className="absolute top-[74.6%] left-[16.2%] z-20 w-[67.6%] px-1 text-[11px] leading-none text-[#c7563a]"
               style={jua}
             >
               {birthMessage}
             </p>
           ) : null}
+
+          {/*
+            개인정보 동의.
+
+            체크하지 않으면 가입되지 않는다. 다만 버튼을 흐리게 막지는 않는다 —
+            무엇이 모자란지 알 수 없으므로, 눌렀을 때 왜 안 되는지 알려 준다.
+          */}
+          <label
+            className="absolute right-[14%] bottom-[8%] left-[14%] z-20 flex cursor-pointer items-center justify-center gap-2 text-[17px] leading-none text-[#7a693e]"
+            style={jua}
+          >
+            <input
+              checked={privacyAgreed}
+              className="size-[17px] shrink-0 accent-[#3a7d2c]"
+              onChange={(event) => setPrivacyAgreed(event.target.checked)}
+              type="checkbox"
+            />
+            개인정보 수집 및 이용에 동의합니다 (필수)
+          </label>
 
           <button
             className="absolute top-[77.8%] left-[17.1%] z-20 h-[10.9%] w-[64.3%] rounded-full border-none bg-transparent text-[35px] text-white transition active:translate-y-0.5"

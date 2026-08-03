@@ -1,26 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { completeNewSignupOnboarding, getStoredAccessToken } from '@/api/auth'
 import {
-  createChildProfile as createBackendChildProfile,
-  getChildProfiles as getBackendChildProfiles,
+  needsParentOnboarding,
   setParentPin,
-  uploadChildProfileImage,
   uploadParentProfileImage,
 } from '@/api/profiles'
 
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
-import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
-import childTigerAvatarUrl from '@/assets/images/profile/child-avatar-tiger.webp'
-import childRabbitAvatarUrl from '@/assets/images/profile/child-avatar-rabbit.webp'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
 import pinDotEmptyUrl from '@/assets/images/profile/pin-dot-empty.webp'
 import pinDotFillUrl from '@/assets/images/profile/pin-dot-fill.webp'
-import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
-import portraitFrameUrl from '@/assets/images/parent-profile/frame-portrait.webp'
-import inputBarUrl from '@/assets/images/parent-profile/input-bar.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import frameUrl from '@/assets/images/parent-profile/frame-square.webp'
 import keypadButtonUrl from '@/assets/images/parent-profile/keypad-panel.webp'
@@ -28,19 +20,14 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
-import {
-  childImageKeyFromPhoto,
-  childPhotoFromImageKey,
-  loadChildProfiles,
-  MAX_CHILD_PROFILES,
-  saveChildProfiles,
-  type ChildProfile,
-} from '@/lib/childProfiles'
-
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
-const ONBOARDING_PIN_DRAFT_KEY = 'bbanggut-onboarding-parent-pin-draft'
-const ONBOARDING_PIN_SAVED_KEY = 'bbanggut-onboarding-parent-pin-saved'
+/*
+  핀 확인을 마치면 곧바로 프로필 선택으로 넘어간다. 화면이 즉시 바뀌면 방금 무엇이
+  저장됐는지 읽을 틈이 없어 안내 문구를 볼 시간만큼 머무른다.
+*/
+const LEAVE_DELAY_MS = 1200
+const LEAVE_DELAY_ON_PHOTO_ERROR_MS = 2000
 
 function isDataImageUrl(value: string | null): value is string {
   return typeof value === 'string' && value.startsWith('data:image/')
@@ -50,87 +37,46 @@ async function dataImageUrlToBlob(dataUrl: string) {
   return await fetch(dataUrl).then((response) => response.blob())
 }
 
-function loadOnboardingPinDraft() {
-  try {
-    const pin = window.sessionStorage.getItem(ONBOARDING_PIN_DRAFT_KEY)
-    return /^\d{4}$/.test(pin ?? '') ? pin : null
-  } catch {
-    return null
-  }
-}
-
-function isOnboardingPinSaved() {
-  return window.sessionStorage.getItem(ONBOARDING_PIN_SAVED_KEY) === 'true'
+async function wait(ms: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 
 export function ParentProfilePage() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const isOnboardingChildFlow = searchParams.get('source') === 'onboarding'
   const canvasRef = useFitScale<HTMLDivElement>()
   const { isBgmPlaying, toggleBgm } = useAdventureBgm()
   const parentVideoRef = useRef<HTMLVideoElement>(null)
   const parentStreamRef = useRef<MediaStream | null>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [isParentCameraOn, setIsParentCameraOn] = useState(false)
-  const [showChildForm, setShowChildForm] = useState(
-    searchParams.get('add') === '1',
-  )
-  const [childName, setChildName] = useState('')
-  const [childPhotoUrl, setChildPhotoUrl] = useState<string | null>(null)
-  const [isCameraOn, setIsCameraOn] = useState(false)
-  const [childFormMessage, setChildFormMessage] = useState('')
-  const [childProfileCount, setChildProfileCount] = useState(0)
-  const isChildProfileLimitReached = childProfileCount >= MAX_CHILD_PROFILES
-  const [pin, setPin] = useState(() => loadOnboardingPinDraft() ?? '')
-  const [firstPin, setFirstPin] = useState<string | null>(() =>
-    loadOnboardingPinDraft(),
-  )
+  const [pin, setPin] = useState('')
+  const [firstPin, setFirstPin] = useState<string | null>(null)
   const [pinMessage, setPinMessage] = useState('')
   const [isPinError, setIsPinError] = useState(false)
-  const [isPinSaved, setIsPinSaved] = useState(isOnboardingPinSaved)
-  const isEditMode = searchParams.get('edit') === '1'
+  const [isPinSaved, setIsPinSaved] = useState(false)
   const isPinConfirmed = firstPin !== null && pin === firstPin && isPinSaved
+
+  /*
+    핀을 이미 만든 사람은 여기 있을 이유가 없다.
+
+    주소를 직접 열었거나, 다른 탭에서 먼저 마친 경우다. 그대로 두면 핀 확인을
+    마치는 순간 서버가 PIN_ALREADY_SET(403)을 돌려줘 무엇이 잘못됐는지 알 수 없다.
+  */
+  useEffect(() => {
+    if (!getStoredAccessToken()) return
+    let active = true
+    void needsParentOnboarding().then((needsOnboarding) => {
+      if (active && !needsOnboarding) navigate('/profiles', { replace: true })
+    })
+    return () => {
+      active = false
+    }
+  }, [navigate])
 
   useEffect(() => {
     return () => {
       parentStreamRef.current?.getTracks().forEach((track) => track.stop())
-      streamRef.current?.getTracks().forEach((track) => track.stop())
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!getStoredAccessToken()) {
-      setChildProfileCount(loadChildProfiles().length)
-      return
-    }
-
-    let active = true
-    void getBackendChildProfiles()
-      .then((children) => {
-        if (!active) return
-        setChildProfileCount(children.length)
-        saveChildProfiles(
-          children.map((child) => ({
-            id: String(child.childId),
-            name: child.name,
-            photoUrl:
-              child.profileImageUrl ??
-              childPhotoFromImageKey(child.profileImageKey),
-            profileImageKey: child.profileImageKey,
-            profileImageUrl: child.profileImageUrl,
-          })),
-        )
-      })
-      .catch(() => {
-        if (active) setChildProfileCount(0)
-      })
-
-    return () => {
-      active = false
     }
   }, [])
 
@@ -142,17 +88,6 @@ export function ParentProfilePage() {
     video.srcObject = stream
     void video.play()
   }, [isParentCameraOn])
-
-  useEffect(() => {
-    const video = videoRef.current
-    const stream = streamRef.current
-    if (!isCameraOn || !video || !stream) return
-
-    video.srcObject = stream
-    void video.play().catch(() => {
-      setChildFormMessage('웹캠 미리보기를 시작할 수 없어요.')
-    })
-  }, [isCameraOn])
 
   const pressKey = useCallback(
     (key: string) => {
@@ -184,16 +119,10 @@ export function ParentProfilePage() {
       }
 
       if (nextPin === firstPin) {
-        void setParentPin(nextPin)
-          .then(() => {
-            window.sessionStorage.setItem(ONBOARDING_PIN_DRAFT_KEY, nextPin)
-            window.sessionStorage.setItem(ONBOARDING_PIN_SAVED_KEY, 'true')
-            setIsPinSaved(true)
-            setPinMessage('PIN 번호가 설정되었습니다.')
-          })
-          .catch((error: unknown) => {
-            window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
-            window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
+        void (async () => {
+          try {
+            await setParentPin(nextPin)
+          } catch (error) {
             setIsPinSaved(false)
             setFirstPin(null)
             setPin('')
@@ -203,7 +132,36 @@ export function ParentProfilePage() {
                 ? error.message
                 : 'PIN 번호를 설정하지 못했어요.',
             )
-          })
+            return
+          }
+
+          setIsPinSaved(true)
+          setPinMessage('핀번호를 저장했어요. 프로필을 고르러 가요!')
+
+          /*
+            사진은 핀과 달리 이 순간에만 올라간다. 완료 버튼이 없어 실패했다고
+            여기 붙잡아 두면 사용자가 다시 시도할 수단이 없으므로, 알리기만 하고
+            넘어간다 — 사진은 부모 모드에서 언제든 다시 바꿀 수 있다.
+          */
+          let hasPhotoError = false
+          if (getStoredAccessToken() && isDataImageUrl(photoUrl)) {
+            try {
+              await uploadParentProfileImage(await dataImageUrlToBlob(photoUrl))
+            } catch {
+              hasPhotoError = true
+              setIsPinError(true)
+              setPinMessage(
+                '사진은 저장하지 못했어요. 부모 모드에서 다시 바꿀 수 있어요.',
+              )
+            }
+          }
+
+          await wait(
+            hasPhotoError ? LEAVE_DELAY_ON_PHOTO_ERROR_MS : LEAVE_DELAY_MS,
+          )
+          completeNewSignupOnboarding()
+          navigate('/profiles')
+        })()
         return
       }
 
@@ -214,7 +172,7 @@ export function ParentProfilePage() {
         setPin('')
       }, 450)
     },
-    [firstPin, isPinConfirmed, pin],
+    [firstPin, isPinConfirmed, navigate, photoUrl, pin],
   )
 
   useEffect(() => {
@@ -272,202 +230,9 @@ export function ParentProfilePage() {
     stopParentCamera()
   }
 
-  const stopCamera = () => {
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    streamRef.current = null
-    setIsCameraOn(false)
-  }
-
-  const cycleDefaultChildPhoto = () => {
-    stopCamera()
-    setChildPhotoUrl((current) => {
-      if (current === childTigerAvatarUrl) return childRabbitAvatarUrl
-      if (current === childRabbitAvatarUrl) return null
-      if (current === null) return childTigerAvatarUrl
-      return null
-    })
-    setChildFormMessage('')
-  }
-
-  const toggleCamera = async () => {
-    if (!isCameraOn) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 480, height: 480 },
-        })
-        streamRef.current = stream
-        setIsCameraOn(true)
-        setChildFormMessage('화면을 확인한 뒤 사진 찍기를 눌러 주세요.')
-      } catch {
-        setChildFormMessage('웹캠을 사용할 수 없어요.')
-      }
-      return
-    }
-
-    const video = videoRef.current
-    if (video?.videoWidth) {
-      const sourceSize = Math.min(video.videoWidth, video.videoHeight)
-      const canvas = document.createElement('canvas')
-      canvas.width = 300
-      canvas.height = 300
-      const context = canvas.getContext('2d')
-      if (context) {
-        context.translate(300, 0)
-        context.scale(-1, 1)
-        context.drawImage(
-          video,
-          (video.videoWidth - sourceSize) / 2,
-          (video.videoHeight - sourceSize) / 2,
-          sourceSize,
-          sourceSize,
-          0,
-          0,
-          300,
-          300,
-        )
-        setChildPhotoUrl(canvas.toDataURL('image/png'))
-      }
-    }
-    stopCamera()
-  }
-
-  const closeChildForm = () => {
-    stopCamera()
-    if (isOnboardingChildFlow) {
-      navigate('/profiles/children')
-      return
-    }
-    setShowChildForm(false)
-    setChildName('')
-    setChildPhotoUrl(null)
-    setChildFormMessage('')
-  }
-
-  const createChildProfile = async () => {
-    const name = childName.trim()
-    if (!name) {
-      setChildFormMessage('?꾩씠 ?대쫫???낅젰??二쇱꽭??')
-      return
-    }
-
-    const hasAccessToken = Boolean(getStoredAccessToken())
-    let profiles: ChildProfile[]
-    try {
-      profiles = hasAccessToken
-        ? await getBackendChildProfiles().then((children) =>
-            children.map((child) => ({
-              id: String(child.childId),
-              name: child.name,
-              photoUrl:
-                child.profileImageUrl ??
-                childPhotoFromImageKey(child.profileImageKey),
-              profileImageKey: child.profileImageKey,
-              profileImageUrl: child.profileImageUrl,
-            })),
-          )
-        : loadChildProfiles()
-    } catch (error) {
-      setChildFormMessage(
-        error instanceof Error
-          ? error.message
-          : '아이 프로필 목록을 불러오지 못했어요.',
-      )
-      return
-    }
-    if (profiles.length >= MAX_CHILD_PROFILES) {
-      setChildFormMessage(
-        `아이 프로필은 최대 ${MAX_CHILD_PROFILES}개까지 만들 수 있어요.`,
-      )
-      return
-    }
-
-    if (
-      profiles.some(
-        (profile) =>
-          profile.name.trim().toLocaleLowerCase('ko-KR') ===
-          name.toLocaleLowerCase('ko-KR'),
-      )
-    ) {
-      setChildFormMessage('같은 이름의 아이 프로필이 이미 있어요.')
-      return
-    }
-    const localProfile: ChildProfile = {
-      id:
-        typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`,
-      name,
-      photoUrl: childPhotoUrl,
-      profileImageKey: childImageKeyFromPhoto(childPhotoUrl),
-      profileImageUrl: null,
-    }
-
-    try {
-      if (hasAccessToken) {
-        const created = await createBackendChildProfile(
-          name,
-          localProfile.profileImageKey,
-        )
-        const saved = isDataImageUrl(childPhotoUrl)
-          ? await uploadChildProfileImage(
-              created.childId,
-              await dataImageUrlToBlob(childPhotoUrl),
-            )
-          : created
-        localProfile.id = String(saved.childId)
-        localProfile.profileImageKey = saved.profileImageKey
-        localProfile.profileImageUrl = saved.profileImageUrl
-        localProfile.photoUrl =
-          saved.profileImageUrl ?? childPhotoFromImageKey(saved.profileImageKey)
-      }
-    } catch (error) {
-      setChildFormMessage(
-        error instanceof Error
-          ? error.message
-          : '아이 프로필을 만들지 못했어요.',
-      )
-      return
-    }
-
-    saveChildProfiles([...profiles, localProfile])
-    setChildProfileCount(profiles.length + 1)
-    stopCamera()
-    navigate('/profiles/children')
-  }
-
-  const finish = async () => {
-    if (!isPinConfirmed) {
-      setIsPinError(true)
-      setPinMessage('핀번호 설정과 확인을 완료해 주세요.')
-      return
-    }
-    try {
-      if (getStoredAccessToken() && firstPin && !isPinSaved) {
-        await setParentPin(firstPin)
-      }
-      if (getStoredAccessToken() && isDataImageUrl(photoUrl)) {
-        await uploadParentProfileImage(await dataImageUrlToBlob(photoUrl))
-      }
-    } catch (error) {
-      setIsPinError(true)
-      setPinMessage(
-        error instanceof Error
-          ? error.message
-          : 'PIN 번호를 저장하지 못했어요.',
-      )
-      return
-    }
-    window.sessionStorage.removeItem(ONBOARDING_PIN_DRAFT_KEY)
-    window.sessionStorage.removeItem(ONBOARDING_PIN_SAVED_KEY)
-    completeNewSignupOnboarding()
-    navigate('/profiles')
-  }
-
   const pinLabel =
     firstPin === null
-      ? isEditMode
-        ? '핀번호 수정'
-        : '핀번호 설정'
+      ? '핀번호 설정'
       : isPinConfirmed
         ? '핀번호 설정 완료'
         : '핀번호 확인'
@@ -521,13 +286,30 @@ export function ParentProfilePage() {
             className="absolute top-[11.5%] left-1/2 -translate-x-1/2 text-[31px] whitespace-nowrap text-[#3a7d2c]"
             style={jua}
           >
-            {isEditMode ? '부모 프로필 수정' : '부모 프로필 만들기'}
+            부모 프로필 만들기
           </h1>
+
+          {/*
+            제목 바로 아래. 핀을 누르기 전에 이 화면이 끝이 아니라는 것과 다음에
+            무엇을 하면 되는지를 먼저 읽히게 한다. 아래 요소들은 이 문구 높이만큼
+            내려가 있다.
+          */}
+          <div
+            className="absolute top-[18.5%] left-1/2 w-[500px] -translate-x-1/2 text-left text-[16px] leading-[1.45] text-[#6b5a34]"
+            style={jua}
+          >
+            <p>🔒 부모 프로필은 핀번호를 입력하면 들어가요.</p>
+            <p>
+              👶 아이 프로필은 부모 모드의 &lsquo;아이 프로필 관리&rsquo;에서
+              만들어요.
+            </p>
+            <p>✏️ 핀번호와 프로필 사진은 나중에 언제든 바꿀 수 있어요.</p>
+          </div>
 
           {isParentCameraOn ? (
             <video
               autoPlay
-              className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
+              className="absolute top-[30%] left-[38.5%] size-[122px] -translate-x-1/2 -scale-x-100 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
               muted
               playsInline
               ref={parentVideoRef}
@@ -535,12 +317,12 @@ export function ParentProfilePage() {
           ) : (
             <img
               alt="부모 프로필"
-              className="absolute top-[18.5%] left-[38.5%] size-[122px] -translate-x-1/2 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
+              className="absolute top-[30%] left-[38.5%] size-[122px] -translate-x-1/2 rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_4px_#d9c79a,0_5px_10px_rgba(0,0,0,.15)]"
               src={photoUrl ?? parentAvatarUrl}
             />
           )}
           <button
-            className="absolute top-[19%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
+            className="absolute top-[29.5%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
             onClick={() => void toggleParentCamera()}
             style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
             type="button"
@@ -548,7 +330,7 @@ export function ParentProfilePage() {
             {isParentCameraOn ? '사진 찍기' : '웹캠 촬영'}
           </button>
           <button
-            className="absolute top-[25.5%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
+            className="absolute top-[36%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
             onClick={() => {
               stopParentCamera()
               setPhotoUrl(null)
@@ -559,15 +341,15 @@ export function ParentProfilePage() {
             기본으로 사용
           </button>
 
-          <div className="absolute top-[37%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
+          <div className="absolute top-[48.5%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
           <div
-            className="absolute top-[37.5%] left-1/2 -translate-x-1/2 text-[26px] whitespace-nowrap text-[#3a7d2c]"
+            className="absolute top-[50%] left-1/2 -translate-x-1/2 text-[26px] whitespace-nowrap text-[#3a7d2c]"
             style={jua}
           >
             {pinLabel}
           </div>
           <div
-            className="absolute top-[42.1%] left-1/2 -translate-x-1/2 text-[13px] whitespace-nowrap"
+            className="absolute top-[54.6%] left-1/2 -translate-x-1/2 text-[13px] whitespace-nowrap"
             style={{
               ...jua,
               color: isPinError
@@ -579,7 +361,7 @@ export function ParentProfilePage() {
           >
             {pinMessage}
           </div>
-          <div className="absolute top-[43.5%] left-1/2 flex -translate-x-1/2 gap-1">
+          <div className="absolute top-[57%] left-1/2 flex -translate-x-1/2 gap-1">
             {Array.from({ length: PIN_LENGTH }).map((_, index) => (
               <img
                 alt=""
@@ -590,7 +372,7 @@ export function ParentProfilePage() {
             ))}
           </div>
 
-          <div className="absolute top-1/2 left-1/2 grid -translate-x-1/2 grid-cols-[repeat(3,95px)] justify-center">
+          <div className="absolute top-[63.5%] left-1/2 grid -translate-x-1/2 grid-cols-[repeat(3,95px)] justify-center">
             {KEYPAD_KEYS.map((key, index) =>
               key ? (
                 <button
@@ -607,173 +389,7 @@ export function ParentProfilePage() {
               ),
             )}
           </div>
-
-          <div className="absolute top-[76%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
-          <img
-            alt=""
-            className="absolute top-[78%] left-[27%] size-[88px] rounded-full bg-[#fdf6e3] object-cover shadow-[0_0_0_3px_#d9c79a]"
-            src={childAvatarUrl}
-          />
-          <div
-            className="absolute top-[77.5%] left-[42%] flex items-baseline gap-2 text-[27px] text-[#3a7d2c]"
-            style={jua}
-          >
-            <span>아이 프로필</span>
-            <span className="text-[18px] text-[#8a7a55]">
-              ({childProfileCount}/{MAX_CHILD_PROFILES})
-            </span>
-          </div>
-          <button
-            className="absolute top-[80.5%] left-[37.5%] flex h-[78px] w-[276px] items-center justify-center bg-[length:100%_100%] bg-center bg-no-repeat text-[17px] text-white active:translate-y-0.5"
-            onClick={() => navigate('/profiles/children')}
-            style={{
-              ...jua,
-              backgroundImage: `url(${completeButtonUrl})`,
-              paintOrder: 'stroke fill',
-              WebkitTextStroke: '3px #4a7d1e',
-            }}
-            type="button"
-          >
-            아이 프로필 목록
-          </button>
         </main>
-
-        <button
-          className="absolute right-[25px] bottom-[25px] z-40 h-[86px] w-[245px] bg-[length:100%_100%] bg-center bg-no-repeat text-[21px] text-white active:translate-y-0.5"
-          onClick={() => void finish()}
-          style={{
-            ...jua,
-            backgroundImage: `url(${completeButtonUrl})`,
-            paintOrder: 'stroke fill',
-            WebkitTextStroke: '3px #4a7d1e',
-          }}
-          type="button"
-        >
-          완료
-        </button>
-
-        {showChildForm ? (
-          <div className="absolute inset-0 z-60 flex items-start justify-center bg-[rgba(10,26,15,.5)]">
-            <section className="relative mt-4 h-[640px] w-[500px]">
-              <img
-                alt=""
-                className="pointer-events-none absolute inset-0 size-full"
-                src={portraitFrameUrl}
-              />
-              <h2
-                className="absolute top-[12.5%] right-0 left-0 text-center text-[27px] text-[#3a7d2c]"
-                style={jua}
-              >
-                아이 프로필 생성
-              </h2>
-
-              <div className="absolute top-[20.8%] left-[22%] size-[120px] overflow-hidden rounded-full bg-[#fdf6e3] shadow-[0_0_0_4px_#d9c79a]">
-                {isCameraOn ? (
-                  <video
-                    autoPlay
-                    className="size-full -scale-x-100 object-cover"
-                    muted
-                    playsInline
-                    ref={videoRef}
-                  />
-                ) : (
-                  <img
-                    alt="아이 프로필"
-                    className="size-full object-cover"
-                    src={childPhotoUrl ?? childAvatarUrl}
-                  />
-                )}
-              </div>
-
-              <div className="absolute top-[21.2%] right-[18%] flex flex-col">
-                <button
-                  className="h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
-                  onClick={() => void toggleCamera()}
-                  style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
-                  type="button"
-                >
-                  {isCameraOn ? '📸 사진 찍기' : '웹캠 촬영'}
-                </button>
-                <button
-                  className="-mt-5 h-16 w-[200px] bg-[length:100%_100%] bg-center bg-no-repeat text-[16px] text-[#5a4a2a] active:translate-y-0.5"
-                  onClick={cycleDefaultChildPhoto}
-                  style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
-                  type="button"
-                >
-                  기본 이미지
-                </button>
-              </div>
-
-              <p
-                className="absolute top-[42%] right-0 left-0 text-center text-[15px] text-[#8a7a55]"
-                style={jua}
-              >
-                세 마리의 동물이 있어요! 눌러서 확인해보세요!
-              </p>
-              <label
-                className="absolute top-[48.5%] left-[20%] text-[22px] text-[#3a7d2c]"
-                htmlFor="child-profile-name"
-                style={jua}
-              >
-                🌿 아이 이름
-              </label>
-              <div
-                className="absolute top-[52.5%] right-[19.5%] left-[19.5%] h-[72px] -translate-x-1.5 bg-[length:100%_100%] bg-center bg-no-repeat"
-                style={{ backgroundImage: `url(${inputBarUrl})` }}
-              >
-                <input
-                  className="absolute inset-y-1.5 right-5 left-5 bg-transparent text-center text-[19px] text-[#5a4a2a] outline-none placeholder:text-[#b9a97f]"
-                  id="child-profile-name"
-                  onChange={(event) => {
-                    const nextName = event.target.value
-                    setChildName(nextName.slice(0, 15))
-                    setChildFormMessage(
-                      nextName.length > 15 ? '이름은 15자까지 가능해요' : '',
-                    )
-                  }}
-                  placeholder="이름을 입력해 주세요"
-                  style={jua}
-                  value={childName}
-                />
-              </div>
-              <p
-                className="absolute top-[62%] right-0 left-0 text-center text-[14px] text-[#c7563a]"
-                style={jua}
-              >
-                {isChildProfileLimitReached
-                  ? `아이 프로필은 최대 ${MAX_CHILD_PROFILES}개까지 만들 수 있어요.`
-                  : childFormMessage}
-              </p>
-              <button
-                className="absolute top-[65.5%] left-1/2 h-[84px] w-[370px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[20px] text-white active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isChildProfileLimitReached}
-                onClick={() => void createChildProfile()}
-                style={{
-                  ...jua,
-                  backgroundImage: `url(${completeButtonUrl})`,
-                  paintOrder: 'stroke fill',
-                  WebkitTextStroke: '3px #4a7d1e',
-                }}
-                type="button"
-              >
-                {isChildProfileLimitReached
-                  ? '프로필 10개 생성 완료'
-                  : '아이 프로필 만들기'}
-              </button>
-              <button
-                className="absolute top-[74.5%] left-1/2 h-[78px] w-[265px] -translate-x-1/2 bg-[length:100%_100%] bg-center bg-no-repeat text-[18px] text-[#5a4a2a] active:translate-y-0.5"
-                onClick={closeChildForm}
-                style={{
-                  ...jua,
-                  backgroundImage: `url(${photoButtonUrl})`,
-                }}
-                type="button"
-              >
-                취소
-              </button>
-            </section>
-          </div>
-        ) : null}
       </div>
     </div>
   )

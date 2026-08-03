@@ -27,6 +27,14 @@ public enum ReportApiErrorCode implements ErrorCode {
             HttpStatus.CONFLICT,
             "REPORT_REGENERATION_NOT_ALLOWED",
             "Only a failed report can be regenerated."),
+    REPORT_ALREADY_EXISTS(
+            HttpStatus.CONFLICT,
+            "REPORT_ALREADY_EXISTS",
+            "A daily report already exists for the requested date."),
+    REPORT_DATE_NOT_TODAY(
+            HttpStatus.BAD_REQUEST,
+            "REPORT_DATE_NOT_TODAY",
+            "Only today's report can be generated immediately."),
     INVALID_NOTIFICATION_PREFERENCE(
             HttpStatus.BAD_REQUEST,
             "INVALID_NOTIFICATION_PREFERENCE",

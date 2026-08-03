@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+const jua = { fontFamily: "'Jua', sans-serif" } as const
+
+/** 달력 창과 화면 가장자리 사이에 남겨 둘 여백(위아래·좌우 합). */
+const DIALOG_GAP = 32
+
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1)
 const YEAR_PAGE_SIZE = 12
@@ -60,6 +65,7 @@ export function BirthDatePicker({
     getYearPageStart((selectedDate ?? maxDate).getFullYear(), maxYear, minYear),
   )
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLElement>(null)
 
   const visibleYear = visibleDate.getFullYear()
   const visibleMonth = visibleDate.getMonth()
@@ -83,6 +89,52 @@ export function BirthDatePicker({
     document.addEventListener('keydown', handleKeyDown)
     closeButtonRef.current?.focus()
     return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen])
+
+  /*
+    남는 자리에 맞춰 달력을 통째로 줄인다.
+
+    이 창은 portal로 캔버스 밖에 그려지므로 화면이 작아져도 저 혼자 제 크기를
+    유지한다. 안쪽 크기가 전부 고정 px이라 세로가 짧은 창에서는 위아래가 잘려
+    나갔다 — 넘친 곳을 스크롤할 방법도 없어서 날짜를 아예 못 고른다.
+
+    글자만 줄이지 않고 배율로 줄이는 이유는 구도를 지키기 위해서다. 여백·칸 크기를
+    따로 손보면 화면마다 달력이 다르게 생긴다.
+
+    배율은 1을 넘지 않는다. 큰 화면에서는 지금 크기 그대로 두어야 한다.
+
+    달을 넘기면 주 수가 4~6줄로 바뀌어 높이가 달라지므로 ResizeObserver로 다시
+    잰다. offsetWidth·offsetHeight는 transform 이전의 배치 크기라 스스로 잰 값에
+    말려 들지 않는다.
+  */
+  useEffect(() => {
+    if (!isOpen) return
+    const element = dialogRef.current
+    if (!element) return
+
+    const fit = () => {
+      const viewport = window.visualViewport
+      const availableWidth = (viewport?.width ?? window.innerWidth) - DIALOG_GAP
+      const availableHeight =
+        (viewport?.height ?? window.innerHeight) - DIALOG_GAP
+      const scale = Math.min(
+        1,
+        availableWidth / element.offsetWidth,
+        availableHeight / element.offsetHeight,
+      )
+      element.style.transform = `scale(${scale})`
+    }
+
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(element)
+    window.addEventListener('resize', fit)
+    window.visualViewport?.addEventListener('resize', fit)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', fit)
+      window.visualViewport?.removeEventListener('resize', fit)
+    }
   }, [isOpen])
 
   const openPicker = () => {
@@ -128,8 +180,14 @@ export function BirthDatePicker({
     <>
       <button
         aria-haspopup="dialog"
-        className="flex h-full w-full items-center justify-between bg-transparent px-[3%] text-left text-[clamp(13px,3.8vw,18px)] text-[#5a4a2a] outline-none focus-visible:ring-2 focus-visible:ring-[#6e9d45]"
+        /*
+          입력창은 확대·축소되는 캔버스 안에 놓인다. vw는 그 확대·축소를 따라오지
+          않아 캔버스가 줄어도 글자만 제 크기로 남는다. 캔버스 px으로 고정한다.
+          (달력 팝업은 portal로 캔버스 밖에 그려지므로 지금처럼 두어도 된다.)
+        */
+        className="flex h-full w-full items-center justify-between bg-transparent px-[3%] text-left text-[23px] text-[#5a4a2a] outline-none focus-visible:ring-2 focus-visible:ring-[#6e9d45]"
         onClick={openPicker}
+        style={jua}
         type="button"
       >
         <span className={selectedDate ? '' : 'text-[#9db089]'}>
@@ -151,9 +209,10 @@ export function BirthDatePicker({
               <section
                 aria-label={dialogLabel}
                 aria-modal="true"
-                className="w-full max-w-[390px] overflow-hidden rounded-[30px] border-[5px] border-[#79552d] bg-[#fff8dc] shadow-[0_24px_70px_rgba(7,24,12,0.45),inset_0_0_0_3px_#e8c879]"
+                className="w-full max-w-[390px] shrink-0 overflow-hidden rounded-[30px] border-[5px] border-[#79552d] bg-[#fff8dc] shadow-[0_24px_70px_rgba(7,24,12,0.45),inset_0_0_0_3px_#e8c879]"
+                ref={dialogRef}
                 role="dialog"
-                style={{ fontFamily: "'Jua', sans-serif" }}
+                style={jua}
               >
                 <header className="relative bg-[linear-gradient(135deg,#6fa844,#4f8132)] px-6 pt-5 pb-4 text-white">
                   <div className="pointer-events-none absolute -top-5 -right-3 size-20 rounded-full bg-[#a9d66f]/35" />

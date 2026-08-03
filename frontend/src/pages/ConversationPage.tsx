@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { isCompletedTerminationReason } from '@/api/conversations'
+import { previewChildDiary, saveChildDiary } from '@/api/diaries'
 import dialogBoxUrl from '@/assets/images/conversation/dialog-box.webp'
-import diaryButtonUrl from '@/assets/images/conversation/diary-btn.webp'
-import diaryListButtonUrl from '@/assets/images/conversation/diary-list-btn.webp'
 import talkListenDinosaurUrl from '@/assets/images/conversation/talk-listen-dinosaur.webp'
 import micOffButtonUrl from '@/assets/images/conversation/mic-off-btn.webp'
 import micOnButtonUrl from '@/assets/images/conversation/mic-on-btn.webp'
@@ -22,6 +21,7 @@ import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { DiaryBookButton } from '@/components/DiaryBookButton'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { useConversationBgm } from '@/hooks/useConversationBgm'
 import { useFitScale } from '@/hooks/useFitScale'
@@ -32,12 +32,14 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
-const DIARY_LINES = [
-  '오늘은 과일 자르기에서 과일을 힘차게 잘랐다.',
-  '빵긋이에게 오늘 있었던 재미있는 일도 들려주었다.',
-  '가장 기억에 남는 순간을 이야기해서 기분이 좋았다.',
-  '내일도 신나게 놀고 빵긋이와 이야기하고 싶다.',
-]
+/** preview는 대화가 서버에서 COMPLETED로 확정돼야 성공한다. 종료 이벤트가
+ * Redis Stream을 거쳐 MySQL에 반영되기까지의 지연을 이 창 안에서 재시도로 흡수한다. */
+const PREVIEW_RETRY_WINDOW_MS = 10_000
+const PREVIEW_RETRY_INTERVAL_MS = 800
+
+type DiaryStatus = 'idle' | 'loading' | 'ready' | 'error'
+type DiaryData = { title: string; lines: string[]; previewToken: string }
+
 const DINO_FRAME_SEQUENCE = [0, 1, 2, 1, 0] as const
 const DINO_FRAME_POSITIONS = [
   '0% 0%',
@@ -49,9 +51,18 @@ const DINO_FRAME_POSITIONS = [
 ] as const
 const DINO_FRAME_OFFSETS = [0, 12.7, 49.3, 0, 12.7, 37.5] as const
 
+/*
+  마이크 위 안내.
+
+  말풍선은 어절 단위로만 줄을 바꾼다(break-keep). 한국어는 기본값으로 두면 글자
+  아무 데서나 잘려 "빵긋이가 생각하 / 고 있어요"처럼 읽힌다.
+
+  꼭 여기서 끊고 싶은 자리는 \n으로 직접 적는다. 폭에 맡기면 그날 문구 길이에 따라
+  끊기는 자리가 달라진다.
+*/
 const STATUS_COPY: Record<VoiceStatus, string> = {
-  listening: '이야기해 줘, 듣고 있어',
-  speaking: '빵긋이가 이야기하고 있어요',
+  listening: '이야기해 줘\n듣고 있어',
+  speaking: '지금 빵긋이가 \n말하고 있어요',
   thinking: '빵긋이가 생각하고 있어요',
   waiting: '조금만 기다려 줘',
 }
@@ -89,6 +100,10 @@ export function ConversationPage() {
   const [isDiaryOpen, setIsDiaryOpen] = useState(false)
   const [isDiaryAttached, setIsDiaryAttached] = useState(false)
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false)
+  const [diaryStatus, setDiaryStatus] = useState<DiaryStatus>('idle')
+  const [diaryData, setDiaryData] = useState<DiaryData | null>(null)
+  const [isSavingDiary, setIsSavingDiary] = useState(false)
+  const diaryPrefetchedRef = useRef(false)
 
   const isListening = state.voice === 'listening' && state.micEnabled
 
@@ -150,17 +165,91 @@ export function ConversationPage() {
     }
   }, [isListening, state.localStream])
 
+  // 방금 끝낸 대화 하나로 일기를 미리 만들어 둔다. '이야기 완성!'이 뜨는 순간
+  // 백그라운드로 시작해, 아이가 '일기 보기'를 누를 때 대부분 이미 준비돼 있게 한다.
+  const { conversationId, childId } = state
+  useEffect(() => {
+    if (!isEnded || !canMakeDiary) return
+    if (diaryPrefetchedRef.current) return
+    if (conversationId === null || childId === null) return
+    diaryPrefetchedRef.current = true
+
+    let cancelled = false
+    setDiaryStatus('loading')
+
+    void (async () => {
+      const deadline = Date.now() + PREVIEW_RETRY_WINDOW_MS
+      for (;;) {
+        try {
+          const preview = await previewChildDiary(childId, conversationId)
+          if (cancelled) return
+          setDiaryData({
+            lines: preview.lines,
+            previewToken: preview.previewToken,
+            title: preview.title,
+          })
+          setDiaryStatus('ready')
+          return
+        } catch {
+          // 아직 COMPLETED로 반영되기 전이면 잠깐 뒤 다시 시도한다.
+          if (cancelled) return
+          if (Date.now() >= deadline) {
+            setDiaryStatus('error')
+            return
+          }
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, PREVIEW_RETRY_INTERVAL_MS)
+          })
+          if (cancelled) return
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isEnded, canMakeDiary, conversationId, childId])
+
   const openDiary = useCallback(() => {
     setIsDiaryOpen(true)
   }, [])
 
-  const attachDiary = useCallback(() => {
+  const attachDiary = useCallback(async () => {
     if (isDiaryAttached) {
-      navigate('/diaries')
+      navigate('/diaries', { state: { from: '/conversation' } })
       return
     }
-    setIsDiaryAttached(true)
-  }, [isDiaryAttached, navigate])
+    if (diaryStatus !== 'ready' || diaryData === null || isSavingDiary) return
+    if (childId === null) return
+
+    setIsSavingDiary(true)
+    try {
+      await saveChildDiary(childId, diaryData.previewToken)
+    } catch {
+      // 토큰 만료(10분)나 일시 오류면 미리보기를 한 번 다시 받아 저장을 시도한다.
+      // 이미 저장된 대화(중복)면 그대로 일기장으로 보내면 방금 일기가 보인다.
+      if (conversationId !== null) {
+        try {
+          const fresh = await previewChildDiary(childId, conversationId)
+          await saveChildDiary(childId, fresh.previewToken)
+        } catch {
+          // 유아 화면이라 실패를 강조하지 않고 일기장으로 넘어간다.
+        }
+      }
+    } finally {
+      setIsSavingDiary(false)
+      setIsDiaryAttached(true)
+      navigate('/diaries', { state: { from: '/conversation' } })
+    }
+  }, [
+    childId,
+    conversationId,
+    diaryData,
+    diaryStatus,
+    isDiaryAttached,
+    isSavingDiary,
+    navigate,
+  ])
 
   const leaveConversation = () => {
     if (isConversing) {
@@ -211,31 +300,7 @@ export function ConversationPage() {
             src={backButtonUrl}
           />
         </button>
-        <div className="absolute top-4 right-[25px] z-30 flex flex-col gap-2">
-          <button
-            aria-label="오늘의 일기"
-            className="size-[58px] bg-transparent p-0 transition hover:scale-105"
-            onClick={() => void openDiary()}
-            type="button"
-          >
-            <img
-              alt=""
-              className="size-full object-contain"
-              src={diaryButtonUrl}
-            />
-          </button>
-          <Link
-            aria-label="내 일기장"
-            className="size-[58px] transition hover:scale-105"
-            to="/diaries"
-          >
-            <img
-              alt=""
-              className="size-full object-contain"
-              src={diaryListButtonUrl}
-            />
-          </Link>
-        </div>
+        <DiaryBookButton className="absolute top-[25px] right-[25px] z-30" />
 
         <button
           aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
@@ -339,7 +404,7 @@ export function ConversationPage() {
             {isConversing ? (
               <div className="absolute right-[95px] bottom-[45px] z-30 flex w-[170px] flex-col items-center">
                 <div
-                  className={`-mb-0 rounded-full px-3 py-1.5 text-center text-[15px] text-white shadow-md ${
+                  className={`-mb-0 max-w-[280px] rounded-[26px] px-4 py-2 text-center text-[24px] leading-[1.25] break-keep whitespace-pre-line text-white shadow-md ${
                     state.notice ? 'bg-[#c85f50]' : 'bg-[#527542]/90'
                   }`}
                   role="status"
@@ -348,11 +413,11 @@ export function ConversationPage() {
                   {state.notice ??
                     (state.micEnabled
                       ? STATUS_COPY[state.voice]
-                      : '마이크가 꺼져 있어')}
+                      : '마이크가\n꺼져 있어')}
                 </div>
                 <button
                   aria-label={state.micEnabled ? '마이크 끄기' : '마이크 켜기'}
-                  className="relative flex size-[96px] items-center justify-center border-0 bg-transparent p-0 drop-shadow-[0_8px_12px_rgba(0,0,0,.3)] transition hover:scale-105 disabled:opacity-70"
+                  className="relative flex size-[120px] items-center justify-center border-0 bg-transparent p-0 drop-shadow-[0_8px_12px_rgba(0,0,0,.3)] transition hover:scale-105 disabled:opacity-70"
                   disabled={state.phase === 'closing'}
                   onClick={toggleMic}
                   type="button"
@@ -427,7 +492,7 @@ export function ConversationPage() {
 
               {guideMessage ? (
                 <p
-                  className="absolute top-[70%] right-[12%] left-[12%] min-h-6 text-[15px] text-[#bc5b4c]"
+                  className="absolute top-[68%] right-[12%] left-[12%] min-h-6 text-[25px] text-[#bc5b4c]"
                   role="alert"
                   style={jua}
                 >
@@ -461,21 +526,21 @@ export function ConversationPage() {
               <div className="absolute inset-[8px] rounded-[32px] border-2 border-[#ead8ab]" />
               <div className="relative">
                 <div className="text-[58px]">{canMakeDiary ? '🌟' : '👋'}</div>
-                <p className="mt-1 text-[20px] text-[#86a85e]" style={jua}>
+                <p className="mt-1 text-[35px] text-[#86a85e]" style={jua}>
                   {canMakeDiary ? '이야기 완성!' : '다음에 또 만나'}
                 </p>
-                <h2 className="mt-1 text-[34px] text-[#4f6f38]" style={jua}>
+                <h2 className="mt-1 text-[40px] text-[#4f6f38]" style={jua}>
                   오늘 이야기도 정말 즐거웠어
                 </h2>
-                <p className="mt-3 text-[18px] text-[#806b45]" style={jua}>
+                <p className="mt-3 text-[25px] text-[#806b45]" style={jua}>
                   {canMakeDiary
                     ? '빵긋이가 네 이야기를 소중히 간직할게.'
                     : '다음에 더 많이 이야기해 줘!'}
                 </p>
-                <div className="mt-7 flex justify-center gap-1">
+                <div className="mt-1 -mb-2 flex justify-center gap-0">
                   {canMakeDiary ? (
                     <button
-                      className="h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-white"
+                      className="h-[100px] w-[270px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-white"
                       onClick={() => void openDiary()}
                       style={{
                         ...jua,
@@ -489,8 +554,8 @@ export function ConversationPage() {
                     </button>
                   ) : null}
                   <button
-                    className={`h-[70px] w-[240px] bg-[length:100%_100%] bg-center bg-no-repeat text-[19px] text-[#6a5431] ${
-                      canMakeDiary ? '-ml-4' : ''
+                    className={`h-[100px] w-[320px] bg-[length:100%_100%] bg-center bg-no-repeat text-[27px] text-[#6a5431] ${
+                      canMakeDiary ? '-ml-9' : ''
                     }`}
                     onClick={() => navigate('/child')}
                     style={{
@@ -537,16 +602,35 @@ export function ConversationPage() {
                 <h2 className="mt-0.5 text-[39px] text-[#7a5220]" style={jua}>
                   오늘의 일기
                 </h2>
-                <div className="mt-3.5 flex max-w-[650px] flex-col gap-2">
-                  {DIARY_LINES.map((line) => (
+                <div
+                  aria-live="polite"
+                  className="mt-3.5 flex max-h-[240px] min-h-[140px] max-w-[650px] flex-col justify-center gap-2 overflow-y-auto"
+                >
+                  {diaryStatus === 'ready' && diaryData ? (
+                    diaryData.lines.map((line) => (
+                      <p
+                        className="text-[23px] leading-[1.38] text-[#5f4626]"
+                        key={line}
+                        style={jua}
+                      >
+                        {line}
+                      </p>
+                    ))
+                  ) : diaryStatus === 'error' ? (
                     <p
-                      className="text-[23px] leading-[1.38] text-[#5f4626]"
-                      key={line}
+                      className="text-[22px] leading-[1.5] text-[#8a6a34]"
                       style={jua}
                     >
-                      {line}
+                      일기는 잠시 뒤에 일기장에서 볼 수 있어.
                     </p>
-                  ))}
+                  ) : (
+                    <p
+                      className="text-[22px] leading-[1.5] text-[#6f8e3f]"
+                      style={jua}
+                    >
+                      빵긋이가 일기를 만들어주고 있어요…
+                    </p>
+                  )}
                 </div>
                 <p
                   aria-live="polite"
@@ -559,8 +643,12 @@ export function ConversationPage() {
                 </p>
                 <div className="-mt-1 flex flex-col items-center">
                   <button
-                    className="translate-x-2.4 relative block w-[320px] transition hover:scale-105 active:scale-[.98]"
-                    onClick={attachDiary}
+                    className="translate-x-2.4 relative block w-[320px] transition hover:scale-105 active:scale-[.98] disabled:pointer-events-none disabled:opacity-50"
+                    disabled={
+                      !isDiaryAttached &&
+                      (diaryStatus !== 'ready' || isSavingDiary)
+                    }
+                    onClick={() => void attachDiary()}
                     type="button"
                   >
                     <img
@@ -574,7 +662,9 @@ export function ConversationPage() {
                     >
                       {isDiaryAttached
                         ? '일기장에 붙였어요!'
-                        : '내 일기장에 붙이기'}
+                        : isSavingDiary
+                          ? '붙이는 중…'
+                          : '내 일기장에 붙이기'}
                     </span>
                   </button>
                   <button

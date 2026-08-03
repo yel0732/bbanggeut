@@ -31,6 +31,7 @@ import {
   playMatchSfx,
   playRetrySfx,
 } from '@/features/games/dobble/dobbleSfx'
+import { useCountdownBeep } from '@/features/games/useCountdownBeep'
 import {
   getDobbleSymbol,
   preloadDobbleSymbols,
@@ -181,6 +182,8 @@ export function DobblePlayPage() {
     handleGrab,
     status === 'error',
   )
+
+  useCountdownBeep(dobble.phase === 'countdown', dobble.countdown)
 
   useEffect(() => {
     if (dobble.phase === 'playing' && !playStartedAtRef.current) {

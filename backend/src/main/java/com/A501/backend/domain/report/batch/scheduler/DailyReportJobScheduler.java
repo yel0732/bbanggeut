@@ -48,12 +48,22 @@ public class DailyReportJobScheduler {
     @Scheduled(
             cron = "${report.schedule.cron}",
             zone = "${report.schedule.zone}")
-    public void run() throws Exception {
+    public void run() {
         java.time.Instant now = clock.instant();
         for (ReportDeliverySchedule schedule
                 : childReportQueryPort.findActiveDeliverySchedules()) {
             if (periodCalculator.isGenerationDue(schedule, now)) {
-                launch(schedule, periodCalculator.calculate(schedule, now));
+                try {
+                    launch(schedule, periodCalculator.calculate(schedule, now));
+                } catch (Exception exception) {
+                    // One failed schedule must not prevent other delivery times
+                    // from being registered. The next scheduler tick retries it.
+                    log.error(
+                            "Daily report job launch failed. deliveryTime={}, timezone={}",
+                            schedule.deliveryTime(),
+                            schedule.timezone(),
+                            exception);
+                }
             }
         }
     }
@@ -89,7 +99,7 @@ public class DailyReportJobScheduler {
             jobLauncher.run(dailyReportJob, parameters);
         } catch (JobExecutionAlreadyRunningException
                 | JobInstanceAlreadyCompleteException exception) {
-            log.info(
+            log.debug(
                     "Daily report job skipped because reportDate={}, deliveryTime={}, timezone={} is already running or completed.",
                     period.reportDate(),
                     schedule.deliveryTime(),

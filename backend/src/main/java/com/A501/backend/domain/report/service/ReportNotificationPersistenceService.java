@@ -73,6 +73,9 @@ public class ReportNotificationPersistenceService {
                 recipientPort.findRecipient(report.getChildId());
 
         DeliveryPlan deliveryPlan = deliveryPlan(recipient.parentId());
+        if (!deliveryPlan.enabled()) {
+            return;
+        }
         ReportNotification saved = notificationRepository.save(
                 ReportNotification.create(
                         recipient.parentId(),

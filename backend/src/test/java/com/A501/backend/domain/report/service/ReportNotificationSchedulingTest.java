@@ -112,6 +112,49 @@ class ReportNotificationSchedulingTest {
                 .isEqualTo(LocalDateTime.of(2026, 7, 29, 11, 0));
     }
 
+    @Test
+    void disabledPreferenceDoesNotCreateNotificationRecord() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-29T10:00:00Z"),
+                ZoneOffset.UTC);
+        ReportNotificationPreference preference =
+                ReportNotificationPreference.defaults(1L);
+        preference.update(false, LocalTime.of(20, 0), "Asia/Seoul");
+
+        when(dailyReportRepository.findById(10L)).thenReturn(Optional.of(report));
+        when(report.getGenerationStatus()).thenReturn(ReportGenerationStatus.COMPLETED);
+        when(report.getChildId()).thenReturn(20L);
+        when(notificationRepository.existsByReportIdAndNotificationType(
+                10L, ReportNotificationType.REPORT_COMPLETED)).thenReturn(false);
+        when(recipientProvider.getIfAvailable()).thenReturn(recipientPort);
+        when(recipientPort.findRecipient(20L))
+                .thenReturn(new ReportNotificationRecipient(1L, "child"));
+        when(preferenceRepository.findByParentId(1L))
+                .thenReturn(Optional.of(preference));
+
+        service(clock).create(10L, ReportNotificationType.REPORT_COMPLETED);
+
+        verify(notificationRepository, never()).save(any(ReportNotification.class));
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void missingPreferenceUsesDefaultDeliveryTimeInsteadOfImmediateDelivery() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-29T10:00:00Z"),
+                ZoneOffset.UTC);
+        ReportNotificationScheduleCalculator calculator =
+                new ReportNotificationScheduleCalculator(clock);
+
+        ReportNotificationScheduleCalculator.DeliveryPlan plan =
+                calculator.calculate(Optional.empty());
+
+        assertThat(plan.enabled()).isTrue();
+        assertThat(plan.deliverNow()).isFalse();
+        assertThat(plan.scheduledAt())
+                .isEqualTo(LocalDateTime.of(2026, 7, 29, 11, 0));
+    }
+
     private ReportNotificationPersistenceService service(Clock clock) {
         return new ReportNotificationPersistenceService(
                 dailyReportRepository,

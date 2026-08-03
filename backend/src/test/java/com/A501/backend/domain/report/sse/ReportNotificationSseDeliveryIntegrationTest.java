@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.entity.ReportNotificationType;
+import com.A501.backend.domain.report.entity.ReportNotificationPreference;
 import com.A501.backend.domain.report.model.ReportGameSource;
 import com.A501.backend.domain.report.model.ReportPeriod;
 import com.A501.backend.domain.report.port.ConversationSummaryPort;
@@ -28,6 +30,7 @@ import com.A501.backend.domain.report.port.ReportNotificationRecipientPort;
 import com.A501.backend.domain.report.port.ReportNotificationRecipientPort.ReportNotificationRecipient;
 import com.A501.backend.domain.report.repository.DailyReportRepository;
 import com.A501.backend.domain.report.repository.ReportNotificationRepository;
+import com.A501.backend.domain.report.repository.ReportNotificationPreferenceRepository;
 import com.A501.backend.domain.report.service.DailyReportGenerationService;
 import com.A501.backend.domain.report.service.ReportNotificationPublisher;
 
@@ -58,6 +61,9 @@ class ReportNotificationSseDeliveryIntegrationTest {
     @Autowired
     private ReportNotificationRepository notificationRepository;
 
+    @Autowired
+    private ReportNotificationPreferenceRepository preferenceRepository;
+
     @MockitoBean
     private GameReportQueryPort gameReportQueryPort;
 
@@ -73,7 +79,12 @@ class ReportNotificationSseDeliveryIntegrationTest {
     @BeforeEach
     void setUp() {
         notificationRepository.deleteAll();
+        preferenceRepository.deleteAll();
         dailyReportRepository.deleteAll();
+        ReportNotificationPreference preference =
+                ReportNotificationPreference.defaults(PARENT_ID);
+        preference.update(true, LocalTime.MIDNIGHT, "Asia/Seoul");
+        preferenceRepository.saveAndFlush(preference);
         when(recipientPort.findRecipient(CHILD_ID))
                 .thenReturn(new ReportNotificationRecipient(PARENT_ID, "하준"));
     }

@@ -42,7 +42,7 @@ public class ReportNotificationPreference extends BaseTimeEntity {
     private boolean enabled;
 
     @Column(name = "notification_minute", nullable = false)
-    private int notificationMinute;
+    private short notificationMinute;
 
     @Column(name = "time_zone", nullable = false, length = 50)
     private String timeZone;
@@ -50,7 +50,7 @@ public class ReportNotificationPreference extends BaseTimeEntity {
     private ReportNotificationPreference(Long parentId) {
         this.parentId = parentId;
         this.enabled = true;
-        this.notificationMinute = DEFAULT_MINUTE;
+        this.notificationMinute = (short) DEFAULT_MINUTE;
         this.timeZone = DEFAULT_TIME_ZONE;
     }
 
@@ -67,8 +67,8 @@ public class ReportNotificationPreference extends BaseTimeEntity {
         }
         ZoneId.of(timeZone);
         this.enabled = enabled;
-        this.notificationMinute = notificationTime.getHour() * 60
-                + notificationTime.getMinute();
+        this.notificationMinute = (short) (notificationTime.getHour() * 60
+                + notificationTime.getMinute());
         this.timeZone = timeZone;
     }
 

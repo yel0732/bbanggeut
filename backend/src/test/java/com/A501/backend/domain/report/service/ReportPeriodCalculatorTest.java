@@ -84,4 +84,34 @@ class ReportPeriodCalculatorTest {
         assertThat(period.endedAt())
                 .isEqualTo(LocalDateTime.of(2026, 7, 23, 23, 55));
     }
+
+    @Test
+    void newYorkDeliveryUsesDaylightSavingOffsetInSummer() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-23T19:55:00Z"),
+                ZoneId.of("UTC"));
+        ReportPeriodCalculator calculator = new ReportPeriodCalculator(clock);
+        ReportDeliverySchedule schedule = new ReportDeliverySchedule(
+                java.time.LocalTime.of(16, 0), "America/New_York");
+
+        assertThat(calculator.isGenerationDue(schedule, clock.instant()))
+                .isTrue();
+        assertThat(calculator.calculate(schedule, clock.instant()).endedAt())
+                .isEqualTo(LocalDateTime.of(2026, 7, 23, 15, 55));
+    }
+
+    @Test
+    void newYorkDeliveryUsesStandardOffsetInWinter() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-12-23T20:55:00Z"),
+                ZoneId.of("UTC"));
+        ReportPeriodCalculator calculator = new ReportPeriodCalculator(clock);
+        ReportDeliverySchedule schedule = new ReportDeliverySchedule(
+                java.time.LocalTime.of(16, 0), "America/New_York");
+
+        assertThat(calculator.isGenerationDue(schedule, clock.instant()))
+                .isTrue();
+        assertThat(calculator.calculate(schedule, clock.instant()).endedAt())
+                .isEqualTo(LocalDateTime.of(2026, 12, 23, 15, 55));
+    }
 }

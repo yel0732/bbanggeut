@@ -552,11 +552,13 @@ CREATE TABLE report_notification_preference (
     preference_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     parent_id BIGINT NOT NULL,
     enabled BOOLEAN NOT NULL,
-    notification_time TIME NOT NULL,
+    notification_minute SMALLINT NOT NULL,
     time_zone VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    CONSTRAINT uk_report_notification_preference_parent UNIQUE (parent_id)
+    CONSTRAINT uk_report_notification_preference_parent UNIQUE (parent_id),
+    CONSTRAINT chk_report_notification_minute
+        CHECK (notification_minute BETWEEN 0 AND 1439)
 );
 
 -- notification_type: REPORT_COMPLETED | REPORT_FAILED

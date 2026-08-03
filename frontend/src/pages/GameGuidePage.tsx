@@ -16,7 +16,7 @@ import guideBackButtonUrl from '@/assets/images/game-entry/guide-back-btn.webp'
 import guideBoardUrl from '@/assets/images/game-entry/guide-board.webp'
 import guideStartButtonUrl from '@/assets/images/game-entry/guide-start-btn.webp'
 import backgroundUrl from '@/assets/images/game-entry/game-select-bg.webp'
-import fruitPracticeBackgroundUrl from '@/assets/images/tutorial/fruit/fruit-ninja-bg-ver2.png'
+import fruitPracticeBackgroundUrl from '@/assets/images/tutorial/fruit/fruit-ninja-bg-ver2.webp'
 import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
@@ -270,7 +270,7 @@ export function GameGuidePage() {
         <audio
           aria-label="게임 배경 음악"
           loop
-          preload="auto"
+          preload="metadata"
           ref={audioRef}
           src={
             tutorialGameId === 'fruit'

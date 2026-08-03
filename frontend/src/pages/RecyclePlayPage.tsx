@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 import {
@@ -8,6 +14,7 @@ import {
 import bgmUrl from '@/assets/audio/recycle-game/river-recycle.mp3'
 import backgroundUrl from '@/assets/images/recycle-game/background.webp'
 import bbanggutGuideUrl from '@/assets/images/recycle-game/bbanggut-guide.webp'
+import riverRippleUrl from '@/assets/images/recycle-game/river-ripple.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import {
@@ -369,6 +376,8 @@ function PlayField({
 
   return (
     <div className="absolute inset-0 z-10">
+      <RiverRipple />
+
       {/* 정답을 맞히면 동물들이 크게 뛴다. 쓰레기 uid가 바뀔 때마다 새로 뛴다. */}
       <CheerAnimals celebrateKey={correct?.itemUid ?? null} />
 
@@ -381,6 +390,11 @@ function PlayField({
       {items.map((item) => {
         const hovered = hover.a === item.uid || hover.b === item.uid
         const held = item.heldBy !== null
+        // 아래쪽 갈래일수록 깊다. 물 밖으로 건져 올린 것은 잠기지 않는다.
+        const waterline = held
+          ? 1
+          : CFG.submerge.startRatio -
+            item.laneRatio * CFG.submerge.laneDepthRatio
 
         return (
           <div
@@ -420,23 +434,89 @@ function PlayField({
                 }}
               />
             ) : null}
-            <img
-              alt={item.name}
-              className="relative block object-contain will-change-transform"
-              decoding="sync"
-              draggable={false}
-              loading="eager"
-              src={item.imageUrl}
+            {/*
+              물살 자국. 흘러온 쪽 뒤로 옅게 퍼진다.
+
+              기우뚱거림 밖에 두어 늘 수평을 지킨다 — 자국까지 같이 돌면 물이
+              아니라 쓰레기에 붙은 그림처럼 보인다.
+            */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute rounded-[50%] blur-[6px]"
               style={{
-                width: CFG.itemSize,
-                height: CFG.itemSize,
-                transform: held ? 'scale(1.1)' : 'scale(1)',
-                transition: 'transform 160ms ease-out',
-                filter: held
-                  ? 'drop-shadow(0 0 14px rgba(255,224,120,0.9))'
-                  : 'drop-shadow(0 6px 8px rgba(20,50,40,0.35))',
+                width: CFG.itemSize * CFG.wake.widthRatio,
+                height: CFG.itemSize * CFG.wake.heightRatio,
+                left: -CFG.itemSize * CFG.wake.offsetRatio,
+                top: `${waterline * 100}%`,
+                background: `radial-gradient(closest-side, ${CFG.wake.color}, transparent)`,
+                opacity: held ? 0 : 1,
+                transition: 'opacity 160ms ease-out',
               }}
             />
+
+            {/* 물살에 기우뚱거린다. 위상은 쓰레기마다 다르다. */}
+            <div
+              className="absolute inset-0 [animation:recycle-item-sway_var(--sway-period)_ease-in-out_infinite] motion-reduce:[animation:none]"
+              style={
+                {
+                  '--sway': `${CFG.sway.degrees}deg`,
+                  '--sway-period': `${CFG.sway.periodSec}s`,
+                  animationDelay: `-${item.bobPhaseMs}ms`,
+                } as CSSProperties
+              }
+            >
+              <img
+                alt={item.name}
+                className="relative block object-contain will-change-transform"
+                decoding="sync"
+                draggable={false}
+                loading="eager"
+                src={item.imageUrl}
+                style={{
+                  width: CFG.itemSize,
+                  height: CFG.itemSize,
+                  transform: held ? 'scale(1.1)' : 'scale(1)',
+                  transition: 'transform 160ms ease-out',
+                  filter: held
+                    ? 'drop-shadow(0 0 14px rgba(255,224,120,0.9))'
+                    : 'drop-shadow(0 6px 8px rgba(20,50,40,0.35))',
+                }}
+              />
+              {/*
+                물에 잠긴 부분.
+
+                쓰레기 그림을 그대로 마스크로 써서 그림 모양대로만 물빛이 든다.
+                네모로 덮으면 그림이 없는 구석까지 물들어 상자가 드러난다.
+
+                한때 수면 선을 얇게 얹었는데, 물결처럼 보이지 않고 그림을 가로지르는
+                줄이 되어 무슨 쓰레기인지 알아보기 어려웠다.
+              */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 block"
+                style={{
+                  background: [
+                    `linear-gradient(to bottom,`,
+                    `${CFG.submerge.fromColor} ${waterline * 100}%,`,
+                    `${CFG.submerge.midColor} ${CFG.submerge.fullRatio * 100}%,`,
+                    `${CFG.submerge.toColor} 100%)`,
+                  ].join(' '),
+                  maskImage: `url(${item.imageUrl})`,
+                  maskPosition: 'center',
+                  maskRepeat: 'no-repeat',
+                  maskSize: 'contain',
+                  WebkitMaskImage: `url(${item.imageUrl})`,
+                  WebkitMaskPosition: 'center',
+                  WebkitMaskRepeat: 'no-repeat',
+                  WebkitMaskSize: 'contain',
+                  // 손에 들면 물 밖으로 건져 올린 것이다.
+                  opacity: held ? 0 : 1,
+                  transform: held ? 'scale(1.1)' : 'scale(1)',
+                  transition:
+                    'transform 160ms ease-out, opacity 160ms ease-out',
+                }}
+              />
+            </div>
           </div>
         )
       })}
@@ -525,6 +605,49 @@ const GUIDE_DINO_Y = -30
 const GUIDE_GROUP_Y = HUD_BELOW_SCORE_Y + 15
 /** 말풍선을 빵긋이 발끝보다 얼마나 띄울지(px). 키우면 말풍선이 올라간다. */
 const GUIDE_BUBBLE_LIFT = 70
+
+/**
+ * 물길 위를 흐르는 물결.
+ *
+ * 배경은 멈춰 있는 그림이라 물이 흐르는지 알 수 없다. 좌우로 이어지는 무늬를
+ * 두 장 이어 붙여 천천히 밀어 준다.
+ *
+ * 물길의 아래 둑은 가운데가 깊고 양끝이 얕게 휘어 있는데, 무늬는 네모라 그대로
+ * 덮으면 잔디까지 물결이 얹힌다. 가장 얕은 높이까지만 덮고 위아래 끝을 흐리게
+ * 지워 경계가 드러나지 않게 한다.
+ */
+function RiverRipple() {
+  const top = CFG.river.topY
+  const height = CFG.river.bottomEdgeY - top
+  const fade = CFG.ripple.fadeRatio * 100
+  const mask = `linear-gradient(to bottom, transparent 0%, black ${fade}%, black ${100 - fade}%, transparent 100%)`
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute right-0 left-0 z-[2] overflow-hidden"
+      style={{
+        top,
+        height,
+        maskImage: mask,
+        WebkitMaskImage: mask,
+        opacity: CFG.ripple.opacity,
+      }}
+    >
+      <div
+        className="absolute inset-y-0 left-0 w-[200%] [animation:recycle-river-flow_var(--flow)_linear_infinite] motion-reduce:[animation:none]"
+        style={
+          {
+            '--flow': `${CFG.ripple.periodSec}s`,
+            backgroundImage: `url(${riverRippleUrl})`,
+            backgroundRepeat: 'repeat-x',
+            backgroundSize: `auto ${CFG.ripple.tileHeight}px`,
+          } as CSSProperties
+        }
+      />
+    </div>
+  )
+}
 
 /**
  * 오답 안내 화면.

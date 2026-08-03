@@ -37,8 +37,8 @@ import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
 import backgroundUrl from '@/assets/images/parent-mode/background.webp'
 import menuBoardUrl from '@/assets/images/parent-mode/menu-board.webp'
-import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide-trimmed.png'
-import reportArrivalNoticeUrl from '@/assets/images/parent-mode/report-arrival-notice-bg.png'
+import profileMenuWideUrl from '@/assets/images/parent-mode/profile-menu-wide-trimmed.webp'
+import reportArrivalNoticeUrl from '@/assets/images/parent-mode/report-arrival-notice-bg.webp'
 import reportNotificationButtonUrl from '@/assets/images/parent-mode/report-notification-button.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
 import parentAvatarUrl from '@/assets/images/profile/parent-avatar.webp'
@@ -48,6 +48,7 @@ import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useFitScale } from '@/hooks/useFitScale'
+import { COMPLETE_BUTTON_CLIP, PHOTO_BUTTON_CLIP } from '@/lib/buttonClip'
 import { useParentBgm } from '@/hooks/useParentBgm'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { ChildProfileCreateDialog } from '@/components/profile/ChildProfileCreateDialog'
@@ -1637,6 +1638,7 @@ export function ParentModePage() {
                   style={{
                     ...jua,
                     backgroundImage: `url(${completeButtonUrl})`,
+                    clipPath: COMPLETE_BUTTON_CLIP,
                   }}
                   type="button"
                 >
@@ -1962,6 +1964,7 @@ export function ParentModePage() {
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
+                      clipPath: PHOTO_BUTTON_CLIP,
                     }}
                     type="button"
                   >
@@ -1973,6 +1976,7 @@ export function ParentModePage() {
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
+                      clipPath: PHOTO_BUTTON_CLIP,
                     }}
                     type="button"
                   >
@@ -1984,6 +1988,7 @@ export function ParentModePage() {
                     style={{
                       ...jua,
                       backgroundImage: `url(${completeButtonUrl})`,
+                      clipPath: COMPLETE_BUTTON_CLIP,
                       paintOrder: 'stroke fill',
                       WebkitTextStroke: '3px #4a7d1e',
                     }}
@@ -2200,6 +2205,7 @@ export function ParentModePage() {
                     style={{
                       ...jua,
                       backgroundImage: `url(${completeButtonUrl})`,
+                      clipPath: COMPLETE_BUTTON_CLIP,
                     }}
                     type="button"
                   >
@@ -2453,6 +2459,7 @@ export function ParentModePage() {
                 style={{
                   ...jua,
                   backgroundImage: `url(${completeButtonUrl})`,
+                  clipPath: COMPLETE_BUTTON_CLIP,
                 }}
                 type="button"
               >

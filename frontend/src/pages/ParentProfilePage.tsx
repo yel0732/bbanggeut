@@ -20,6 +20,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
+import { PHOTO_BUTTON_CLIP } from '@/lib/buttonClip'
 import { clearParentPhoto, saveParentPhoto } from '@/lib/parentPhoto'
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
@@ -328,21 +329,29 @@ export function ParentProfilePage() {
             />
           )}
           <button
-            className="absolute top-[29.5%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
+            className="absolute top-[28.8%] left-[46.5%] h-[80px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
             onClick={() => void toggleParentCamera()}
-            style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
+            style={{
+              ...jua,
+              backgroundImage: `url(${photoButtonUrl})`,
+              clipPath: PHOTO_BUTTON_CLIP,
+            }}
             type="button"
           >
             {isParentCameraOn ? '사진 찍기' : '웹캠 촬영'}
           </button>
           <button
-            className="absolute top-[36%] left-[46.5%] h-[62px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
+            className="absolute top-[36.7%] left-[46.5%] h-[80px] w-[228px] bg-[length:100%_100%] bg-center bg-no-repeat text-[22px] text-[#5a4a2a] active:translate-y-0.5"
             onClick={() => {
               stopParentCamera()
               setPhotoUrl(null)
               clearParentPhoto()
             }}
-            style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
+            style={{
+              ...jua,
+              backgroundImage: `url(${photoButtonUrl})`,
+              clipPath: PHOTO_BUTTON_CLIP,
+            }}
             type="button"
           >
             기본으로 사용

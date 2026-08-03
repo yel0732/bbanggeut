@@ -62,7 +62,8 @@ export function ChildHomePage() {
           onMouseLeave={() => setIsGateHovered(false)}
           type="button"
         >
-          <div className="absolute inset-0 origin-[50%_90%] [animation:child-home-leaf-sway_5s_ease-in-out_infinite,child-home-asset-bob_3s_ease-in-out_infinite]">
+          {/* 동굴 집과 같은 주기로 흔든다 — 어긋나면 화면이 산만하다. */}
+          <div className="absolute inset-0 origin-[50%_90%] [animation:child-home-asset-bob_3.4s_ease-in-out_infinite]">
             <img
               alt="문"
               className={`absolute inset-0 h-full w-full [animation:child-home-edge-glow_2.2s_ease-in-out_infinite] object-contain transition-opacity duration-300 ease-in-out ${isGateHovered ? 'opacity-0' : 'opacity-100'}`}
@@ -106,6 +107,7 @@ export function ChildHomePage() {
           type="button"
         >
           <div className="absolute top-[5px] right-[-10px] bottom-[-13px] left-[-10px]">
+            {/* 문과 같은 주기로 흔든다 — 어긋나면 화면이 산만하다. */}
             <div className="absolute inset-0 [animation:child-home-asset-bob_3.4s_ease-in-out_infinite]">
               <img
                 alt="동굴 집"

@@ -4,6 +4,8 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import backgroundUrl from '@/assets/images/fruit-game/background.webp'
 import playFrameUrl from '@/assets/images/fruit-game/play-frame.webp'
+import musicOnUrl from '@/assets/images/start/music-btn.webp'
+import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import {
   CameraErrorOverlay,
   CameraPermissionView,
@@ -45,7 +47,7 @@ export function GamePlayPage() {
   const navigate = useNavigate()
   const { gameId } = useParams()
   const canvasRef = useFitScale<HTMLDivElement>()
-  const { audioRef } = useBgmPlayer({ volume: 0.35 })
+  const { audioRef, isBgmPlaying, toggleBgm } = useBgmPlayer({ volume: 0.35 })
   const { videoRef, status, requestCamera } = useCameraStream()
   const hand = useHandTracking(videoRef, status === 'granted')
   const selectedAtRef = useRef(nowAsLocalDateTime())
@@ -240,7 +242,7 @@ export function GamePlayPage() {
         ref={canvasRef}
         className="relative h-[720px] w-[1280px] overflow-hidden text-white"
       >
-        <audio loop preload="auto" ref={audioRef} src={fruitBgmUrl} />
+        <audio loop preload="metadata" ref={audioRef} src={fruitBgmUrl} />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"
@@ -313,6 +315,24 @@ export function GamePlayPage() {
             title={game.label}
           />
         )}
+
+        {/* 다른 게임과 같은 자리에 둔다 — 화면마다 다른 곳에 있으면 못 찾는다. */}
+        <button
+          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
+          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] border-0 bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white"
+          onClick={() => {
+            void toggleBgm()
+          }}
+          type="button"
+        >
+          <img
+            alt=""
+            className="block h-full w-full object-contain"
+            decoding="async"
+            draggable={false}
+            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
+          />
+        </button>
       </div>
     </div>
   )

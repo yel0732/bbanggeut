@@ -24,6 +24,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { DiaryBookButton } from '@/components/DiaryBookButton'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { useConversationBgm } from '@/hooks/useConversationBgm'
+import { COMPLETE_BUTTON_CLIP, PHOTO_BUTTON_CLIP } from '@/lib/buttonClip'
 import { useFitScale } from '@/hooks/useFitScale'
 import {
   type VoiceStatus,
@@ -545,6 +546,7 @@ export function ConversationPage() {
                       style={{
                         ...jua,
                         backgroundImage: `url(${completeButtonUrl})`,
+                        clipPath: COMPLETE_BUTTON_CLIP,
                         paintOrder: 'stroke fill',
                         WebkitTextStroke: '3px #4a7d1e',
                       }}
@@ -561,6 +563,7 @@ export function ConversationPage() {
                     style={{
                       ...jua,
                       backgroundImage: `url(${photoButtonUrl})`,
+                      clipPath: PHOTO_BUTTON_CLIP,
                     }}
                     type="button"
                   >

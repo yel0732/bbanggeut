@@ -21,7 +21,7 @@ export function AdventureBgmLayout() {
       <audio
         aria-label="초록 모험 배경 음악"
         loop
-        preload="auto"
+        preload="metadata"
         ref={audioRef}
         src={bgmUrl}
       />

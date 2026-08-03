@@ -136,6 +136,20 @@ class ReportQueryControllerTest {
                 .andExpect(jsonPath(
                         "$.gameResults[0].resultMetrics.solvedCardCount")
                         .value(7))
+                .andExpect(jsonPath("$.gameSummaries.length()").value(1))
+                .andExpect(jsonPath("$.gameSummaries[0].gameType")
+                        .value("DOBBLE"))
+                .andExpect(jsonPath("$.gameSummaries[0].playCount").value(1))
+                .andExpect(jsonPath(
+                        "$.gameSummaries[0].totalPlayDurationSeconds")
+                        .value(120))
+                .andExpect(jsonPath("$.gameSummaries[0].highestScore")
+                        .value(85))
+                .andExpect(jsonPath(
+                        "$.gameSummaries[0].resultMetrics.solvedCardCount")
+                        .value(7))
+                .andExpect(jsonPath("$.gameSummaries[0].totalScore")
+                        .doesNotExist())
                 .andExpect(jsonPath("$.conversationSummary.diaryTitle")
                         .value("즐거운 하루"))
                 .andExpect(jsonPath(
@@ -158,6 +172,7 @@ class ReportQueryControllerTest {
                         .value("summary generation failed"))
                 .andExpect(jsonPath("$.failure.canRegenerate").value(true))
                 .andExpect(jsonPath("$.gameResults.length()").value(0))
+                .andExpect(jsonPath("$.gameSummaries.length()").value(0))
                 .andExpect(jsonPath("$.conversationSummary").doesNotExist());
     }
 

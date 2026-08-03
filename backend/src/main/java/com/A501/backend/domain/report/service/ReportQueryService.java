@@ -47,6 +47,7 @@ public class ReportQueryService {
     private final ReportGameResultRepository gameResultRepository;
     private final ReportConversationSummaryRepository summaryRepository;
     private final ReportGenerationAttemptRepository attemptRepository;
+    private final ReportGameSummaryService gameSummaryService;
     private final ObjectProvider<ReportCurrentParentProvider>
             currentParentProvider;
     private final ObjectProvider<ReportChildAccessVerifier>
@@ -116,6 +117,7 @@ public class ReportQueryService {
                     report,
                     new ReportDataAvailabilityResponse(false, false),
                     List.of(),
+                    List.of(),
                     null,
                     attemptRepository
                             .findFirstByReportIdOrderByAttemptNumberDesc(
@@ -141,6 +143,7 @@ public class ReportQueryService {
                         summary != null
                                 && summary.sourceConversationCount() > 0),
                 games,
+                gameSummaryService.summarize(games),
                 summary,
                 null);
     }

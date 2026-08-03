@@ -15,6 +15,7 @@ public record ReportDetailResponse(
         com.A501.backend.domain.report.entity.ReportGenerationStatus status,
         ReportDataAvailabilityResponse dataAvailability,
         List<ReportGameResultResponse> gameResults,
+        List<ReportGameSummaryResponse> gameSummaries,
         ReportConversationSummaryResponse conversationSummary,
         ReportFailureResponse failure,
         LocalDateTime generatedAt,
@@ -26,6 +27,7 @@ public record ReportDetailResponse(
             DailyReport report,
             ReportDataAvailabilityResponse dataAvailability,
             List<ReportGameResultResponse> gameResults,
+            List<ReportGameSummaryResponse> gameSummaries,
             ReportConversationSummaryResponse conversationSummary,
             ReportGenerationAttempt lastAttempt
     ) {
@@ -37,6 +39,7 @@ public record ReportDetailResponse(
                 report.getGenerationStatus(),
                 dataAvailability,
                 gameResults,
+                gameSummaries,
                 conversationSummary,
                 ReportFailureResponse.from(report, lastAttempt),
                 report.getCompletedAt(),

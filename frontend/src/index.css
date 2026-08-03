@@ -128,6 +128,28 @@
   }
 }
 
+@keyframes game-page-slide-in-right {
+  0% {
+    opacity: 0;
+    transform: translateX(70px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes game-page-slide-in-left {
+  0% {
+    opacity: 0;
+    transform: translateX(-70px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes dobble-side-in {
   0% {
     opacity: 0;
@@ -253,6 +275,29 @@
   }
 }
 
+/*
+  낱말 맞추기 힌트 깜빡임.
+
+  도블 것을 그대로 쓸 수 없다. 그쪽은 left/top 50%로 놓인 요소라 키프레임에
+  translate(-50%, -50%)가 들어 있는데, 여기서는 상자를 꽉 채운 그림에 걸어서 그
+  이동이 그대로 먹으면 그림만 왼쪽 위로 반쪽 밀려난다.
+
+  글자가 읽혀야 하므로 옅어지는 정도도 얕게 둔다.
+*/
+@keyframes wordmatch-hint-pulse {
+  0%,
+  62%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+  22%,
+  46% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
 @keyframes dobble-match-burst {
   0% {
     opacity: 0;
@@ -341,6 +386,53 @@
   100% {
     opacity: 1;
     transform: none;
+  }
+}
+
+/*
+  분리수거 물길 건너편에서 응원하는 동물.
+
+  제자리에서 폴짝 뛰며 좌우로 기울인다. 크게 움직이면 물길 위 쓰레기에서 시선이
+  옮겨가므로, 눈에 걸릴 만큼만 작게 흔든다. 동물마다 animation-delay를 달리 줘야
+  세 마리가 한 몸처럼 뛰지 않는다.
+*/
+@keyframes recycle-cheer-hop {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  25% {
+    transform: translateY(-7px) rotate(2deg);
+  }
+  50% {
+    transform: translateY(0) rotate(3deg);
+  }
+  75% {
+    transform: translateY(-4px) rotate(-2deg);
+  }
+}
+
+/*
+  알맞은 통에 넣었을 때. 높이 뛰어오르며 몸을 크게 흔든다.
+
+  평소 응원보다 확실히 커야 아이가 "내가 잘해서 저러는구나"로 읽는다. 한 번만
+  돌고 끝나며, 끝나면 평소 응원으로 돌아간다.
+*/
+@keyframes recycle-cheer-jump {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-34px) rotate(-9deg) scale(1.12);
+  }
+  50% {
+    transform: translateY(-6px) rotate(7deg) scale(1.04);
+  }
+  75% {
+    transform: translateY(-20px) rotate(-5deg) scale(1.08);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
   }
 }
 

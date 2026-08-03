@@ -28,6 +28,11 @@ export const GameEntryPage = lazy(() =>
     default: GameEntryPage,
   })),
 )
+export const MoreGamesPage = lazy(() =>
+  import('@/pages/MoreGamesPage').then(({ MoreGamesPage }) => ({
+    default: MoreGamesPage,
+  })),
+)
 export const GoogleBirthdatePage = lazy(() =>
   import('@/pages/GoogleBirthdatePage').then(({ GoogleBirthdatePage }) => ({
     default: GoogleBirthdatePage,
@@ -51,6 +56,26 @@ export const GamePlayPage = lazy(() =>
 export const DobblePlayPage = lazy(() =>
   import('@/pages/DobblePlayPage').then(({ DobblePlayPage }) => ({
     default: DobblePlayPage,
+  })),
+)
+export const WordMatchPlayPage = lazy(() =>
+  import('@/pages/WordMatchPlayPage').then(({ WordMatchPlayPage }) => ({
+    default: WordMatchPlayPage,
+  })),
+)
+export const WordMatchResultPage = lazy(() =>
+  import('@/pages/WordMatchResultPage').then(({ WordMatchResultPage }) => ({
+    default: WordMatchResultPage,
+  })),
+)
+export const RecyclePlayPage = lazy(() =>
+  import('@/pages/RecyclePlayPage').then(({ RecyclePlayPage }) => ({
+    default: RecyclePlayPage,
+  })),
+)
+export const RecycleResultPage = lazy(() =>
+  import('@/pages/RecycleResultPage').then(({ RecycleResultPage }) => ({
+    default: RecycleResultPage,
   })),
 )
 export const DobbleResultPage = lazy(() =>

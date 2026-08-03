@@ -13,7 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.A501.backend.domain.game.service.GameChildAccessVerifier;
@@ -23,6 +25,7 @@ import com.A501.backend.domain.game.repository.GameSessionRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@WithMockUser
 class FruitNinjaGameSessionControllerTest {
 
     @MockitoBean
@@ -32,12 +35,15 @@ class FruitNinjaGameSessionControllerTest {
     @Autowired GameSessionRepository gameSessionRepository;
     @Autowired FruitNinjaResultRepository fruitNinjaResultRepository;
     @Autowired FruitNinjaFruitResultRepository fruitResultRepository;
+    @Autowired JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
         fruitResultRepository.deleteAll();
         fruitNinjaResultRepository.deleteAll();
         gameSessionRepository.deleteAll();
+        jdbcTemplate.update("delete from game where game_id = 8");
+        insertGame(8L, "FRUIT_NINJA", "과일 자르기");
     }
 
     @Test
@@ -49,14 +55,14 @@ class FruitNinjaGameSessionControllerTest {
                         .content(validRequest(clientPlayId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.clientPlayId").value(clientPlayId.toString()))
-                .andExpect(jsonPath("$.score").value(999999));
+                .andExpect(jsonPath("$.score").value(231));
 
         var session = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
-        assertThat(session.getScore()).isEqualTo(999999);
+        assertThat(session.getScore()).isEqualTo(231);
         assertThat(fruitNinjaResultRepository.findById(session.getGameSessionId()))
                 .get()
                 .extracting("rulesVersion", "totalFruitCount", "slicedFruitCount")
-                .containsExactly("fruit-v1", 10, 7);
+                .containsExactly("fruit-ninja-v1", 10, 7);
         assertThat(fruitResultRepository.findAllByGameSessionIdOrderByFruitCode(
                 session.getGameSessionId()))
                 .extracting("fruitCode", "generatedCount", "slicedCount")
@@ -84,20 +90,16 @@ class FruitNinjaGameSessionControllerTest {
     }
 
     @Test
-    void acceptsClientPlayDurationWithoutRuleLookup() throws Exception {
+    void rejectsPlayDurationOverGameLimit() throws Exception {
         UUID clientPlayId = UUID.randomUUID();
         String request = validRequest(clientPlayId)
-                .replace("\"playDurationSeconds\": 120", "\"playDurationSeconds\": 80");
+                .replace("\"playDurationSeconds\": 60", "\"playDurationSeconds\": 61");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isCreated());
-
-        assertThat(gameSessionRepository.findByClientPlayId(clientPlayId))
-                .get()
-                .extracting("playDurationSeconds")
-                .isEqualTo(80);
+                .andExpect(status().isBadRequest());
+        assertNothingSaved();
     }
 
     @Test
@@ -130,45 +132,55 @@ class FruitNinjaGameSessionControllerTest {
     }
 
     @Test
-    void storesClientRuleVersionWithoutRuleLookup() throws Exception {
+    void rejectsUnknownRuleVersion() throws Exception {
         UUID clientPlayId = UUID.randomUUID();
         String request = validRequest(clientPlayId)
-                .replace("\"rulesVersion\": \"fruit-v1\"", "\"rulesVersion\": \"unknown\"");
+                .replace("\"rulesVersion\": \"fruit-ninja-v1\"", "\"rulesVersion\": \"unknown\"");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isCreated());
-
-        var session = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
-        assertThat(fruitNinjaResultRepository.findById(session.getGameSessionId()))
-                .get()
-                .extracting("rulesVersion")
-                .isEqualTo("unknown");
+                .andExpect(status().isBadRequest());
+        assertNothingSaved();
     }
 
     @Test
-    void storesClientFruitCodeWithoutRuleLookup() throws Exception {
+    void rejectsUnknownFruitCode() throws Exception {
         UUID clientPlayId = UUID.randomUUID();
         String request = validRequest(clientPlayId)
-                .replace("\"fruitCode\": \"BANANA\"", "\"fruitCode\": \"MANGO\"");
+                .replace("\"fruitCode\": \"BANANA\"", "\"fruitCode\": \"UNKNOWN\"");
 
         mockMvc.perform(post("/api/game-sessions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isCreated());
+                .andExpect(status().isBadRequest());
+        assertNothingSaved();
+    }
 
-        var session = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
-        assertThat(fruitResultRepository.findAllByGameSessionIdOrderByFruitCode(
-                session.getGameSessionId()))
-                .extracting("fruitCode")
-                .containsExactly("APPLE", "MANGO");
+    @Test
+    void rejectsManipulatedScore() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replace("\"score\": 231", "\"score\": 232");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_FRUIT_NINJA_RESULT"));
+        assertNothingSaved();
     }
 
     private void assertNothingSaved() {
         assertThat(gameSessionRepository.count()).isZero();
         assertThat(fruitNinjaResultRepository.count()).isZero();
         assertThat(fruitResultRepository.count()).isZero();
+    }
+
+    private void insertGame(long gameId, String gameCode, String gameName) {
+        jdbcTemplate.update(
+                "insert into game (game_id, game_code, game_name, created_at, updated_at) "
+                        + "values (?, ?, ?, current_timestamp, current_timestamp)",
+                gameId, gameCode, gameName);
     }
 
     private String validRequest(UUID clientPlayId) {
@@ -180,11 +192,11 @@ class FruitNinjaGameSessionControllerTest {
                   "selectedAt": "2026-07-23T10:00:00",
                   "playStartedAt": "2026-07-23T10:00:03",
                   "completedAt": "2026-07-23T10:02:03",
-                  "playDurationSeconds": 120,
-                  "score": 999999,
+                  "playDurationSeconds": 60,
+                  "score": 231,
                   "gameType": "FRUIT_NINJA",
                   "fruitNinjaResult": {
-                    "rulesVersion": "fruit-v1",
+                    "rulesVersion": "fruit-ninja-v1",
                     "totalFruitCount": 10,
                     "slicedFruitCount": 7,
                     "fruitResults": [

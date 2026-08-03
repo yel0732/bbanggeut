@@ -34,10 +34,29 @@ const FINGER_EXTENDED_RATIO = 1.45
 const FIST_MAX_EXTENDED = 1
 /** 주먹 상태에서 이 개수 이상 펴져야 다시 펴진 것으로 본다 (히스테리시스). */
 const OPEN_MIN_EXTENDED = 3
-/** 손 좌표 지터를 줄이는 지수 평활 계수 (1에 가까울수록 즉각 반응) */
-const SMOOTHING = 0.45
+/**
+ * 손 좌표 지터를 줄이는 지수 평활 계수 (1에 가까울수록 즉각 반응).
+ *
+ * 낮으면 손이 묵직하게 따라온다. 그림 맞추기는 제자리에 놓인 그림을 짚는
+ * 게임이라 이 값으로 충분하지만, 화면을 크게 오가는 게임은 답답하다. 그래서
+ * 기본값만 여기 두고 게임별로 올려 쓸 수 있게 인자로 받는다.
+ */
+const DEFAULT_SMOOTHING = 0.45
 /** 랜드마크가 잠깐 끊겨도 포인터를 유지하는 시간(ms) */
 const HOLD_MS = 220
+
+/**
+ * 손이 카메라 밖으로 나갔다고 볼 여유(정규화 좌표).
+ *
+ * MediaPipe는 손이 화면을 벗어나는 동안에도 좌표를 계속 내보낸다. 값이 0~1을
+ * 넘어가거나 테두리에 붙은 채로 남는데, 게임 쪽에서는 그 좌표를 화면 안으로
+ * 눌러 쓰기 때문에 포인터가 가장자리에 붙어 있고 "손이 잡힌" 상태로 이어진다.
+ * 그러면 손을 내려도 자동 중단이 걸리지 않는다.
+ *
+ * 그래서 프레임을 이만큼 넘어간 손은 없는 것으로 본다. 조금 여유를 두는 이유는
+ * 화면 끝을 짚으려고 손을 바짝 붙인 것까지 끊어 버리면 안 되기 때문이다.
+ */
+const OUT_OF_FRAME_MARGIN = 0.06
 
 /** 두 손을 구분하는 슬롯. 표시 색만 다르고 실제 좌우 의미는 두지 않는다. */
 export type HandSlot = 'a' | 'b'
@@ -92,8 +111,25 @@ function distance(
 export function useHandGestures(
   videoRef: RefObject<HTMLVideoElement | null>,
   enabled: boolean,
+  {
+    maxHands = 2,
+    smoothing = DEFAULT_SMOOTHING,
+  }: { maxHands?: 1 | 2; smoothing?: number } = {},
 ): HandGesturesState {
   const gesturesRef = useRef<HandGesturesFrame>({ a: null, b: null })
+  // 매 프레임 콜백에서 읽으므로 ref에 담아 콜백을 다시 만들지 않는다.
+  const smoothingRef = useRef(smoothing)
+  smoothingRef.current = smoothing
+  const maxHandsRef = useRef(maxHands)
+  maxHandsRef.current = maxHands
+  /**
+   * 한 손만 쓸 때 따라가고 있는 손의 직전 위치.
+   *
+   * 두 손이 화면에 있어도 쓰던 손을 계속 따라가야 한다. 매 프레임 인식 점수가
+   * 높은 손을 새로 고르면, 아이가 다른 손을 들었을 때 포인터가 건너뛰면서 들고
+   * 있던 것을 놓친다. 그래서 직전 위치에 가장 가까운 손을 이어서 잡는다.
+   */
+  const followedRef = useRef<{ x: number; y: number } | null>(null)
   const trackedRef = useRef<Record<HandSlot, Tracked | null>>({
     a: null,
     b: null,
@@ -101,19 +137,65 @@ export function useHandGestures(
 
   const handleResult = useCallback((result: HandLandmarkerResult) => {
     const now = performance.now()
-    const hands = result.landmarks ?? []
-    const labels = result.handedness ?? result.handednesses ?? []
+    const rawHands = result.landmarks ?? []
+    const rawLabels = result.handedness ?? result.handednesses ?? []
 
-    // 라벨로 슬롯을 정하고, 같은 라벨이 두 번 나오면 x 순서로 나눈다.
+    /*
+      카메라 밖으로 나간 손은 없는 것으로 본다.
+
+      MediaPipe는 손이 프레임을 벗어나는 동안에도 좌표를 계속 내보낸다. 게임은 그
+      좌표를 화면 안으로 눌러 쓰기 때문에, 걸러 내지 않으면 포인터가 가장자리에
+      붙은 채 "손이 잡혀 있는" 상태로 남고 자동 중단이 영영 걸리지 않는다.
+    */
+    const keep = rawHands.map(
+      (points) =>
+        points[LM.middleMcp].x >= -OUT_OF_FRAME_MARGIN &&
+        points[LM.middleMcp].x <= 1 + OUT_OF_FRAME_MARGIN &&
+        points[LM.middleMcp].y >= -OUT_OF_FRAME_MARGIN &&
+        points[LM.middleMcp].y <= 1 + OUT_OF_FRAME_MARGIN,
+    )
+    const hands = rawHands.filter((_, index) => keep[index])
+    const labels = rawLabels.filter((_, index) => keep[index])
+
     const bySlot: Record<HandSlot, number | null> = { a: null, b: null }
-    for (let i = 0; i < hands.length && i < 2; i++) {
-      const label = labels[i]?.[0]?.categoryName === 'Left' ? 'a' : 'b'
-      if (bySlot[label] === null) {
-        bySlot[label] = i
-      } else {
-        const other: HandSlot = label === 'a' ? 'b' : 'a'
-        if (bySlot[other] === null) {
-          bySlot[other] = i
+
+    if (maxHandsRef.current === 1) {
+      /*
+        한 손만 쓴다. 두 손이 화면에 있어도 쓰던 손을 계속 따라간다.
+
+        직전 위치에 가장 가까운 손을 이어서 잡는다. 손은 한 프레임에 순간이동하지
+        않으므로 이 기준이면 안 헷갈린다. 따라가던 손이 사라지면 그때 다시 고른다.
+
+        슬롯은 항상 `a`로 고정한다. 왼손/오른손 라벨에 따라 슬롯이 바뀌면 포인터
+        색이 변하고, 슬롯마다 따로 두는 조준·잡기 상태가 초기화돼 들고 있던 것을
+        놓친다.
+      */
+      const followed = followedRef.current
+      let best = 0
+      if (followed && hands.length > 1) {
+        let bestDist = Infinity
+        for (let i = 0; i < hands.length && i < 2; i++) {
+          const dist = distance(hands[i][LM.middleMcp], followed)
+          if (dist < bestDist) {
+            bestDist = dist
+            best = i
+          }
+        }
+      }
+      if (hands.length > 0) {
+        bySlot.a = best
+      }
+    } else {
+      // 라벨로 슬롯을 정하고, 같은 라벨이 두 번 나오면 x 순서로 나눈다.
+      for (let i = 0; i < hands.length && i < 2; i++) {
+        const label = labels[i]?.[0]?.categoryName === 'Left' ? 'a' : 'b'
+        if (bySlot[label] === null) {
+          bySlot[label] = i
+        } else {
+          const other: HandSlot = label === 'a' ? 'b' : 'a'
+          if (bySlot[other] === null) {
+            bySlot[other] = i
+          }
         }
       }
     }
@@ -159,17 +241,24 @@ export function useHandGestures(
         ? extended < OPEN_MIN_EXTENDED
         : extended <= FIST_MAX_EXTENDED
 
+      const smoothing = smoothingRef.current
       const x = previous
-        ? previous.x + (palm.x - previous.x) * SMOOTHING
+        ? previous.x + (palm.x - previous.x) * smoothing
         : palm.x
       const y = previous
-        ? previous.y + (palm.y - previous.y) * SMOOTHING
+        ? previous.y + (palm.y - previous.y) * smoothing
         : palm.y
       // 화면은 좌우 반전되므로 각도도 반전된 좌표계에서 계산한다.
       const angle = Math.atan2(palm.y - wrist.y, -(palm.x - wrist.x))
 
       tracked[slot] = { x, y, angle, fist, lastSeenAt: now }
       gesturesRef.current[slot] = { x, y, angle, fist }
+    }
+
+    // 한 손 모드에서 다음 프레임에 같은 손을 이어 잡을 기준점.
+    if (maxHandsRef.current === 1) {
+      const current = gesturesRef.current.a
+      followedRef.current = current ? { x: current.x, y: current.y } : null
     }
   }, [])
 
@@ -200,6 +289,7 @@ export function useHandGestures(
     }
     trackedRef.current = { a: null, b: null }
     gesturesRef.current = { a: null, b: null }
+    followedRef.current = null
   }, [enabled])
 
   return { gesturesRef, modelReady, error }

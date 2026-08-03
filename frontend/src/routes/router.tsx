@@ -18,12 +18,17 @@ import {
   GamePlayPage,
   GameResultPage,
   GoogleBirthdatePage,
+  MoreGamesPage,
   ParentModePage,
   ParentProfilePage,
   ProfileSelectPage,
+  RecyclePlayPage,
+  RecycleResultPage,
   ReportListPage,
   ReportDetailPage,
   StartPage,
+  WordMatchPlayPage,
+  WordMatchResultPage,
 } from '@/routes/lazyPages'
 
 export const router = createBrowserRouter([
@@ -65,8 +70,22 @@ export const router = createBrowserRouter([
             element: <GameEntryPage />,
           },
           {
+            path: '/games/more',
+            element: <MoreGamesPage />,
+          },
+          {
             path: '/games/dobble/result',
             element: <DobbleResultPage />,
+          },
+          // 분리수거·낱말 맞추기는 점수와 완성 개수만 보여 줘서 결과 화면을
+          // 따로 쓴다. 아래 `:gameId` 규칙보다 먼저 와야 이 화면이 잡힌다.
+          {
+            path: '/games/recycle/result',
+            element: <RecycleResultPage />,
+          },
+          {
+            path: '/games/wordmatch/result',
+            element: <WordMatchResultPage />,
           },
           {
             path: '/games/:gameId/result',
@@ -96,6 +115,16 @@ export const router = createBrowserRouter([
       {
         path: '/games/dobble/play',
         element: <DobblePlayPage />,
+      },
+      // 아직 놀이판을 만들지 않은 게임. 배경·BGM·HUD 자리만 잡아 둔 화면이다.
+      // 아래 `:gameId` 규칙보다 먼저 와야 이 화면이 잡힌다.
+      {
+        path: '/games/wordmatch/play',
+        element: <WordMatchPlayPage />,
+      },
+      {
+        path: '/games/recycle/play',
+        element: <RecyclePlayPage />,
       },
       {
         path: '/games/:gameId/play',

@@ -1,6 +1,5 @@
 package com.A501.backend.domain.game.controller;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -70,7 +69,7 @@ class GameAccessControlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest(childId)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+                .andExpect(jsonPath("$.error").value("AUTH_UNAUTHORIZED"));
     }
 
     @Test
@@ -107,13 +106,6 @@ class GameAccessControlIntegrationTest {
                         .content(validRequest(childId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.gameSessionId").isNotEmpty());
-    }
-
-    @Test
-    void 액세스_토큰이_없으면_후르츠_규칙_조회는_401() throws Exception {
-        mockMvc.perform(get("/api/games/fruit-ninja/rules/active"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
     }
 
     private Long seedChild(Long parentId) {

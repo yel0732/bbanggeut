@@ -17,13 +17,19 @@ import com.A501.backend.config.JpaAuditingConfig;
 import com.A501.backend.domain.game.entity.CardRound;
 import com.A501.backend.domain.game.entity.GameSession;
 import com.A501.backend.domain.game.entity.FruitNinjaResult;
+import com.A501.backend.domain.game.entity.RecyclingGameResult;
+import com.A501.backend.domain.game.entity.WordMatchResult;
 import com.A501.backend.domain.game.metric.CardResultStatus;
 import com.A501.backend.domain.game.metric.CognitiveGrade;
 import com.A501.backend.domain.game.metric.DobbleResultMetrics;
 import com.A501.backend.domain.game.metric.FruitNinjaResultMetrics;
+import com.A501.backend.domain.game.metric.RecyclingResultMetrics;
+import com.A501.backend.domain.game.metric.WordMatchResultMetrics;
 import com.A501.backend.domain.game.repository.CardRoundRepository;
 import com.A501.backend.domain.game.repository.GameSessionRepository;
 import com.A501.backend.domain.game.repository.FruitNinjaResultRepository;
+import com.A501.backend.domain.game.repository.RecyclingGameResultRepository;
+import com.A501.backend.domain.game.repository.WordMatchResultRepository;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, GameReportQueryAdapter.class})
@@ -44,17 +50,25 @@ class GameReportQueryAdapterTest {
     private FruitNinjaResultRepository fruitNinjaResultRepository;
 
     @Autowired
+    private RecyclingGameResultRepository recyclingGameResultRepository;
+
+    @Autowired
+    private WordMatchResultRepository wordMatchResultRepository;
+
+    @Autowired
     private GameReportQueryAdapter adapter;
 
     @BeforeEach
     void setUp() {
         cardRoundRepository.deleteAll();
         fruitNinjaResultRepository.deleteAll();
+        recyclingGameResultRepository.deleteAll();
+        wordMatchResultRepository.deleteAll();
         gameSessionRepository.deleteAll();
     }
 
     @Test
-    void returnsDobbleAndFruitNinjaResultsThroughTheSameQuery() {
+    void returnsDobbleFruitNinjaAndRecyclingResultsThroughTheSameQuery() {
         GameSession dobble = saveSession(
                 15L, 7L, STARTED_AT.plusMinutes(1), 120, 2550);
         saveRounds(dobble);
@@ -62,12 +76,20 @@ class GameReportQueryAdapterTest {
                 15L, 8L, STARTED_AT.plusMinutes(2), 120, 800);
         fruitNinjaResultRepository.saveAndFlush(FruitNinjaResult.create(
                 fruitNinja.getGameSessionId(), "fruit-v1", 10, 7));
+        GameSession recycling = saveSession(
+                15L, 9L, STARTED_AT.plusMinutes(3), 60, 1200);
+        recyclingGameResultRepository.saveAndFlush(RecyclingGameResult.create(
+                recycling.getGameSessionId(), "RECYCLING_V1", 12, 3));
+        GameSession wordMatch = saveSession(
+                15L, 10L, STARTED_AT.plusMinutes(4), 90, 1700);
+        wordMatchResultRepository.saveAndFlush(WordMatchResult.create(
+                wordMatch.getGameSessionId(), "WORD_MATCH_V1", 2, 1, 3, 1));
 
         var sources = adapter.findCompletedGames(15L, STARTED_AT, ENDED_AT);
 
-        assertThat(sources).hasSize(2);
+        assertThat(sources).hasSize(4);
         assertThat(sources).extracting("gameCode")
-                .containsExactly("DOBBLE", "FRUIT_NINJA");
+                .containsExactly("DOBBLE", "FRUIT_NINJA", "RECYCLING", "WORD_MATCH");
 
         var fruitSource = sources.get(1);
         assertThat(fruitSource.gameSessionId()).isEqualTo(fruitNinja.getGameSessionId());
@@ -79,6 +101,26 @@ class GameReportQueryAdapterTest {
         assertThat(metrics.totalFruitCount()).isEqualTo(10);
         assertThat(metrics.slicedFruitCount()).isEqualTo(7);
         assertThat(metrics.rulesVersion()).isEqualTo("fruit-v1");
+
+        var recyclingSource = sources.get(2);
+        assertThat(recyclingSource.gameSessionId()).isEqualTo(recycling.getGameSessionId());
+        assertThat(recyclingSource.gameName()).isEqualTo("분리수거");
+        assertThat(recyclingSource.playDurationSeconds()).isEqualTo(60);
+        assertThat(recyclingSource.score()).isEqualTo(1200);
+        assertThat(recyclingSource.resultMetrics()).isInstanceOf(RecyclingResultMetrics.class);
+        var recyclingMetrics = (RecyclingResultMetrics) recyclingSource.resultMetrics();
+        assertThat(recyclingMetrics.successfulCount()).isEqualTo(12);
+        assertThat(recyclingMetrics.wrongCount()).isEqualTo(3);
+        assertThat(recyclingMetrics.rulesVersion()).isEqualTo("RECYCLING_V1");
+
+        var wordSource = sources.get(3);
+        assertThat(wordSource.gameName()).isEqualTo("낱말 맞추기");
+        assertThat(wordSource.resultMetrics()).isInstanceOf(WordMatchResultMetrics.class);
+        var wordMetrics = (WordMatchResultMetrics) wordSource.resultMetrics();
+        assertThat(wordMetrics.solvedWordCount()).isEqualTo(2);
+        assertThat(wordMetrics.incompleteWordCount()).isEqualTo(1);
+        assertThat(wordMetrics.wrongCount()).isEqualTo(3);
+        assertThat(wordMetrics.hintUsedCount()).isEqualTo(1);
     }
 
     @Test

@@ -28,32 +28,51 @@ public class ReportNotificationScheduleCalculator {
             Optional<ReportNotificationPreference> preference
     ) {
         return preference.map(this::calculate)
-                .orElseGet(() -> new DeliveryPlan(now(), true));
+                .orElseGet(this::calculateDefault);
     }
 
     public DeliveryPlan calculate(ReportNotificationPreference preference) {
         if (!preference.isEnabled()) {
-            return new DeliveryPlan(null, false);
+            return new DeliveryPlan(null, false, false);
         }
 
+        return calculateEnabled(
+                preference.getNotificationTime(),
+                preference.getTimeZone());
+    }
+
+    private DeliveryPlan calculateDefault() {
+        return calculateEnabled(
+                ReportNotificationPreference.DEFAULT_TIME,
+                ReportNotificationPreference.DEFAULT_TIME_ZONE);
+    }
+
+    private DeliveryPlan calculateEnabled(
+            java.time.LocalTime notificationTime,
+            String timeZone) {
+
         Instant currentInstant = clock.instant();
-        ZoneId zone = ZoneId.of(preference.getTimeZone());
+        ZoneId zone = ZoneId.of(timeZone);
         ZonedDateTime localNow = currentInstant.atZone(zone);
         Instant requested = localNow.toLocalDate()
-                .atTime(preference.getNotificationTime())
+                .atTime(notificationTime)
                 .atZone(zone)
                 .toInstant();
         boolean deliverNow = !requested.isAfter(currentInstant);
         Instant scheduled = deliverNow ? currentInstant : requested;
         return new DeliveryPlan(
                 LocalDateTime.ofInstant(scheduled, ZoneOffset.UTC),
-                deliverNow);
+                deliverNow,
+                true);
     }
 
     public LocalDateTime now() {
         return LocalDateTime.now(clock);
     }
 
-    public record DeliveryPlan(LocalDateTime scheduledAt, boolean deliverNow) {
+    public record DeliveryPlan(
+            LocalDateTime scheduledAt,
+            boolean deliverNow,
+            boolean enabled) {
     }
 }

@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -38,7 +40,14 @@ public class ReportPeriodCalculator {
             ReportDeliverySchedule schedule,
             Instant instant) {
         ZoneId zone = ZoneId.of(schedule.timezone());
-        LocalDate reportDate = instant.atZone(zone).toLocalDate();
+        LocalDate reportDate = resolveDueReportDate(schedule, instant)
+                .orElseGet(() -> instant.atZone(zone).toLocalDate());
+        return calculate(schedule, reportDate);
+    }
+
+    private ReportPeriod calculate(
+            ReportDeliverySchedule schedule,
+            LocalDate reportDate) {
         LocalDateTime endedAt = reportDate
                 .atTime(schedule.deliveryTime())
                 .minus(GENERATION_LEAD_TIME);
@@ -50,13 +59,34 @@ public class ReportPeriodCalculator {
     public boolean isGenerationDue(
             ReportDeliverySchedule schedule,
             Instant instant) {
+        return resolveDueReportDate(schedule, instant).isPresent();
+    }
+
+    private Optional<LocalDate> resolveDueReportDate(
+            ReportDeliverySchedule schedule,
+            Instant instant) {
         ZoneId zone = ZoneId.of(schedule.timezone());
-        LocalTime localMinute = instant.atZone(zone)
-                .toLocalTime()
-                .withSecond(0)
-                .withNano(0);
-        LocalTime generationTime = schedule.deliveryTime()
+        ZonedDateTime now = instant.atZone(zone);
+        LocalDate localDate = now.toLocalDate();
+
+        // Midnight delivery times start generating on the previous date.
+        // Prefer tomorrow's report once its lead time has started.
+        LocalDate tomorrow = localDate.plusDays(1);
+        if (!generationAt(schedule, tomorrow, zone).isAfter(now)) {
+            return Optional.of(tomorrow);
+        }
+        if (!generationAt(schedule, localDate, zone).isAfter(now)) {
+            return Optional.of(localDate);
+        }
+        return Optional.empty();
+    }
+
+    private ZonedDateTime generationAt(
+            ReportDeliverySchedule schedule,
+            LocalDate reportDate,
+            ZoneId zone) {
+        return reportDate.atTime(schedule.deliveryTime())
+                .atZone(zone)
                 .minus(GENERATION_LEAD_TIME);
-        return localMinute.equals(generationTime);
     }
 }

@@ -50,4 +50,38 @@ class ReportPeriodCalculatorTest {
         assertThat(calculator.isGenerationDue(schedule, clock.instant()))
                 .isTrue();
     }
+
+    @Test
+    void generationRemainsDueAfterExactLeadMinuteWasMissed() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-23T11:10:00Z"),
+                ZoneId.of("UTC"));
+        ReportPeriodCalculator calculator = new ReportPeriodCalculator(clock);
+        ReportDeliverySchedule schedule = new ReportDeliverySchedule(
+                java.time.LocalTime.of(20, 0), "Asia/Seoul");
+
+        ReportPeriod period = calculator.calculate(schedule, clock.instant());
+
+        assertThat(calculator.isGenerationDue(schedule, clock.instant()))
+                .isTrue();
+        assertThat(period.reportDate()).isEqualTo(LocalDate.of(2026, 7, 23));
+    }
+
+    @Test
+    void midnightDeliveryStartsNextDaysReportOnPreviousDate() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-23T14:55:00Z"),
+                ZoneId.of("UTC"));
+        ReportPeriodCalculator calculator = new ReportPeriodCalculator(clock);
+        ReportDeliverySchedule schedule = new ReportDeliverySchedule(
+                java.time.LocalTime.MIDNIGHT, "Asia/Seoul");
+
+        ReportPeriod period = calculator.calculate(schedule, clock.instant());
+
+        assertThat(calculator.isGenerationDue(schedule, clock.instant()))
+                .isTrue();
+        assertThat(period.reportDate()).isEqualTo(LocalDate.of(2026, 7, 24));
+        assertThat(period.endedAt())
+                .isEqualTo(LocalDateTime.of(2026, 7, 23, 23, 55));
+    }
 }

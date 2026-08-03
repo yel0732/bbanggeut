@@ -88,7 +88,21 @@ export function StartPage() {
           />
         </div>
 
-        <div className="absolute right-[120px] bottom-[48px] z-20">
+        {/*
+          화면 크기 안내. 아이가 읽는 문장이 아니라 옆에서 열어 주는 어른이
+          보는 자리라, 눈에 걸리되 로고와 시작 버튼을 가리지 않게 아래 가운데에
+          둔다. 숲 배경에 글자만 얹으면 묻히므로 게임 이름표와 같은 알약을 깐다.
+        */}
+        <div className="pointer-events-none absolute right-0 bottom-[22px] left-0 z-20 flex justify-center">
+          <p
+            className="rounded-full bg-[#173618]/45 px-6 py-2 text-center text-[25px] leading-none text-white shadow-[0_5px_12px_rgba(12,38,13,0.22),inset_0_0_0_2px_rgba(255,255,255,0.12)] backdrop-blur-[1px] [text-shadow:0_2px_0_#2e6d2e,0_5px_8px_rgba(9,35,10,0.5)]"
+            style={{ fontFamily: "'Jua', sans-serif" }}
+          >
+            데스크탑과 태블릿 전체 화면에서 가장 잘 보여요.
+          </p>
+        </div>
+
+        <div className="absolute right-[120px] bottom-[80px] z-20">
           <MainStartButton
             busy={isCheckingSession}
             clipPath={GREEN_BUTTON_CLIP}
@@ -145,12 +159,13 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           src={popupUrl}
         />
 
-        <p
-          className="absolute top-[14%] right-0 left-0 z-20 text-center text-4xl leading-none text-white [text-shadow:0_2px_4px_rgba(30,80,20,0.5)]"
-          style={{ fontFamily: "'Jua', sans-serif" }}
-        >
-          들어갈 문
-        </p>
+        {/* 이메일 가입 창과 같이 제목 자리에 로고를 놓는다. */}
+        <img
+          alt="빵긋"
+          className="pointer-events-none absolute top-[10.8%] left-1/2 z-20 w-[32%] -translate-x-1/2 drop-shadow-[0_5px_10px_rgba(0,0,0,0.18)]"
+          decoding="async"
+          src={logoUrl}
+        />
 
         <div className="absolute top-[24%] left-[318px] z-20 flex w-[83%] -translate-x-1/2 flex-col items-center gap-1.5">
           <GoogleLoginButton />
@@ -159,8 +174,8 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             color="#5a4a2a"
             fontSize={32}
             imageUrl={whiteButtonUrl}
-            label="이메일로 들어가기"
-            textLeft="31%"
+            label="이메일로 로그인하기"
+            textLeft="28.5%"
             textTop="33%"
             to="/auth/login"
           />
@@ -170,7 +185,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             color="#ffffff"
             fontSize={32}
             imageUrl={greenButtonUrl}
-            label="이메일로 등록하기"
+            label="이메일로 가입하기"
             strokeColor="#3f7d1e"
             strokeWidth={2.5}
             textLeft="31%"
@@ -278,10 +293,10 @@ function GoogleLoginButton() {
           src={yellowButtonUrl}
         />
         <span
-          className="pointer-events-none absolute top-[43%] left-[34%] z-10 flex w-fit items-center justify-center text-center text-[32px] leading-none whitespace-nowrap text-[#6a4a12]"
+          className="pointer-events-none absolute top-[43%] left-[31.5%] z-10 flex w-fit items-center justify-center text-center text-[32px] leading-none whitespace-nowrap text-[#6a4a12]"
           style={{ fontFamily: "'Jua', sans-serif" }}
         >
-          구글로 들어가기
+          구글로 로그인하기
         </span>
         <div
           aria-label="Google 계정으로 로그인"

@@ -363,8 +363,14 @@ export function ReportListPage() {
         ) : null}
 
         {selectedDate ? (
-          <aside className="absolute top-0 right-[42px] bottom-1 z-50 w-[714px] [scrollbar-width:thin] [scrollbar-color:#cdbb92_transparent] overflow-x-hidden overflow-y-auto">
-            <div className="relative w-full">
+          <aside className="absolute top-0 right-[42px] bottom-1 z-50 w-[714px] [scrollbar-width:thin] [scrollbar-color:#cdbb92_transparent] overflow-x-hidden overflow-y-auto pt-[40px]">
+            {/*
+              아래 여백을 당겨, 내용이 끝난 뒤 빈 종이만 따라 내려가는 구간을
+              줄인다. 위 여백은 스크롤 영역(aside)의 padding이 맡는다 — 이 칸은
+              리포트 본문이 inset-0으로 기준 삼는 상자라 크기를 건드리면 안쪽
+              배치가 통째로 어긋난다.
+            */}
+            <div className="relative mb-[-72px] w-full">
               <img
                 alt=""
                 className="pointer-events-none block h-auto w-full"

@@ -18,6 +18,7 @@ import {
   QuitButton,
 } from '@/components/game/PlayOverlays'
 import { getGameById } from '@/features/games/games'
+import { useCountdownBeep } from '@/features/games/useCountdownBeep'
 import { BinRow } from '@/features/games/recycle/BinRow'
 import { CheerAnimals } from '@/features/games/recycle/CheerAnimals'
 import { HandCursor } from '@/features/games/recycle/HandCursor'
@@ -208,6 +209,8 @@ export function RecyclePlayPage() {
       playStartedAtRef.current = nowAsLocalDateTime()
     }
   }, [recycle.phase])
+
+  useCountdownBeep(recycle.phase === 'countdown', recycle.countdown)
 
   /*
     화면에 들어오자마자 카메라 권한 창이 뜨면 브라우저가 자동 재생을 막는다.

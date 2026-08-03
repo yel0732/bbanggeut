@@ -23,6 +23,7 @@ export type ReportListItem = {
   } | null
 }
 
+/** 판 하나의 기록. 회차별 상세가 필요할 때만 쓴다. */
 export type ReportGameResult = {
   gameSessionId: string
   gameType: string
@@ -33,15 +34,36 @@ export type ReportGameResult = {
   completedAt: string
 }
 
+/*
+  그날 한 게임을 묶은 기록. 화면에 내보이는 대표 값이다.
+
+  여러 판을 해도 게임마다 한 건이고, 묶는 일은 서버가 한다. 누적 점수는 오지
+  않는다 — 여러 판 하면 무조건 커지는 값이라 아이 상태를 나타내지 못한다.
+*/
+export type ReportGameSummary = {
+  gameType: string
+  gameName: string
+  /** 그날 몇 판 했는지 */
+  playCount: number
+  /** 플레이 시간 누적 */
+  totalPlayDurationSeconds: number
+  highestScore: number
+  /** 게임별 누적 결과 */
+  resultMetrics: Record<string, unknown> | null
+}
+
 /** 아이가 보인 감정 하나와 그 까닭 */
 export type ReportEmotionDetail = {
   emotion: string
   reason: string
 }
 
-/** 부모가 아이와 이어서 나눌 이야깃거리 */
+/**
+ * 부모가 아이와 이어서 나눌 이야깃거리.
+ *
+ * 제목은 서버가 보내지 않는다. 다른 섹션과 마찬가지로 화면이 정한다.
+ */
 export type ReportConversationGuide = {
-  title?: string | null
   description?: string | null
   questions?: string[] | null
 }
@@ -49,23 +71,17 @@ export type ReportConversationGuide = {
 /*
   대화 요약.
 
-  서버가 한 문단짜리 일기에서 섹션별 리포트로 옮겨가는 중이라, 옛 응답과 새 응답을
-  모두 받는다. 지금 붙어 있는 서버가 어느 쪽이든 화면이 깨지지 않아야 한다.
-
-  그래서 sourceConversationCount 말고는 전부 없을 수 있는 것으로 둔다. 있는 것만
-  골라 그리는 일은 화면 쪽에서 한다.
+  sourceConversationCount 말고는 전부 없을 수 있는 것으로 둔다. 있는 것만 골라
+  그리는 일은 화면 쪽에서 한다.
 */
 export type ReportConversationSummary = {
-  /** 옛 응답의 제목 */
   diaryTitle?: string | null
-  /** 옛 응답의 본문 */
+  /** 오늘의 이야기 자리에 그대로 들어간다 */
   diaryContent?: string | null
-  /** 새 응답의 본문 — 오늘의 이야기 */
-  dailyStory?: string | null
   mainEvents?: string[] | null
-  /** 옛 응답의 감정. 까닭 없이 이름만 온다 */
+  /** 까닭 없이 이름만 온다 */
   expressedEmotions?: string[] | null
-  /** 새 응답의 감정. 까닭이 함께 온다 */
+  /** 까닭이 함께 온다 */
   emotionDetails?: ReportEmotionDetail[] | null
   interests?: string[] | null
   /** 아이가 실제로 한 말 */
@@ -86,7 +102,10 @@ export type ReportDetailResponse = {
   }
   status: ReportStatus
   dataAvailability: ReportListItem['dataAvailability']
+  /** 회차별 기록. 화면은 gameSummaries를 쓴다. */
   gameResults: ReportGameResult[]
+  /** 묶어 보내기 전 서버에는 없던 값이라 없을 수 있다. */
+  gameSummaries?: ReportGameSummary[] | null
   conversationSummary: ReportConversationSummary | null
   failure: ReportListItem['failure']
   generatedAt: string | null

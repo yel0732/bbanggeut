@@ -57,7 +57,7 @@ export function RecycleResultPage() {
             className="text-[50px] leading-none text-white [text-shadow:0_3px_0_#3f7d1e,0_6px_10px_rgba(0,0,0,0.4)]"
             style={jua}
           >
-            분리수거를 정말 잘했어요!
+            숲 속 청소를 정말 잘했어요!
           </p>
 
           <div className="flex flex-col items-center gap-3">
@@ -79,7 +79,7 @@ export function RecycleResultPage() {
             className="rounded-full bg-[rgba(14,30,15,0.5)] px-8 py-4 text-[33px] leading-none text-white"
             style={jua}
           >
-            쓰레기를 {result.successCount}개나 정리했어요!
+            쓰레기를 {result.successCount}개 정리했어요!
           </p>
 
           <div className="mt-8 flex items-center gap-6">

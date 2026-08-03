@@ -21,7 +21,7 @@ export function ConversationSummaryView({
   const note = compact ? 'text-[12px]' : 'text-[13px]'
 
   return (
-    <div className={compact ? 'space-y-2.5' : 'space-y-4'}>
+    <div className={compact ? 'space-y-4' : 'space-y-6'}>
       {view.story ? (
         <Section compact={compact} label="오늘의 이야기">
           <p className={`${body} whitespace-pre-line`}>{view.story}</p>
@@ -81,7 +81,7 @@ export function ConversationSummaryView({
       ) : null}
 
       {view.guide ? (
-        <Section compact={compact} label={view.guide.title}>
+        <Section compact={compact} label="아이와 나눠보면 좋은 이야기">
           {view.guide.description ? (
             <p className={body}>{view.guide.description}</p>
           ) : null}
@@ -114,7 +114,7 @@ function Section({
       >
         {label}
       </h4>
-      <div className="mt-1 text-[#675636]">{children}</div>
+      <div className="mt-1.5 text-[#675636]">{children}</div>
     </section>
   )
 }

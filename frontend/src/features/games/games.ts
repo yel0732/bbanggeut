@@ -17,8 +17,6 @@ export type GameInfo = {
   /** 게임 방법 화면 설명 문구 */
   howTo: string
   cardImageUrl: string
-  /** 게임 선택 화면 카드 애니메이션 지연 */
-  floatClassName: string
   /** 게임 선택 화면 카드 배치 */
   positionClassName: string
   /** 실제 플레이 화면 구현 여부. false면 플레이 진입 시 게임 방법으로 돌린다. */
@@ -35,7 +33,6 @@ export const GAMES: GameInfo[] = [
     howTo:
       '손을 화면에 보여 주면 카메라가 손을 따라가요. 날아오는 과일 위로 손을 빠르게 휘저어 슝슝 잘라 보세요!',
     cardImageUrl: fruitCardUrl,
-    floatClassName: '[animation-delay:-0.4s]',
     positionClassName: 'top-[93px] left-[154px]',
     playable: true,
     page: 1,
@@ -47,7 +44,6 @@ export const GAMES: GameInfo[] = [
     howTo:
       '두 카드에 똑같이 있는 그림은 하나예요. 왼손과 오른손으로 각각 그 그림을 짚고 잠깐 멈추면 정답!',
     cardImageUrl: dobbleCardUrl,
-    floatClassName: '[animation-delay:-1.7s]',
     positionClassName: 'top-[93px] right-[154px]',
     playable: true,
     page: 1,
@@ -60,7 +56,6 @@ export const GAMES: GameInfo[] = [
     tagline: '그림을 보고 알맞은 낱말을 찾아요.',
     howTo: '그림이 무엇인지 보고, 어울리는 낱말을 골라 보세요!',
     cardImageUrl: wordmatchCardUrl,
-    floatClassName: '[animation-delay:-0.4s]',
     positionClassName: 'top-[93px] left-[154px]',
     playable: true,
     page: 2,
@@ -71,7 +66,6 @@ export const GAMES: GameInfo[] = [
     tagline: '숲에 떨어진 쓰레기를 알맞은 통에 담아요.',
     howTo: '쓰레기를 하나씩 집어서 어울리는 통에 쏙 넣어 보세요!',
     cardImageUrl: recycleCardUrl,
-    floatClassName: '[animation-delay:-1.7s]',
     positionClassName: 'top-[93px] right-[154px]',
     playable: true,
     page: 2,

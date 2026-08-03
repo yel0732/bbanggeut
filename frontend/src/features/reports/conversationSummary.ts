@@ -6,8 +6,8 @@ import type {
 /**
  * 대화 요약을 화면이 그리기 좋은 모양으로 다듬는다.
  *
- * 서버가 한 문단짜리 일기에서 섹션형 리포트로 옮겨가는 중이라, 어느 쪽 응답이 와도
- * 같은 모양으로 나오게 여기서 한 번 정리한다. 화면 컴포넌트는 이 결과만 본다.
+ * 서버가 보내는 것을 그대로 따르되, 빈 값과 공백을 여기서 한 번 걸러 낸다. 화면
+ * 컴포넌트는 이 결과만 본다.
  */
 
 export type ReportConversationView = {
@@ -21,7 +21,6 @@ export type ReportConversationView = {
   quotes: string[]
   /** 아이와 나눠보면 좋은 이야기 */
   guide: {
-    title: string
     description: string
     questions: string[]
   } | null
@@ -82,17 +81,10 @@ export function toConversationView(
   const description = guide?.description?.trim() ?? ''
 
   return {
-    story: (summary.dailyStory ?? summary.diaryContent ?? '').trim(),
+    story: (summary.diaryContent ?? '').trim(),
     emotions: emotions.length ? emotions : fallbackEmotions,
     interests: cleanList(summary.interests),
     quotes: cleanList(summary.notableQuotes),
-    guide:
-      description || questions.length
-        ? {
-            title: guide?.title?.trim() || '아이와 나눠보면 좋은 이야기',
-            description,
-            questions,
-          }
-        : null,
+    guide: description || questions.length ? { description, questions } : null,
   }
 }

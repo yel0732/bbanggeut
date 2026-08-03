@@ -66,17 +66,28 @@ export function GameEntryPage() {
             />
           </button>
 
+          {/* 다음 쪽에 게임이 더 있다는 것을 화살표만으로는 알아채기 어렵다. */}
+          <div className="pointer-events-none absolute top-[26px] right-0 left-0 z-20 flex justify-center">
+            <p
+              className="rounded-full bg-[#173618]/45 px-6 py-2 text-center text-[24px] leading-none text-white shadow-[0_5px_12px_rgba(12,38,13,0.22),inset_0_0_0_2px_rgba(255,255,255,0.12)] backdrop-blur-[1px] [text-shadow:0_3px_0_#2e6d2e,0_6px_8px_rgba(9,35,10,0.52)]"
+              style={jua}
+            >
+              오른쪽 화살표를 누르면 다른 게임이 나와요!
+            </p>
+          </div>
+
           <button
             aria-label="다음 게임 목록으로"
-            className="absolute top-1/2 right-[25px] z-30 size-[62px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_5px_8px_rgba(20,55,20,0.32)] transition hover:scale-105 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
+            className="absolute top-1/2 right-[35px] z-30 size-[62px] -translate-y-1/2 border-0 bg-transparent p-0 transition hover:scale-110 focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-95"
             onClick={() =>
               navigate('/games/more', { state: { enter: 'right' } })
             }
             type="button"
           >
+            {/* 게임 카드와 같은 반짝임을 쓴다. 같은 순간에 같은 밝기가 된다. */}
             <img
               alt=""
-              className="block h-full w-full object-contain"
+              className="block h-full w-full [animation:child-home-edge-glow_3s_ease-in-out_infinite] object-contain"
               decoding="async"
               draggable={false}
               src={nextButtonUrl}
@@ -90,7 +101,7 @@ export function GameEntryPage() {
 
             return (
               <div
-                className={`absolute z-20 flex w-[270px] [animation:child-home-asset-bob_3.5s_ease-in-out_infinite] flex-col items-center gap-7 transition duration-200 focus-within:-translate-y-2 focus-within:scale-[1.03] hover:-translate-y-2 hover:scale-[1.03] ${game.floatClassName} ${game.positionClassName}`}
+                className={`absolute z-20 flex w-[270px] [animation:child-home-asset-bob_5s_ease-in-out_infinite] flex-col items-center gap-7 transition duration-200 focus-within:-translate-y-2 focus-within:scale-[1.03] hover:-translate-y-2 hover:scale-[1.03] ${game.positionClassName}`}
                 key={game.id}
                 onMouseEnter={() => setHoveredGameId(game.id)}
                 onMouseLeave={() => setHoveredGameId(undefined)}

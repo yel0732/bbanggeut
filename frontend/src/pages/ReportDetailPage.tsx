@@ -18,6 +18,7 @@ import {
   toConversationView,
   type ReportConversationView,
 } from '@/features/reports/conversationSummary'
+import { toGameSummaries } from '@/features/reports/gameSummary'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useParentBgm } from '@/hooks/useParentBgm'
 import { removeReadReportArrival } from '@/lib/reportArrivals'
@@ -178,10 +179,11 @@ export function ReportPaperContent({
   report: ReportDetailResponse
   retryMessage: string
 }) {
+  const gameSummaries = useMemo(() => toGameSummaries(report), [report])
   const hasGames =
     report.status === 'COMPLETED' &&
     report.dataAvailability.hasGameData &&
-    report.gameResults.length > 0
+    gameSummaries.length > 0
   /*
     대화가 실제로 있었을 때만 대화 자리를 연다.
 
@@ -197,35 +199,21 @@ export function ReportPaperContent({
         : null,
     [report],
   )
-  const gameSlots = [
-    {
-      name: '그림 맞추기',
-      game: report.gameResults.find(
-        (game) =>
-          game.gameType.toUpperCase().includes('DOBBLE') ||
-          game.gameName.includes('그림 맞추기'),
-      ),
-    },
-    {
-      name: '과일 자르기',
-      game: report.gameResults.find(
-        (game) =>
-          game.gameType.toUpperCase().includes('FRUIT') ||
-          game.gameName.includes('과일 자르기'),
-      ),
-    },
-  ]
+  const gameSlots = GAME_SLOTS.map((slot) => ({
+    ...slot,
+    game: gameSummaries.find((game) => slot.matches(game)),
+  }))
 
   return (
     <div className="absolute inset-0" style={jua}>
-      <header className="absolute top-[6.6%] right-[12%] left-[12%] text-center">
+      <header className="absolute top-[4.29%] right-[12%] left-[12%] text-center">
         <h2 className="text-[25px] leading-tight text-[#4f6f35]">
           {formatLongDate(report.reportDate)} 리포트
         </h2>
       </header>
 
       {report.status === 'FAILED' ? (
-        <div className="absolute top-[22%] right-[13%] left-[13%] flex min-h-[230px] flex-col items-center justify-center text-center text-[19px] text-[#6a5a3a]">
+        <div className="absolute top-[14.31%] right-[13%] left-[13%] flex min-h-[230px] flex-col items-center justify-center text-center text-[19px] text-[#6a5a3a]">
           <p>{report.failure?.message || '리포트를 생성하지 못했어요.'}</p>
           {report.failure?.canRegenerate ? (
             <button
@@ -242,7 +230,7 @@ export function ReportPaperContent({
           ) : null}
         </div>
       ) : report.status === 'PENDING' || report.status === 'PROCESSING' ? (
-        <div className="absolute top-[22%] right-[13%] left-[13%] flex min-h-[230px] items-center justify-center text-center text-[19px] text-[#6a5a3a]">
+        <div className="absolute top-[14.31%] right-[13%] left-[13%] flex min-h-[230px] items-center justify-center text-center text-[19px] text-[#6a5a3a]">
           {retryMessage ||
             (report.status === 'PENDING'
               ? '리포트 생성을 기다리고 있어요.'
@@ -250,30 +238,42 @@ export function ReportPaperContent({
         </div>
       ) : (
         <>
-          <section className="absolute top-[15.9%] right-[8%] left-[8%] h-[34.5%] text-[#675636]">
-            <h3 className="absolute top-0.5 -left-2 flex h-[11.5%] w-[31%] min-w-[230px] items-center justify-center px-3 text-[22px] text-[#55783b]">
+          <section className="absolute top-[10.31%] right-[8%] left-[8%] h-[35.85%] text-[#675636]">
+            <h3 className="top-0.2 absolute -left-2 flex h-[7.19%] w-[31%] min-w-[230px] items-center justify-center px-3 text-[22px] text-[#55783b]">
               {childName}의 게임 결과
             </h3>
-            <div className="absolute top-[14.5%] right-0 bottom-0 left-0 grid grid-cols-2 items-stretch gap-3 overflow-hidden px-5 py-5">
+            {/* 네 게임을 2×2로 놓는다. 행마다 높이가 갈리지 않게 행 크기를 고정한다. */}
+            <div className="absolute top-[9.5%] right-0 -bottom-2 left-0 grid grid-cols-2 grid-rows-2 items-stretch gap-3 overflow-hidden px-5 py-5">
               {hasGames ? (
-                gameSlots.map(({ game, name }) => (
+                gameSlots.map(({ game, key, name }) => (
                   <article
-                    className="flex h-full flex-col justify-start rounded-[18px] bg-[rgba(242,233,206,.72)] px-6 py-5"
-                    key={name}
+                    className="flex h-full flex-col justify-start rounded-[18px] bg-[rgba(242,233,206,.72)] px-6 py-3"
+                    key={key}
                   >
-                    <h3 className="text-[24px] text-[#5a4a2a]">{name}</h3>
+                    <h3 className="text-[22px] text-[#5a4a2a]">
+                      {name}
+                      {game?.playCount ? (
+                        <span className="ml-2 text-[17px] text-[#85744f]">
+                          {game.playCount}번
+                        </span>
+                      ) : null}
+                    </h3>
                     {game ? (
                       <>
-                        <p className="mt-2 text-[19px]">
-                          플레이 시간 {formatDuration(game.playDurationSeconds)}
+                        <p className="mt-3 text-[18px]">
+                          전체 플레이 시간{' '}
+                          {formatDuration(game.totalPlayDurationSeconds)}
                         </p>
-                        <p className="text-[19px]">
-                          점수 {game.score}점 · 완료
+                        <p className="text-[18px]">
+                          최고 점수 {game.highestScore}점
                         </p>
-                        {metricEntries(game.resultMetrics).map(
-                          ([key, value]) => (
-                            <p className="text-[19px] text-[#5a4a2a]" key={key}>
-                              {formatMetricKey(key)} {value}
+                        {metricEntries(key, game.resultMetrics).map(
+                          ([label, value]) => (
+                            <p
+                              className="text-[17px] text-[#5a4a2a]"
+                              key={label}
+                            >
+                              {label}: {value}
                             </p>
                           ),
                         )}
@@ -293,12 +293,19 @@ export function ReportPaperContent({
             </div>
           </section>
 
-          <section className="absolute top-[61%] right-[8%] left-[8%] h-[32.3%] text-[#675636]">
-            <h3 className="absolute top-0 -left-1 flex h-[12.5%] w-[43.5%] min-w-[300px] items-center justify-center px-3 text-[22px] text-[#55783b]">
+          <section className="absolute top-[53.03%] right-[8%] left-[8%] h-[42.55%] text-[#675636]">
+            <h3 className="absolute top-0 -left-1 flex h-[6.17%] w-[43.5%] min-w-[300px] items-center justify-center px-3 text-[22px] text-[#55783b]">
               {childName}와 캐릭터의 대화 요약
             </h3>
-            {/* 항목이 여럿이라 종이 안에서 넘칠 수 있다. 이 칸만 스크롤한다. */}
-            <div className="absolute top-[16%] right-0 bottom-0 left-0 flex [scrollbar-width:thin] [scrollbar-color:#cdbb92_transparent] flex-col overflow-y-auto rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
+            {/*
+              칸을 넉넉히 잡아 두었다. 안에서 따로 스크롤하지 않고 종이째 내려
+              본다.
+
+              바탕색이 종이에 그려진 테두리 안에 정확히 들어앉도록 값을 잡았다.
+              종이 그림에서 이 칸의 테두리 안쪽은 세로 6948~11639px,
+              가로 446~5158px(전체 5625×12222)이고, 여기에 6px씩 물려 둔다.
+            */}
+            <div className="absolute top-[9.09%] right-[0.49%] bottom-[0.94%] left-0 flex flex-col rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
               {conversation ? (
                 <ConversationSummaryView compact view={conversation} />
               ) : (
@@ -377,23 +384,32 @@ function GameSection({ games }: { games: ReportGameResult[] }) {
       <h2 className="mb-3 text-[25px] text-[#55783b]">게임 결과</h2>
       {games.length ? (
         <div className="grid grid-cols-2 gap-3">
-          {games.map((game) => (
-            <article
-              className="rounded-2xl bg-[#f5ecd3] p-4 text-[#675636]"
-              key={game.gameSessionId}
-            >
-              <h3 className="text-[21px] text-[#5a4a2a]">{game.gameName}</h3>
-              <p className="mt-1 text-[16px]">
-                플레이 시간 {formatDuration(game.playDurationSeconds)}
-              </p>
-              <p className="text-[16px]">점수 {game.score}점 · 완료</p>
-              {metricEntries(game.resultMetrics).map(([key, value]) => (
-                <p className="text-[14px] text-[#85744f]" key={key}>
-                  {formatMetricKey(key)} {value}
+          {games.map((game) => {
+            const slot = GAME_SLOTS.find((candidate) => candidate.matches(game))
+            return (
+              <article
+                className="rounded-2xl bg-[#f5ecd3] p-4 text-[#675636]"
+                key={game.gameSessionId}
+              >
+                <h3 className="text-[21px] text-[#5a4a2a]">
+                  {slot?.name ?? game.gameName}
+                </h3>
+                <p className="mt-1 text-[16px]">
+                  플레이 시간 {formatDuration(game.playDurationSeconds)}
                 </p>
-              ))}
-            </article>
-          ))}
+                <p className="text-[16px]">점수 {game.score}점 · 완료</p>
+                {slot
+                  ? metricEntries(slot.key, game.resultMetrics).map(
+                      ([label, value]) => (
+                        <p className="text-[14px] text-[#85744f]" key={label}>
+                          {label}: {value}
+                        </p>
+                      ),
+                    )
+                  : null}
+              </article>
+            )
+          })}
         </div>
       ) : (
         <p className="rounded-2xl bg-[#f5ecd3] p-5 text-[18px] text-[#675636]">
@@ -439,6 +455,53 @@ function formatLongDate(date: string) {
   return month && day ? `${Number(month)}월 ${Number(day)}일` : date
 }
 
+type GameSlotKey = 'fruit' | 'dobble' | 'wordmatch' | 'recycle'
+
+/*
+  리포트에 놓을 게임 자리. 배열 순서가 곧 화면 순서다(위 두 칸, 아래 두 칸).
+
+  이름은 서버가 보내는 값을 쓰지 않고 여기서 정한다. 서버는 숲 속 청소하기를
+  "분리수거"로 보내는데, 아이 화면과 부모 화면이 다른 이름을 쓰면 헷갈린다.
+
+  짝짓기는 gameType을 먼저 본다. 이름으로만 찾으면 서버가 이름을 바꾸는 순간
+  칸이 통째로 비어 버린다.
+*/
+const GAME_SLOTS: {
+  key: GameSlotKey
+  name: string
+  matches: (game: Pick<ReportGameResult, 'gameType' | 'gameName'>) => boolean
+}[] = [
+  {
+    key: 'fruit',
+    name: '과일 자르기',
+    matches: (game) =>
+      game.gameType.toUpperCase().includes('FRUIT') ||
+      game.gameName.includes('과일 자르기'),
+  },
+  {
+    key: 'dobble',
+    name: '그림 맞추기',
+    matches: (game) =>
+      game.gameType.toUpperCase().includes('DOBBLE') ||
+      game.gameName.includes('그림 맞추기'),
+  },
+  {
+    key: 'wordmatch',
+    name: '낱말 맞추기',
+    matches: (game) =>
+      game.gameType.toUpperCase().includes('WORD') ||
+      game.gameName.includes('낱말 맞추기'),
+  },
+  {
+    key: 'recycle',
+    name: '숲 속 청소하기',
+    matches: (game) =>
+      game.gameType.toUpperCase().includes('RECYCL') ||
+      game.gameName.includes('분리수거') ||
+      game.gameName.includes('청소하기'),
+  },
+]
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
@@ -450,42 +513,53 @@ function formatDuration(seconds: number) {
 
   부모가 보는 화면이라 영어 필드명이 그대로 나오면 안 된다. 서버가 보내는 키를
   모두 적어 둔다 — 여기 없는 키는 화면에서 아예 뺀다. 뜻을 모르는 값을 영어로
-  보여 주느니 안 보여 주는 편이 낫고, 새 게임이 붙어 항목이 빠지면 이 목록에
-  한 줄 더하면 된다.
+  보여 주느니 안 보여 주는 편이 낫다(`rulesVersion`이 그렇게 걸러진다).
+
+  같은 키라도 게임마다 뜻이 다르므로 게임별로 나눠 둔다 — `wrongCount`는 숲 속
+  청소하기에서는 잘못 넣은 쓰레기이고 낱말 맞추기에서는 틀린 횟수다.
 */
-const METRIC_LABELS: Record<string, string> = {
-  // 그림 맞추기
-  solvedCardCount: '맞힌 카드',
-  perfectCount: '아주 잘한 카드',
-  excellentCount: '잘한 카드',
-  goodCount: '해낸 카드',
-  incompleteCardCount: '못 맞힌 카드',
-  // 과일 자르기
-  totalFruitCount: '전체 과일 수',
-  slicedFruitCount: '자른 과일',
-  // 숲 속 청소하기
-  successfulCount: '알맞게 넣은 쓰레기',
-  wrongCount: '잘못 넣은 쓰레기',
-  // 낱말 맞추기
-  solvedWordCount: '맞힌 낱말',
-  incompleteWordCount: '못 맞힌 낱말',
-  hintUsedCount: '힌트 쓴 횟수',
+const METRIC_LABELS: Record<GameSlotKey, Record<string, string>> = {
+  fruit: {
+    totalFruitCount: '전체 과일 수',
+    slicedFruitCount: '자른 과일',
+  },
+  /*
+    등급 이름(아주 잘함·잘함·해냄)은 부모가 뜻을 짐작하기 어렵다. 서버가 나눈
+    기준을 그대로 문구로 쓴다 — 한 번에 맞히면 PERFECT, 네 번 안이면 EXCELLENT,
+    그보다 많으면 GOOD이다(DobbleResultCalculator.gradeFor).
+  */
+  dobble: {
+    solvedCardCount: '맞힌 카드',
+    perfectCount: '한 번에 맞힌 카드',
+    excellentCount: '2~4번에 맞힌 카드',
+    goodCount: '5번 이상 만에 맞힌 카드',
+  },
+  wordmatch: {
+    solvedWordCount: '맞힌 낱말',
+    incompleteWordCount: '못 맞힌 낱말',
+    wrongCount: '틀린 횟수',
+    hintUsedCount: '힌트 쓴 횟수',
+  },
+  recycle: {
+    successfulCount: '알맞게 넣은 쓰레기',
+    wrongCount: '잘못 넣은 쓰레기',
+  },
 }
 
 /** 화면에 한 게임당 보여 줄 항목 수. 칸이 좁아 넘치면 카드가 밀린다. */
 const MAX_METRICS_PER_GAME = 4
 
-function metricEntries(metrics: Record<string, unknown> | null) {
+function metricEntries(
+  slotKey: GameSlotKey,
+  metrics: Record<string, unknown> | null,
+) {
   if (!metrics) return []
+  const labels = METRIC_LABELS[slotKey]
   return Object.entries(metrics)
-    .filter(([key]) => key in METRIC_LABELS)
+    .filter(([key]) => key in labels)
     .filter(([, value]) =>
       ['string', 'number', 'boolean'].includes(typeof value),
     )
     .slice(0, MAX_METRICS_PER_GAME)
-    .map(([key, value]) => [key, String(value)] as const)
-}
-
-function formatMetricKey(key: string) {
-  return `${METRIC_LABELS[key]}:`
+    .map(([key, value]) => [labels[key], String(value)] as const)
 }

@@ -32,6 +32,7 @@ import com.A501.backend.domain.game.entity.WordMatchResult;
 import com.A501.backend.domain.game.exception.GameErrorCode;
 import com.A501.backend.domain.game.exception.GameException;
 import com.A501.backend.domain.game.metric.CardResultMetrics;
+import com.A501.backend.domain.game.metric.DobbleResultCalculator;
 import com.A501.backend.domain.game.metric.FruitResultCount;
 import com.A501.backend.domain.game.metric.GameMetricType;
 import com.A501.backend.domain.game.model.CompletedGameSessionSummary;
@@ -47,8 +48,19 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class GameSessionService {
 
+    private static final String DOBBLE_GAME_CODE = "DOBBLE";
+    private static final String FRUIT_NINJA_GAME_CODE = "FRUIT_NINJA";
     private static final String RECYCLING_GAME_CODE = "RECYCLING";
     private static final String WORD_MATCH_GAME_CODE = "WORD_MATCH";
+    private static final int DOBBLE_MAX_DURATION_SECONDS = 90;
+    private static final int FRUIT_NINJA_MAX_DURATION_SECONDS = 60;
+    private static final String FRUIT_NINJA_RULES_VERSION = "fruit-ninja-v1";
+    private static final Map<String, Integer> FRUIT_NINJA_SCORES = Map.ofEntries(
+            Map.entry("GRAPE", 50), Map.entry("STRAWBERRY", 45),
+            Map.entry("KIWI", 40), Map.entry("APPLE", 35),
+            Map.entry("ORANGE", 30), Map.entry("BANANA", 28),
+            Map.entry("MANGO", 25), Map.entry("COCONUT", 20),
+            Map.entry("PINEAPPLE", 18), Map.entry("WATERMELON", 12));
     private static final int RECYCLING_MAX_DURATION_SECONDS = 60;
     private static final int RECYCLING_SCORE_PER_CORRECT = 100;
     private static final int WORD_MATCH_MAX_DURATION_SECONDS = 90;
@@ -283,7 +295,10 @@ public class GameSessionService {
 
     private GameSessionResponse saveNewRecyclingSession(SaveGameResultRequest request) {
         SaveRecyclingResultRequest requestedResult = request.recyclingResult();
-        if (requestedResult == null) {
+        if (requestedResult == null
+                || request.cardResults() != null
+                || request.fruitNinjaResult() != null
+                || request.wordMatchResult() != null) {
             throw new GameException(GameErrorCode.INVALID_RECYCLING_RESULT);
         }
 
@@ -375,12 +390,16 @@ public class GameSessionService {
 
     private GameSessionResponse saveNewFruitNinjaSession(SaveGameResultRequest request) {
         SaveFruitNinjaResultRequest requestedResult = request.fruitNinjaResult();
-        if (requestedResult == null) {
-            throw new IllegalArgumentException("후르츠 게임 상세 결과는 필수입니다.");
+        if (requestedResult == null
+                || request.cardResults() != null
+                || request.recyclingResult() != null
+                || request.wordMatchResult() != null) {
+            throw new GameException(GameErrorCode.INVALID_FRUIT_NINJA_RESULT);
         }
 
+        validateGameCode(request.gameId(), FRUIT_NINJA_GAME_CODE);
         List<FruitResultCount> resultCounts = requestedResult.toMetrics();
-        validateFruitNinjaTotals(requestedResult, resultCounts);
+        validateFruitNinjaResult(request, requestedResult, resultCounts);
 
         GameSession gameSession = GameSession.create(
                 request.childId(),
@@ -414,7 +433,13 @@ public class GameSessionService {
 
     private GameSessionResponse saveNewDobbleSession(SaveGameResultRequest request) {
         List<SaveDobbleCardResultRequest> requestedRounds = request.cardResults();
-        validateDobbleRounds(requestedRounds);
+        if (request.fruitNinjaResult() != null
+                || request.recyclingResult() != null
+                || request.wordMatchResult() != null) {
+            throw new GameException(GameErrorCode.INVALID_DOBBLE_RESULT);
+        }
+        validateGameCode(request.gameId(), DOBBLE_GAME_CODE);
+        validateDobbleRounds(request, requestedRounds);
 
         List<CardResultMetrics> cardResults = requestedRounds.stream()
                 .map(SaveDobbleCardResultRequest::toMetrics)
@@ -446,7 +471,13 @@ public class GameSessionService {
         }
     }
 
-    private void validateDobbleRounds(List<SaveDobbleCardResultRequest> requestedRounds) {
+    private void validateDobbleRounds(
+            SaveGameResultRequest request,
+            List<SaveDobbleCardResultRequest> requestedRounds) {
+        if (request.playDurationSeconds() < 0
+                || request.playDurationSeconds() > DOBBLE_MAX_DURATION_SECONDS) {
+            throw new GameException(GameErrorCode.INVALID_DOBBLE_RESULT);
+        }
         if (requestedRounds == null || requestedRounds.isEmpty()) {
             throw new IllegalArgumentException("도블 카드별 결과는 한 건 이상 필요합니다.");
         }
@@ -459,6 +490,46 @@ public class GameSessionService {
             if (!roundNumbers.add(round.roundNo())) {
                 throw new IllegalArgumentException("카드 제시 순서는 중복될 수 없습니다: " + round.roundNo());
             }
+        }
+
+        try {
+            int expectedScore = DobbleResultCalculator.calculate(requestedRounds.stream()
+                            .map(SaveDobbleCardResultRequest::toMetrics)
+                            .toList())
+                    .calculatedScore();
+            if (request.score() != expectedScore) {
+                throw new GameException(GameErrorCode.INVALID_DOBBLE_RESULT);
+            }
+        } catch (IllegalArgumentException e) {
+            throw new GameException(GameErrorCode.INVALID_DOBBLE_RESULT);
+        }
+    }
+
+    private void validateFruitNinjaResult(
+            SaveGameResultRequest request,
+            SaveFruitNinjaResultRequest requestedResult,
+            List<FruitResultCount> fruitResults) {
+        if (request.playDurationSeconds() < 0
+                || request.playDurationSeconds() > FRUIT_NINJA_MAX_DURATION_SECONDS
+                || !FRUIT_NINJA_RULES_VERSION.equals(requestedResult.rulesVersion())) {
+            throw new GameException(GameErrorCode.INVALID_FRUIT_NINJA_RESULT);
+        }
+        try {
+            validateFruitNinjaTotals(requestedResult, fruitResults);
+        } catch (IllegalArgumentException e) {
+            throw new GameException(GameErrorCode.INVALID_FRUIT_NINJA_RESULT);
+        }
+
+        long expectedScore = 0;
+        for (FruitResultCount fruitResult : fruitResults) {
+            Integer scorePerFruit = FRUIT_NINJA_SCORES.get(fruitResult.fruitCode());
+            if (scorePerFruit == null) {
+                throw new GameException(GameErrorCode.INVALID_FRUIT_NINJA_RESULT);
+            }
+            expectedScore += (long) fruitResult.slicedCount() * scorePerFruit;
+        }
+        if (expectedScore > Integer.MAX_VALUE || request.score() != expectedScore) {
+            throw new GameException(GameErrorCode.INVALID_FRUIT_NINJA_RESULT);
         }
     }
 
@@ -491,6 +562,14 @@ public class GameSessionService {
     private void validateScore(Integer score) {
         if (score == null || score < 0) {
             throw new IllegalArgumentException("완료된 게임 결과에는 0 이상의 점수가 필요합니다.");
+        }
+    }
+
+    private void validateGameCode(Long gameId, String expectedGameCode) {
+        Game game = gameRepository.findById(gameId)
+                .orElseThrow(() -> new GameException(GameErrorCode.GAME_NOT_FOUND));
+        if (!expectedGameCode.equals(game.getGameCode())) {
+            throw new GameException(GameErrorCode.GAME_TYPE_MISMATCH);
         }
     }
 

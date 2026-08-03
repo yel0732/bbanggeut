@@ -23,6 +23,10 @@ public enum GameErrorCode implements ErrorCode {
             HttpStatus.BAD_REQUEST,
             "INVALID_FRUIT_NINJA_RESULT",
             "후르츠 게임 결과의 개수 또는 집계가 올바르지 않습니다."),
+    INVALID_DOBBLE_RESULT(
+            HttpStatus.BAD_REQUEST,
+            "INVALID_DOBBLE_RESULT",
+            "그림 맞추기 게임 결과가 올바르지 않습니다."),
     GAME_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "GAME_NOT_FOUND",

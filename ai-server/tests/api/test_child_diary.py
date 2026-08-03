@@ -9,7 +9,7 @@ from app.main import create_app
 
 def _gms_handler(request: httpx.Request) -> httpx.Response:
     payload = json.loads(request.content)
-    assert payload["model"] == "gpt-5.4-mini"
+    assert payload["model"] == "gpt-5-mini"
     return httpx.Response(
         200,
         json={

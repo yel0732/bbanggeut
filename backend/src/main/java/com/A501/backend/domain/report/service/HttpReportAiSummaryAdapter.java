@@ -47,8 +47,12 @@ public class HttpReportAiSummaryAdapter implements ReportAiSummaryPort {
         if (response == null
                 || isBlank(response.title())
                 || response.title().length() > 200
-                || isBlank(response.body())
-                || response.body().length() > 2000
+                || isBlank(response.dailyStory())
+                || response.dailyStory().length() > 4000
+                || response.emotionDetails() == null
+                || response.interests() == null
+                || response.notableQuotes() == null
+                || response.conversationGuide() == null
                 || isBlank(response.modelVersion())
                 || isBlank(response.promptVersion())) {
             throw new ReportAiUnavailableException(

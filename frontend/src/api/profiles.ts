@@ -38,6 +38,27 @@ export async function getParentProfile() {
   return (await response.json()) as BackendParentProfile
 }
 
+/**
+ * 부모 프로필 생성(온보딩)을 아직 마치지 않았는지.
+ *
+ * 판단 근거는 서버에 핀이 설정돼 있는지 하나다. 예전에는 가입 직후 브라우저에
+ * 남긴 표시를 봤는데, 그게 sessionStorage라 창을 닫으면 사라졌다. 그러면 핀도
+ * 없는 사람이 프로필 선택 화면으로 넘어가 부모 모드에 영영 못 들어갔다 — 핀이
+ * 없으니 인증을 통과할 수 없고, 온보딩으로 돌아갈 길도 없었다.
+ *
+ * 조회에 실패하면 `false`다. 모르는 것을 "안 했다"로 단정하면 이미 핀이 있는
+ * 사람을 온보딩으로 보내고, 거기서 완료를 누르면 서버가 PIN_ALREADY_SET(403)을
+ * 돌려준다. 잘못 보내느니 평소 경로로 두는 편이 낫다.
+ */
+export async function needsParentOnboarding() {
+  try {
+    const profile = await getParentProfile()
+    return !profile.pinSet
+  } catch {
+    return false
+  }
+}
+
 export async function createChildProfile(name: string, imageKey?: string) {
   const response = await authFetch(apiUrl('/api/children'), {
     body: JSON.stringify(imageKey ? { name, imageKey } : { name }),

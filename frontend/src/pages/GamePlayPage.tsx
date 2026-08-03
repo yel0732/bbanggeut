@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
-import cutSoundUrl from '@/assets/audio/fruit-game/cut-fruit.mp3'
 import fruitBgmUrl from '@/assets/audio/fruit-game/fruit-forest-rhythm.mp3'
 import backgroundUrl from '@/assets/images/fruit-game/background.webp'
 import playFrameUrl from '@/assets/images/fruit-game/play-frame.webp'
@@ -22,7 +21,9 @@ import {
   type FruitGameResult,
   type FruitGameState,
 } from '@/features/games/fruit/useFruitGame'
+import { useCutFruitSound } from '@/features/games/fruit/useCutFruitSound'
 import { getGameById } from '@/features/games/games'
+import { useCountdownBeep } from '@/features/games/useCountdownBeep'
 import { useCameraStream } from '@/hooks/useCameraStream'
 import { useBgmPlayer } from '@/hooks/useBgmPlayer'
 import { useFitScale } from '@/hooks/useFitScale'
@@ -97,47 +98,28 @@ export function GamePlayPage() {
       })
   }
 
-  // 자르기 효과음 풀 (연속 베기 시 겹쳐 재생)
-  const cutPoolRef = useRef<HTMLAudioElement[]>([])
-  const cutIndexRef = useRef(0)
-  useEffect(() => {
-    const pool = Array.from({ length: 4 }, () => {
-      const audio = new Audio(cutSoundUrl)
-      audio.volume = 0.6
-      return audio
-    })
-    cutPoolRef.current = pool
-    return () => {
-      pool.forEach((audio) => audio.pause())
-      cutPoolRef.current = []
-    }
-  }, [])
+  const playCutSound = useCutFruitSound()
 
   // 긍정 성공 문구 (MGAME-19)
   const [praise, setPraise] = useState<string | null>(null)
   const praiseTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(praiseTimerRef.current), [])
 
-  const handleSlice = useCallback((combo: number) => {
-    const pool = cutPoolRef.current
-    if (pool.length > 0) {
-      const audio = pool[cutIndexRef.current % pool.length]
-      cutIndexRef.current += 1
-      audio.currentTime = 0
-      // 콤보가 이어질수록 음을 조금씩 높여 신나게 들리도록 한다.
-      audio.playbackRate = Math.min(1.35, 1 + (combo - 1) * 0.06)
-      void audio.play().catch(() => {})
-    }
-    // 콤보 중에는 콤보 전용 문구를 써서 이어 베고 있다는 게 드러나게 한다.
-    const words = combo >= 2 ? COMBO_PRAISES : PRAISES
-    const index =
-      combo >= 2
-        ? Math.min(COMBO_PRAISES.length - 1, combo - 2)
-        : Math.floor(Math.random() * PRAISES.length)
-    setPraise(words[index])
-    clearTimeout(praiseTimerRef.current)
-    praiseTimerRef.current = setTimeout(() => setPraise(null), 750)
-  }, [])
+  const handleSlice = useCallback(
+    (combo: number) => {
+      playCutSound(combo)
+      // 콤보 중에는 콤보 전용 문구를 써서 이어 베고 있다는 게 드러나게 한다.
+      const words = combo >= 2 ? COMBO_PRAISES : PRAISES
+      const index =
+        combo >= 2
+          ? Math.min(COMBO_PRAISES.length - 1, combo - 2)
+          : Math.floor(Math.random() * PRAISES.length)
+      setPraise(words[index])
+      clearTimeout(praiseTimerRef.current)
+      praiseTimerRef.current = setTimeout(() => setPraise(null), 750)
+    },
+    [playCutSound],
+  )
 
   /**
    * 폭탄 폭발음.
@@ -234,30 +216,7 @@ export function GamePlayPage() {
     return () => window.clearTimeout(closeTimer)
   }, [audioRef, fruitGame.fever])
 
-  const lastCountdownRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (fruitGame.phase !== 'countdown') {
-      lastCountdownRef.current = null
-      return
-    }
-    if (lastCountdownRef.current === fruitGame.countdown) return
-    lastCountdownRef.current = fruitGame.countdown
-
-    const AudioContextClass = window.AudioContext
-    const context = new AudioContextClass()
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = 'sine'
-    oscillator.frequency.value = fruitGame.countdown === 1 ? 880 : 660
-    gain.gain.setValueAtTime(0.0001, context.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.22, context.currentTime + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.16)
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    oscillator.start()
-    oscillator.stop(context.currentTime + 0.17)
-    oscillator.addEventListener('ended', () => void context.close())
-  }, [fruitGame.countdown, fruitGame.phase])
+  useCountdownBeep(fruitGame.phase === 'countdown', fruitGame.countdown)
 
   // MGAME-02: 게임 화면 진입 시 카메라를 시작한다. (종료는 훅 언마운트에서 처리)
   useEffect(() => {

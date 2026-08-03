@@ -22,6 +22,7 @@ public interface ReportConversationSummaryRepository
             select summary.reportId
             from ReportConversationSummary summary
             where summary.reportId in :reportIds
+              and summary.sourceConversationIds <> '[]'
             """)
     List<Long> findReportIdsWithConversationData(Collection<Long> reportIds);
 

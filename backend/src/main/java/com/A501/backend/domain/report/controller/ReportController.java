@@ -14,10 +14,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.A501.backend.domain.report.dto.response.ReportDetailResponse;
+import com.A501.backend.domain.report.dto.response.ReportGenerationResponse;
 import com.A501.backend.domain.report.dto.response.ReportListResponse;
 import com.A501.backend.domain.report.dto.response.ReportRegenerationResponse;
 import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.service.ReportManualRegenerationService;
+import com.A501.backend.domain.report.service.ReportManualGenerationService;
 import com.A501.backend.domain.report.service.ReportQueryService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 public class ReportController {
 
     private final ReportManualRegenerationService regenerationService;
+    private final ReportManualGenerationService manualGenerationService;
     private final ReportQueryService queryService;
 
     @Operation(summary = "Get daily reports for a child")
@@ -92,5 +95,17 @@ public class ReportController {
                         childId,
                         reportDate,
                         idempotencyKey));
+    }
+
+    @Operation(summary = "Generate today's daily report immediately")
+    @PostMapping("/{reportDate}/generate")
+    public ResponseEntity<ReportGenerationResponse> generate(
+            @Positive @PathVariable Long childId,
+            @PathVariable
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate reportDate
+    ) {
+        return ResponseEntity.accepted().body(
+                manualGenerationService.generate(childId, reportDate));
     }
 }

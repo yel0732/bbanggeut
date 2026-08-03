@@ -26,17 +26,16 @@ import plasticWaterBottleUrl from '@/assets/images/recycle-game/items/plastic-wa
 import { RECYCLE_GAME_CONFIG as CFG } from './recycleGameConfig'
 
 /**
- * 분리수거 쓰레기 카탈로그 (RGAME-11, RGAME-12).
+ * 분리수거 게임에서 사용하는 프론트 정적 쓰레기 카탈로그.
  *
- * 서버의 `RECYCLING_ITEM` 테이블과 같은 정보를 담는다. 백엔드가 카탈로그를
- * 내려주기 전까지는 이 목록으로 출제한다. `code`는 서버 `item_code`와 맞춰야
- * 나중에 카탈로그를 서버에서 받아올 때 이미지 연결이 그대로 유지된다.
+ * 문제와 이미지는 프론트에서 관리한다. 현재 결과 저장 API에는 개별 쓰레기
+ * 코드를 보내지 않고 성공 개수와 오답 개수만 전송한다.
  *
  * 이름은 오답 안내 문구에 그대로 들어간다("{이름}은 {통 이름}에 넣으면 돼!").
  * 그래서 그림만 보고 아이가 부를 이름으로 적는다.
  */
 
-/** 서버 `category` 코드와 같다. */
+/** 결과 집계와 분리수거 통 판정에 사용하는 분류 코드. */
 export type RecycleCategory = 'CAN' | 'PLASTIC' | 'PAPER' | 'GLASS'
 
 export type RecycleItem = {

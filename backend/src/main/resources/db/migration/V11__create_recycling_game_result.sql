@@ -1,3 +1,17 @@
+INSERT INTO game (
+    game_id,
+    game_code,
+    game_name,
+    created_at,
+    updated_at
+) VALUES (
+    9,
+    'RECYCLING',
+    '분리수거',
+    CURRENT_TIMESTAMP(6),
+    CURRENT_TIMESTAMP(6)
+);
+
 CREATE TABLE recycling_game_result (
     game_session_id BINARY(16)  NOT NULL,
     rules_version   VARCHAR(40) NOT NULL,

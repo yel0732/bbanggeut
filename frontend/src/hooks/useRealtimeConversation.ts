@@ -55,11 +55,16 @@ export type RealtimeConversationState = {
   localStream: MediaStream | null
   remoteStream: MediaStream | null
   micEnabled: boolean
+  /** 방금 대화의 식별자. 종료 후 일기 생성(preview) 호출에 쓴다. */
+  conversationId: string | null
+  childId: number | null
 }
 
 const INITIAL_STATE: RealtimeConversationState = {
   assistantText: '',
+  childId: null,
   childTranscript: '',
+  conversationId: null,
   endedReason: null,
   failure: null,
   localStream: null,
@@ -108,6 +113,7 @@ export function useRealtimeConversation() {
 
   const clientRef = useRef<RealtimeConversationClient | null>(null)
   const conversationIdRef = useRef<string | null>(null)
+  const childIdRef = useRef<number | null>(null)
   const phaseRef = useRef<ConversationPhase>('idle')
   /** 마지막으로 만들어진 AI 응답. 종료 인사의 오디오를 짚어내는 데 쓴다. */
   const lastResponseIdRef = useRef<string | null>(null)
@@ -253,16 +259,39 @@ export function useRealtimeConversation() {
           break
 
         case CONVERSATION_EVENT.ASSISTANT_AUDIO_COMPLETED:
-        case CONVERSATION_EVENT.ASSISTANT_AUDIO_FAILED:
+        case CONVERSATION_EVENT.ASSISTANT_AUDIO_FAILED: {
           // AI 발화가 끝나야 서버가 아이의 입력을 다시 받는다(ADR-020).
-          setState((current) => ({ ...current, voice: 'listening' }))
+          const isClosing = phaseRef.current === 'closing'
+
+          /*
+            아이 차례가 오면 마이크를 다시 연다.
+
+            마이크 버튼은 아이가 눌러 놓고 잊기 쉬운 자리에 있다. 끈 상태를 그대로
+            두면 화면은 "듣고 있어"라고 하는데 소리는 서버로 가지 않아, 아이는
+            아무리 말해도 대답이 없는 대화에 갇힌다. 매 차례 열어 주는 편이
+            유아에게는 예측 가능하다.
+
+            마무리 인사 중(closing)에는 열지 않는다. 그때는 대화가 이미 끝나
+            일부러 닫아 둔 것이다.
+          */
+          if (!isClosing) {
+            clientRef.current?.setMicEnabled(true)
+            micEnabledRef.current = true
+          }
+          setState((current) => ({
+            ...current,
+            micEnabled: isClosing ? current.micEnabled : true,
+            voice: 'listening',
+          }))
+
           if (
-            phaseRef.current === 'closing' &&
+            isClosing &&
             envelope.responseId === closingResponseIdRef.current
           ) {
             finalizeCompletion()
           }
           break
+        }
 
         case CONVERSATION_EVENT.STT_FINAL: {
           const { text } = readSttFinal(envelope.payload)
@@ -358,6 +387,14 @@ export function useRealtimeConversation() {
       const childId = await resolveBackendChildId()
       const conversation = await createConversation(childId)
       conversationIdRef.current = conversation.conversationId
+      childIdRef.current = childId
+      // 종료 후 일기 preview에 필요한 식별자를 상태에 실어 둔다. 정상 완주
+      // 경로에선 초기화되지 않아 ended 화면까지 유지된다.
+      setState((current) => ({
+        ...current,
+        childId,
+        conversationId: conversation.conversationId,
+      }))
       const session = await issueRealtimeSession(conversation.conversationId)
 
       // 준비하는 사이에 화면을 떠났다면 연결을 만들지 않는다. 여기서 멈추지

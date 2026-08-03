@@ -23,6 +23,8 @@ import com.A501.backend.domain.report.dto.response.ReportListResponse;
 import com.A501.backend.domain.report.dto.response.ReportPageResponse;
 import com.A501.backend.domain.report.entity.DailyReport;
 import com.A501.backend.domain.report.entity.ReportConversationSummary;
+import com.A501.backend.domain.report.model.ReportConversationGuide;
+import com.A501.backend.domain.report.model.ReportEmotionDetail;
 import com.A501.backend.domain.report.entity.ReportGenerationStatus;
 import com.A501.backend.domain.report.exception.ReportApiErrorCode;
 import com.A501.backend.domain.report.port.ReportChildAccessVerifier;
@@ -136,7 +138,8 @@ public class ReportQueryService {
                 report,
                 new ReportDataAvailabilityResponse(
                         !games.isEmpty(),
-                        summary != null),
+                        summary != null
+                                && summary.sourceConversationCount() > 0),
                 games,
                 summary,
                 null);
@@ -185,7 +188,10 @@ public class ReportQueryService {
                 deserializeList(summary.getSourceConversationIds()),
                 deserializeList(summary.getMainEvents()),
                 deserializeList(summary.getEmotions()),
-                deserializeList(summary.getInterests()));
+                deserializeList(summary.getInterests()),
+                deserializeEmotionDetails(summary.getEmotionDetails()),
+                deserializeList(summary.getNotableQuotes()),
+                deserializeConversationGuide(summary.getConversationGuide()));
     }
 
     private List<String> deserializeList(String value) {
@@ -194,6 +200,25 @@ public class ReportQueryService {
         } catch (JacksonException exception) {
             throw new IllegalStateException(
                     "Failed to deserialize conversation summary.", exception);
+        }
+    }
+
+    private List<ReportEmotionDetail> deserializeEmotionDetails(String value) {
+        try {
+            return Arrays.asList(
+                    objectMapper.readValue(value, ReportEmotionDetail[].class));
+        } catch (JacksonException exception) {
+            throw new IllegalStateException(
+                    "Failed to deserialize emotion details.", exception);
+        }
+    }
+
+    private ReportConversationGuide deserializeConversationGuide(String value) {
+        try {
+            return objectMapper.readValue(value, ReportConversationGuide.class);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException(
+                    "Failed to deserialize conversation guide.", exception);
         }
     }
 

@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import dateCircleUrl from '@/assets/images/diary-list/date-circle.webp'
-import dateRectUrl from '@/assets/images/diary-list/date-rect.webp'
 import diaryBookUrl from '@/assets/images/diary-list/diary-open-book.webp'
+import diaryNextButtonUrl from '@/assets/images/diary-list/diary-next-btn.webp'
+import diaryPrevButtonUrl from '@/assets/images/diary-list/diary-prev-btn.webp'
 import monthArrowLeftUrl from '@/assets/images/diary-list/month-arrow-left.webp'
 import monthArrowRightUrl from '@/assets/images/diary-list/month-arrow-right.webp'
 import monthBarUrl from '@/assets/images/diary-list/month-bar.webp'
 import diaryNoteUrl from '@/assets/images/diary/diary-note.webp'
 import backButtonUrl from '@/assets/images/game-entry/left-btn.webp'
-import pagerLeftUrl from '@/assets/images/parent-profile/pager-left.webp'
-import pagerPageUrl from '@/assets/images/parent-profile/pager-page.webp'
-import { getVisiblePageIndices } from '@/utils/pagination'
-import pagerRightUrl from '@/assets/images/parent-profile/pager-right.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
 import { getChildDiaries } from '@/api/diaries'
 import { useConversationBgm } from '@/hooks/useConversationBgm'
@@ -26,112 +23,19 @@ type DiaryEntry = {
   lines: string[]
 }
 
-const DIARIES: DiaryEntry[] = [
-  {
-    id: 1,
-    date: '2026-07-22',
-    title: '그림 맞추기 놀이',
-    lines: [
-      '오늘은 그림 맞추기 놀이로 이야기꽃을 피웠다.',
-      '빙글이와 동물 친구들의 그림을 함께 맞혔다.',
-      '가장 기억에 남는 순간은 토끼를 찾았을 때였다.',
-      '내일은 빙글이와 다른 놀이도 해 보고 싶다.',
-    ],
-  },
-  {
-    id: 2,
-    date: '2026-07-21',
-    title: '과일 자르기 대회',
-    lines: [
-      '오늘 나는 과일 자르기 게임을 했다.',
-      '빨간 과일을 한 번에 잘라서 신이 났다.',
-      '끝까지 포기하지 않은 내가 자랑스러웠다.',
-    ],
-  },
-  {
-    id: 3,
-    date: '2026-07-19',
-    title: '빙글이와 나',
-    lines: [
-      '빙글이와 오늘 있었던 일을 이야기했다.',
-      '유치원에서 그린 그림을 자랑했다.',
-      '빙글이가 칭찬해 줘서 기분이 좋았다.',
-    ],
-  },
-  {
-    id: 4,
-    date: '2026-07-18',
-    title: '같은 그림 찾기',
-    lines: [
-      '같은 그림 찾기 게임을 했다.',
-      '공룡 그림을 빠르게 찾아서 뿌듯했다.',
-      '다음에는 더 빨리 찾고 싶다.',
-    ],
-  },
-  {
-    id: 5,
-    date: '2026-07-17',
-    title: '숫자 세기 대회',
-    lines: [
-      '빙글이와 숫자를 세어 보았다.',
-      '열까지 안 틀리고 세었다.',
-      '참 재미있었다.',
-    ],
-  },
-  {
-    id: 6,
-    date: '2026-07-15',
-    title: '색깔 맞히기',
-    lines: [
-      '여러 색깔을 맞히는 놀이를 했다.',
-      '노란색을 제일 좋아한다고 말했다.',
-      '다음에는 초록색도 골라 보고 싶다.',
-    ],
-  },
-  {
-    id: 7,
-    date: '2026-07-14',
-    title: '동물 소리 흉내',
-    lines: [
-      '동물 소리를 흉내 냈다.',
-      '멍멍, 야옹 소리를 냈다.',
-      '빙글이가 깔깔 웃었다.',
-    ],
-  },
-  {
-    id: 8,
-    date: '2026-08-02',
-    title: '여름 물놀이',
-    lines: [
-      '빙글이와 물놀이 이야기를 했다.',
-      '시원한 물이 정말 좋았다.',
-      '또 가고 싶다.',
-    ],
-  },
-  {
-    id: 9,
-    date: '2026-08-01',
-    title: '숫자 카드 놀이',
-    lines: [
-      '숫자 카드 게임을 했다.',
-      '스무 개까지 세어 보았다.',
-      '정말 뿌듯했다.',
-    ],
-  },
-  {
-    id: 10,
-    date: '2026-06-28',
-    title: '첫 그림 맞추기',
-    lines: [
-      '처음 그림 맞추기를 했다.',
-      '조금 어려웠지만 재미있었다.',
-      '다음에는 더 잘할 거다.',
-    ],
-  },
-]
-
 const jua = { fontFamily: "'Jua', sans-serif" } as const
-const ITEMS_PER_PAGE = 4
+
+const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const
+
+/** 그 달의 날 수. month는 1~12다. */
+function daysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate()
+}
+
+/** 그 달 1일이 무슨 요일인지(0=일). 달력 앞의 빈 칸 수이기도 하다. */
+function firstWeekdayOfMonth(year: number, month: number) {
+  return new Date(year, month - 1, 1).getDay()
+}
 
 function formatYearMonth(year: number, month: number) {
   return `${year}년 ${month}월`
@@ -142,14 +46,37 @@ function formatDiaryDate(date: string) {
   return `${month}월 ${day}일`
 }
 
+/**
+ * 뒤로 가기로 돌아갈 화면.
+ *
+ * 일기장은 아이 홈과 대화 화면 두 곳에서 열린다. 들어온 곳을 함께 받아 그리로
+ * 돌려보낸다. 값이 없으면(주소를 직접 열었거나 새로고침) 아이 홈으로 보낸다 —
+ * 대화 화면으로 보내면 아이가 하지도 않은 대화 준비 화면이 뜬다.
+ */
+function useBackTo(): string {
+  const { state } = useLocation()
+  const from = (state as { from?: unknown } | null)?.from
+  return typeof from === 'string' && from.startsWith('/') ? from : '/child'
+}
+
 export function DiaryListPage() {
   const canvasRef = useFitScale<HTMLDivElement>()
+  const backTo = useBackTo()
   const { setVolume } = useConversationBgm()
-  const [year, setYear] = useState(2026)
-  const [month, setMonth] = useState(7)
-  const [page, setPage] = useState(0)
+  /*
+    처음 열면 이번 달을 보여 준다.
+
+    고정값으로 두면 달이 넘어가는 순간 방금 붙인 일기가 사라진 것처럼 보인다.
+    목록은 달과 무관하게 다 받아 오고 화면에서만 걸러 내므로, 보고 있는 달이
+    어긋나면 있는 일기도 안 보인다.
+  */
+  const [year, setYear] = useState(() => new Date().getFullYear())
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1)
   const [diaries, setDiaries] = useState<DiaryEntry[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  /** 달력에서 고른 날. 그 달에 일기가 하나도 없으면 null이다. */
+  const [selectedDay, setSelectedDay] = useState<number | null>(null)
+  /** 고른 날의 몇 번째 일기를 보고 있는지 */
+  const [diaryIndex, setDiaryIndex] = useState(0)
 
   useEffect(() => {
     // 대화 화면에서 목소리에 맞춰 낮춰 둔 볼륨을 이 화면의 기본값으로 되돌린다.
@@ -157,9 +84,6 @@ export function DiaryListPage() {
   }, [setVolume])
 
   useEffect(() => {
-    // Keep the old design fixture out of the rendered flow; diaries always come
-    // from the selected child's server-side diary collection.
-    void DIARIES
     const childId = Number(loadActiveChildProfileId())
     if (!Number.isInteger(childId) || childId <= 0) {
       setDiaries([])
@@ -176,42 +100,84 @@ export function DiaryListPage() {
           lines: diary.lines,
         }))
         setDiaries(next)
-        setSelectedId(next[0]?.id ?? null)
       })
       .catch(() => {
         if (!active) return
         setDiaries([])
-        setSelectedId(null)
       })
     return () => {
       active = false
     }
   }, [])
 
-  const monthDiaries = useMemo(
-    () =>
-      diaries.filter((diary) => {
-        const [diaryYear, diaryMonth] = diary.date.split('-').map(Number)
-        return diaryYear === year && diaryMonth === month
-      }),
-    [diaries, month, year],
-  )
-  const pageCount = Math.max(1, Math.ceil(monthDiaries.length / ITEMS_PER_PAGE))
-  const visibleDiaries = monthDiaries.slice(
-    page * ITEMS_PER_PAGE,
-    (page + 1) * ITEMS_PER_PAGE,
-  )
-  const selectedDiary =
-    monthDiaries.find((diary) => diary.id === selectedId) ??
-    monthDiaries[0] ??
-    null
+  /*
+    날짜별로 묶어 둔다.
+
+    아이는 대화할 때마다 일기를 붙일 수 있어 하루에 여러 개가 쌓인다. 달력 한 칸이
+    하루를 맡고, 그 칸을 누르면 그날 것들을 차례로 넘겨 본다.
+
+    만든 순서대로 보여 주려고 id 오름차순으로 세운다. 서버가 주는 순서에 기대면
+    같은 날 일기의 앞뒤가 요청마다 달라질 수 있다.
+  */
+  const diariesByDay = useMemo(() => {
+    const grouped = new Map<number, DiaryEntry[]>()
+    for (const diary of diaries) {
+      const [diaryYear, diaryMonth, diaryDay] = diary.date
+        .split('-')
+        .map(Number)
+      if (diaryYear !== year || diaryMonth !== month) continue
+      const bucket = grouped.get(diaryDay)
+      if (bucket) bucket.push(diary)
+      else grouped.set(diaryDay, [diary])
+    }
+    for (const bucket of grouped.values()) {
+      bucket.sort((a, b) => a.id - b.id)
+    }
+    return grouped
+  }, [diaries, month, year])
+
+  /*
+    처음 보여 줄 날을 고른다.
+
+    오늘 쓴 일기가 있으면 오늘, 없으면 그 달에서 가장 최근에 쓴 날이다. 빈 화면으로
+    맞이하면 아이는 무엇을 눌러야 할지 모른다.
+  */
+  useEffect(() => {
+    if (selectedDay !== null && diariesByDay.has(selectedDay)) return
+
+    const today = new Date()
+    const isThisMonth =
+      today.getFullYear() === year && today.getMonth() + 1 === month
+    const days = [...diariesByDay.keys()].sort((a, b) => a - b)
+    const nextDay =
+      isThisMonth && diariesByDay.has(today.getDate())
+        ? today.getDate()
+        : (days[days.length - 1] ?? null)
+
+    setSelectedDay(nextDay)
+    setDiaryIndex(0)
+  }, [diariesByDay, month, selectedDay, year])
+
+  const selectedDayDiaries =
+    selectedDay === null ? [] : (diariesByDay.get(selectedDay) ?? [])
+  const selectedDiary = selectedDayDiaries[diaryIndex] ?? null
+  const hasPrevDiary = diaryIndex > 0
+  const hasNextDiary = diaryIndex < selectedDayDiaries.length - 1
+
+  const totalDays = daysInMonth(year, month)
+  const leadingBlanks = firstWeekdayOfMonth(year, month)
 
   const moveMonth = (amount: number) => {
     const next = new Date(year, month - 1 + amount, 1)
     setYear(next.getFullYear())
     setMonth(next.getMonth() + 1)
-    setPage(0)
-    setSelectedId(null)
+    setSelectedDay(null)
+    setDiaryIndex(0)
+  }
+
+  const openDay = (day: number) => {
+    setSelectedDay(day)
+    setDiaryIndex(0)
   }
 
   return (
@@ -228,9 +194,9 @@ export function DiaryListPage() {
         />
 
         <Link
-          aria-label="대화 화면으로 돌아가기"
+          aria-label="이전 화면으로 돌아가기"
           className="absolute top-[25px] left-[25px] z-30 size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
-          to="/conversation"
+          to={backTo}
         >
           <img
             alt=""
@@ -286,121 +252,86 @@ export function DiaryListPage() {
             </button>
           </div>
 
-          <div className="-mt-9 flex h-[333px] w-full flex-col">
-            {visibleDiaries.length ? (
-              visibleDiaries.map((diary, index) => {
-                const selected = diary.id === selectedDiary?.id
-                const diaryDay = Number(diary.date.split('-')[2])
+          {/*
+            달력.
+
+            한 칸이 하루다. 일기가 있는 날에만 동그라미를 씌우고 오른쪽 위에 개수를
+            달아, 아이가 훑기만 해도 어느 날에 이야기가 쌓였는지 보이게 한다.
+
+            줄 수는 달마다 다르다(4~6줄). 칸 높이를 고정하고 남는 줄은 비워 두면
+            달을 넘길 때 아래 요소가 들썩이지 않는다.
+          */}
+          <div className="-mt-5 h-[333px] w-full">
+            <div className="grid grid-cols-7 gap-x-[6px]">
+              {WEEKDAY_LABELS.map((label) => (
+                <span
+                  className="text-center text-[24px] text-[#a98a58]"
+                  key={label}
+                  style={jua}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-1 grid grid-cols-7 gap-x-[6px] gap-y-[3px]">
+              {Array.from({ length: leadingBlanks }, (_, index) => (
+                <span key={`blank-${index}`} />
+              ))}
+              {Array.from({ length: totalDays }, (_, index) => {
+                const day = index + 1
+                const count = diariesByDay.get(day)?.length ?? 0
+                const selected = day === selectedDay
+
+                if (count === 0) {
+                  return (
+                    <span
+                      className="flex h-[47px] items-center justify-center text-[24px] text-[#c3ab84]"
+                      key={day}
+                      style={jua}
+                    >
+                      {day}
+                    </span>
+                  )
+                }
 
                 return (
                   <button
-                    className={`relative h-[96px] w-full shrink-0 border-0 bg-transparent p-0 text-left transition hover:brightness-104 active:scale-99 ${
-                      index ? '-mt-[17px]' : ''
-                    } ${
+                    aria-label={`${month}월 ${day}일 일기 ${count}개`}
+                    aria-pressed={selected}
+                    className={`relative h-[47px] border-0 bg-transparent p-0 transition hover:scale-108 ${
                       selected
-                        ? 'z-2 scale-103 drop-shadow-[0_4px_8px_rgba(120,90,40,.35)]'
-                        : 'z-1 brightness-98'
+                        ? 'scale-108 drop-shadow-[0_4px_7px_rgba(120,90,40,.4)]'
+                        : ''
                     }`}
-                    key={diary.id}
-                    onClick={() => setSelectedId(diary.id)}
+                    key={day}
+                    onClick={() => openDay(day)}
                     type="button"
                   >
                     <img
                       alt=""
-                      className="absolute inset-0 size-full object-fill"
-                      src={dateRectUrl}
+                      className="absolute top-1/2 left-1/2 size-[46px] -translate-x-1/2 -translate-y-1/2 object-contain"
+                      src={dateCircleUrl}
+                      style={{ opacity: selected ? 1 : 0.82 }}
                     />
-                    <span className="absolute top-1/2 left-[18px] z-1 size-[58px] -translate-y-1/2">
-                      <img
-                        alt=""
-                        className="absolute inset-0 size-full object-contain"
-                        src={dateCircleUrl}
-                      />
-                      <span
-                        className="absolute inset-0 flex items-center justify-center pb-0.5 text-[25px] text-[#8a6a34]"
-                        style={jua}
-                      >
-                        {diaryDay}
-                      </span>
-                    </span>
                     <span
-                      className="absolute top-1/2 right-5 left-[88px] -translate-y-1/2 truncate text-[24px] text-[#6a4a1e]"
+                      className="absolute inset-0 flex items-center justify-center text-[24px] text-[#6a4a1e]"
                       style={jua}
                     >
-                      {diary.title}
+                      {day}
+                    </span>
+                    {/* 개수 뱃지. 하루에 여러 개가 쌓였다는 것을 한눈에 알린다. */}
+                    <span
+                      className="absolute top-0 right-0 flex size-[21px] items-center justify-center rounded-full border-2 border-[#fdf6e3] bg-[#7cb342] text-[12px] leading-none text-white"
+                      style={jua}
+                    >
+                      {count}
                     </span>
                   </button>
                 )
-              })
-            ) : (
-              <div
-                className="flex h-full items-center justify-center text-center text-[22px] leading-relaxed text-[#9a7a48]"
-                style={jua}
-              >
-                이 달에 붙인 일기가
-                <br />
-                아직 없어요
-              </div>
-            )}
+              })}
+            </div>
           </div>
-
-          <nav
-            aria-label="일기 목록 페이지"
-            className="mt-2 flex items-center justify-center gap-[7px]"
-          >
-            <button
-              aria-label="이전 페이지"
-              className="h-[56px] border-0 bg-transparent p-0 transition hover:scale-110 disabled:opacity-40"
-              disabled={page === 0}
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
-              type="button"
-            >
-              <img
-                alt=""
-                className="h-full w-auto object-contain"
-                src={pagerLeftUrl}
-              />
-            </button>
-            {getVisiblePageIndices(page, pageCount).map((index) => (
-              <button
-                aria-label={`${index + 1}페이지`}
-                aria-current={index === page ? 'page' : undefined}
-                className={`relative size-[56px] border-0 bg-transparent p-0 transition hover:scale-110 ${
-                  index === page ? 'scale-112' : 'opacity-78'
-                }`}
-                key={index}
-                onClick={() => setPage(index)}
-                type="button"
-              >
-                <img
-                  alt=""
-                  className="absolute inset-0 size-full object-contain"
-                  src={pagerPageUrl}
-                />
-                <span
-                  className="absolute inset-0 flex items-center justify-center text-[25px] leading-none text-white [text-shadow:0_2px_3px_rgba(60,90,20,.55)]"
-                  style={jua}
-                >
-                  {index + 1}
-                </span>
-              </button>
-            ))}
-            <button
-              aria-label="다음 페이지"
-              className="h-[56px] border-0 bg-transparent p-0 transition hover:scale-110 disabled:opacity-40"
-              disabled={page >= pageCount - 1}
-              onClick={() =>
-                setPage((current) => Math.min(pageCount - 1, current + 1))
-              }
-              type="button"
-            >
-              <img
-                alt=""
-                className="h-full w-auto object-contain"
-                src={pagerRightUrl}
-              />
-            </button>
-          </nav>
         </section>
 
         <section className="absolute top-[90px] right-[145px] w-[600px] rotate-[-1.2deg] [animation:diary-note-in_.4s_ease_both]">
@@ -409,11 +340,49 @@ export function DiaryListPage() {
             className="block w-full drop-shadow-[0_12px_22px_rgba(0,0,0,.25)]"
             src={diaryNoteUrl}
           />
+          {/*
+            그날의 일기 넘기기.
+
+            종이 안쪽 여백(좌우 13%)에 세워 글을 가리지 않는다. 넘길 것이 있을
+            때만 나타난다 — 눌러도 아무 일이 없는 버튼은 아이를 헷갈리게 한다.
+          */}
+          {hasPrevDiary ? (
+            <button
+              aria-label="이전 일기"
+              className="absolute top-[55%] left-[8%] z-10 size-[50px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_4px_7px_rgba(60,90,20,.32)] transition hover:scale-110 active:scale-95"
+              onClick={() => setDiaryIndex((current) => current - 1)}
+              type="button"
+            >
+              <img
+                alt=""
+                className="size-full object-contain"
+                src={diaryPrevButtonUrl}
+              />
+            </button>
+          ) : null}
+          {hasNextDiary ? (
+            <button
+              aria-label="다음 일기"
+              className="absolute top-[55%] right-[9%] z-10 size-[50px] -translate-y-1/2 border-0 bg-transparent p-0 drop-shadow-[0_4px_7px_rgba(60,90,20,.32)] transition hover:scale-110 active:scale-95"
+              onClick={() => setDiaryIndex((current) => current + 1)}
+              type="button"
+            >
+              <img
+                alt=""
+                className="size-full object-contain"
+                src={diaryNextButtonUrl}
+              />
+            </button>
+          ) : null}
+
           <div className="absolute top-[5%] right-[13%] bottom-[14%] left-[13%] flex flex-col items-center justify-center gap-1 text-center">
             {selectedDiary ? (
               <>
                 <p className="text-[25px] text-[#b08a4e]" style={jua}>
                   {formatDiaryDate(selectedDiary.date)}
+                  {selectedDayDiaries.length > 1
+                    ? ` (${diaryIndex + 1}/${selectedDayDiaries.length})`
+                    : ''}
                 </p>
                 <h2 className="text-[29px] text-[#7a5220]" style={jua}>
                   {selectedDiary.title}
@@ -421,7 +390,7 @@ export function DiaryListPage() {
                 <div className="mt-0.5 flex flex-col gap-[7px]">
                   {selectedDiary.lines.map((line) => (
                     <p
-                      className="text-[21px] leading-[1.35] text-[#5f4626]"
+                      className="text-[18.5px] leading-[1.35] text-[#5f4626]"
                       key={line}
                       style={jua}
                     >
@@ -432,7 +401,9 @@ export function DiaryListPage() {
               </>
             ) : (
               <p className="text-[23px] text-[#9a7a48]" style={jua}>
-                해당 날짜의 일기가 없어요
+                달력에서 일기가 있는 날을
+                <br />
+                눌러 보세요
               </p>
             )}
           </div>

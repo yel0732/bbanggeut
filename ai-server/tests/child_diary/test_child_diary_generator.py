@@ -68,14 +68,14 @@ async def test_generates_fixed_title_and_validated_lines() -> None:
     assert result.title == "오늘의 일기"
     assert len(result.lines) == 3
     assert result.model_version == "gpt-5.4-mini"
-    assert result.prompt_version == "child-diary-v3"
+    assert result.prompt_version == "child-diary-v7"
 
 
 @pytest.mark.asyncio
 async def test_rejects_malformed_or_overlong_model_output_without_retry() -> None:
     provider = FakeProvider([
         '{"gameLines":[],"dailyLines":["가나다", "라마바", "'
-        + "가" * 41 + '"]}'
+        + "가" * 61 + '"]}'
     ])
     generator = ChildDiaryGenerator(provider, 1.0, 2)
 
@@ -97,7 +97,7 @@ async def test_retries_bounded_number_of_times_on_timeout() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rejects_unbalanced_lines_for_combined_topics() -> None:
+async def test_rejects_combined_topic_without_a_line_per_topic() -> None:
     request = ChildDiarySummaryRequest.model_validate({
         "conversationId": "conversation-1",
         "diaryDate": "2026-07-27",
@@ -106,9 +106,10 @@ async def test_rejects_unbalanced_lines_for_combined_topics() -> None:
             {"topicType": "DAILY", "slots": {"event": "친구와 놀았다"}},
         ],
     })
+    # 두 토픽인데 DAILY 줄이 하나도 없으면(토픽당 최소 1줄 위반) 거부된다.
     provider = FakeProvider([
         '{"gameLines":["게임 첫째 줄.","게임 둘째 줄.","게임 셋째 줄."],'
-        '"dailyLines":["일상 첫째 줄."]}'
+        '"dailyLines":[]}'
     ])
 
     with pytest.raises(ChildDiaryGenerationError):

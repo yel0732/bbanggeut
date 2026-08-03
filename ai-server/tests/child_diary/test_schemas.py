@@ -96,7 +96,7 @@ def test_response_requires_fixed_title_and_three_to_four_short_lines() -> None:
     [
         ("다른 제목", ["첫째 줄이다.", "둘째 줄이다.", "셋째 줄이다."]),
         (DIARY_TITLE, ["첫째 줄이다.", "둘째 줄이다."]),
-        (DIARY_TITLE, ["가" * 41, "둘째 줄이다.", "셋째 줄이다."]),
+        (DIARY_TITLE, ["가" * 61, "둘째 줄이다.", "셋째 줄이다."]),
     ],
 )
 def test_rejects_invalid_ui_constraints(title: str, lines: list[str]) -> None:

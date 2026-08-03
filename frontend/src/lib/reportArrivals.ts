@@ -1,5 +1,9 @@
 export type ReportArrivalNotification = {
   id: string
+  /** 서버 알림 id. 읽음 처리를 서버에 반영할 때 쓴다. */
+  notificationId?: number
+  /** 서버 리포트 id. 리포트를 열어 읽음 처리할 때 쓴다. */
+  reportId?: number
   childId?: string
   childName: string
   reportDate: string
@@ -20,6 +24,9 @@ function normalizeArrival(value: unknown): ReportArrivalNotification | null {
   }
   return {
     id: item.id,
+    notificationId:
+      typeof item.notificationId === 'number' ? item.notificationId : undefined,
+    reportId: typeof item.reportId === 'number' ? item.reportId : undefined,
     childId: typeof item.childId === 'string' ? item.childId : undefined,
     childName: item.childName,
     reportDate: item.reportDate,

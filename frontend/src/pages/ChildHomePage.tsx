@@ -13,6 +13,7 @@ import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ChildProfileSwitchButton } from '@/components/ChildProfileSwitchButton'
+import { DiaryBookButton } from '@/components/DiaryBookButton'
 import { DinoCharacter } from '@/components/character/DinoCharacter'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
@@ -183,6 +184,12 @@ export function ChildHomePage() {
         </button>
 
         <ChildProfileSwitchButton />
+
+        {/*
+          프로필 바꾸기 버튼(top 21, 높이 46) 바로 아래에 오른쪽 끝을 맞춰 세운다.
+          동굴 집 버튼의 누름 영역이 이 자리까지 걸쳐 있어 그보다 위에 둬야 한다.
+        */}
+        <DiaryBookButton className="absolute top-[95px] right-[25px] z-50" />
       </div>
     </div>
   )

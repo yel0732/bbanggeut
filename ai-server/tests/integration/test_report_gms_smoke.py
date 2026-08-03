@@ -42,6 +42,6 @@ async def test_real_gms_daily_report_generation() -> None:
         )
 
     assert result.title.strip()
-    assert result.body.strip()
+    assert result.daily_story.strip()
     assert result.model_version == settings.gms_report_model
-    assert result.prompt_version == "daily-report-v1"
+    assert result.prompt_version == "daily-report-v2"

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
   type RefObject,
@@ -20,7 +21,9 @@ import leftButtonUrl from '@/assets/images/game-entry/left-btn.webp'
 import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
+import { playMatchSfx, playRetrySfx } from '@/features/games/dobble/dobbleSfx'
 import { FRUIT_GAME_CONFIG } from '@/features/games/fruit/fruitGameConfig'
+import { useCutFruitSound } from '@/features/games/fruit/useCutFruitSound'
 import { getGameById, type GameId } from '@/features/games/games'
 import {
   SpeechBubble,
@@ -117,6 +120,7 @@ export function GameGuidePage() {
     (step.kind === 'detect' && interactive) ||
     (step.kind === 'practice' && practiceReady)
 
+  const playCutSound = useCutFruitSound()
   const { requestCamera, status, streamRef, videoRef } = useCameraStream()
   // 게임마다 필요한 모델이 다르다. 둘을 동시에 올리면 낭비라 한쪽만 켠다.
   const cameraReady = status === 'granted'
@@ -192,6 +196,7 @@ export function GameGuidePage() {
       step.kind === 'practice' && cameraReady && tutorialGameId === 'fruit',
     handRef: hand.playHandRef,
     onComplete: goNext,
+    onSlice: playCutSound,
     targetCount: PRACTICE_TARGET_FRUITS,
   })
 
@@ -215,6 +220,24 @@ export function GameGuidePage() {
     onPlace: wordMatchSfx.playPlaceSfx,
     onWrong: wordMatchSfx.playWrongSfx,
   })
+
+  /*
+    도블 연습의 정답·오답 소리.
+
+    판정은 매 프레임 다시 계산되므로 같은 결과가 계속 흘러나온다. 바로 소리를
+    걸면 정답 하나에 수십 번 울린다. 직전 결과와 달라진 순간에만 낸다.
+
+    인게임과 같은 소리를 쓴다. 연습에서 익힌 소리가 본 게임에서 그대로 나야
+    아이가 "맞았다"를 다시 배우지 않는다.
+  */
+  const lastFeedbackRef = useRef<DobblePracticeState['feedback']>('idle')
+  useEffect(() => {
+    const feedback = dobblePractice.feedback
+    if (feedback === lastFeedbackRef.current) return
+    lastFeedbackRef.current = feedback
+    if (feedback === 'matched') playMatchSfx()
+    else if (feedback === 'wrong') playRetrySfx()
+  }, [dobblePractice.feedback])
 
   if (!game) {
     return <Navigate replace to="/games" />

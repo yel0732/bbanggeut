@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -43,10 +44,15 @@ class DobbleGameSessionControllerTest {
     @Autowired
     private CardRoundRepository cardRoundRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void setUp() {
         cardRoundRepository.deleteAll();
         gameSessionRepository.deleteAll();
+        jdbcTemplate.update("delete from game where game_id = 7");
+        insertGame(7L, "DOBBLE", "그림 맞추기");
     }
 
     @Test
@@ -61,13 +67,13 @@ class DobbleGameSessionControllerTest {
                 .andExpect(header().string("Location", startsWith("/api/game-sessions/")))
                 .andExpect(jsonPath("$.gameSessionId").isNotEmpty())
                 .andExpect(jsonPath("$.clientPlayId").value(clientPlayId.toString()))
-                .andExpect(jsonPath("$.score").value(4321))
+                .andExpect(jsonPath("$.score").value(2550))
                 .andExpect(jsonPath("$.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.difficultyCode").doesNotExist())
                 .andExpect(jsonPath("$.cardResults").doesNotExist());
 
         var savedSession = gameSessionRepository.findByClientPlayId(clientPlayId).orElseThrow();
-        assertThat(savedSession.getScore()).isEqualTo(4321);
+        assertThat(savedSession.getScore()).isEqualTo(2550);
         assertThat(savedSession.getDifficultyCode()).isNull();
         var savedRounds = cardRoundRepository.findAllByGameSessionIdOrderByRoundNo(
                 savedSession.getGameSessionId());
@@ -106,7 +112,7 @@ class DobbleGameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest(clientPlayId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.score").value(4321));
+                .andExpect(jsonPath("$.score").value(2550));
 
         assertThat(gameSessionRepository.count()).isEqualTo(1);
         assertThat(cardRoundRepository.count()).isEqualTo(4);
@@ -136,7 +142,7 @@ class DobbleGameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.error").value("INVALID_DOBBLE_RESULT"));
 
         assertThat(gameSessionRepository.count()).isZero();
         assertThat(cardRoundRepository.count()).isZero();
@@ -165,7 +171,7 @@ class DobbleGameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.error").value("INVALID_DOBBLE_RESULT"));
 
         assertNothingSaved();
     }
@@ -179,7 +185,7 @@ class DobbleGameSessionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+                .andExpect(jsonPath("$.error").value("INVALID_DOBBLE_RESULT"));
 
         assertNothingSaved();
     }
@@ -215,9 +221,42 @@ class DobbleGameSessionControllerTest {
         assertNothingSaved();
     }
 
+    @Test
+    void rejectsManipulatedScore() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replace("\"score\": 2550", "\"score\": 2551");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_DOBBLE_RESULT"));
+        assertNothingSaved();
+    }
+
+    @Test
+    void rejectsPlayDurationOverGameLimit() throws Exception {
+        String request = validRequest(UUID.randomUUID())
+                .replace("\"playDurationSeconds\": 90", "\"playDurationSeconds\": 91");
+
+        mockMvc.perform(post("/api/game-sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_DOBBLE_RESULT"));
+        assertNothingSaved();
+    }
+
     private void assertNothingSaved() {
         assertThat(gameSessionRepository.count()).isZero();
         assertThat(cardRoundRepository.count()).isZero();
+    }
+
+    private void insertGame(long gameId, String gameCode, String gameName) {
+        jdbcTemplate.update(
+                "insert into game (game_id, game_code, game_name, created_at, updated_at) "
+                        + "values (?, ?, ?, current_timestamp, current_timestamp)",
+                gameId, gameCode, gameName);
     }
 
     private String validRequest(UUID clientPlayId) {
@@ -229,8 +268,8 @@ class DobbleGameSessionControllerTest {
                   "selectedAt": "2026-07-23T10:00:00",
                   "playStartedAt": "2026-07-23T10:00:03",
                   "completedAt": "2026-07-23T10:02:03",
-                  "playDurationSeconds": 120,
-                  "score": 4321,
+                  "playDurationSeconds": 90,
+                  "score": 2550,
                   "gameType": "DOBBLE",
                   "cardResults": [
                     {

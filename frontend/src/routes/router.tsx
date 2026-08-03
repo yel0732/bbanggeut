@@ -25,7 +25,6 @@ import {
   RecyclePlayPage,
   RecycleResultPage,
   ReportListPage,
-  ReportDetailPage,
   StartPage,
   WordMatchPlayPage,
   WordMatchResultPage,
@@ -156,12 +155,9 @@ export const router = createBrowserRouter([
             element: <ParentModePage />,
           },
           {
+            // 리포트 상세는 목록 화면 안에서 바로 펼쳐지므로 별도 경로가 없다.
             path: '/reports',
             element: <ReportListPage />,
-          },
-          {
-            path: '/reports/:reportDate',
-            element: <ReportDetailPage />,
           },
         ],
       },

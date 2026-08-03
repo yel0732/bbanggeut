@@ -108,8 +108,3 @@ export const ReportListPage = lazy(() =>
     default: ReportListPage,
   })),
 )
-export const ReportDetailPage = lazy(() =>
-  import('@/pages/ReportDetailPage').then(({ ReportDetailPage }) => ({
-    default: ReportDetailPage,
-  })),
-)

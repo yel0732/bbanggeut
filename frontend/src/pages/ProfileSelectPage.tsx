@@ -10,7 +10,7 @@ import {
 } from '@/api/auth'
 import {
   getChildProfiles as getBackendChildProfiles,
-  needsParentOnboarding,
+  getParentProfile,
 } from '@/api/profiles'
 import backgroundUrl from '@/assets/images/profile/background.webp'
 import childAvatarUrl from '@/assets/images/profile/child-avatar.webp'
@@ -29,6 +29,7 @@ import {
   saveChildProfiles,
 } from '@/lib/childProfiles'
 import { grantParentAccess, revokeParentAccess } from '@/lib/parentAccess'
+import { loadParentPhoto } from '@/lib/parentPhoto'
 
 type ProfileSelectLocationState = {
   openParentPin?: boolean
@@ -56,6 +57,8 @@ export function ProfileSelectPage() {
   const [activeChildProfileId, setActiveChildProfileId] = useState(
     loadActiveChildProfileId,
   )
+  // 서버 응답을 기다리는 동안에는 아직 올리지 못한 사진이라도 보여준다.
+  const [parentPhoto, setParentPhoto] = useState<string | null>(loadParentPhoto)
   const hasTwoChildRows = childProfiles.length > 5
   const pinTimersRef = useRef<number[]>([])
   const [showPin, setShowPin] = useState(Boolean(locationState?.openParentPin))
@@ -78,6 +81,10 @@ export function ProfileSelectPage() {
 
     로그인할 때 이미 갈 곳을 정하지만, 주소를 직접 열거나 새로고침한 경우를 위한
     뒷문이다. 서버에 물어봐야 알 수 있어 화면이 한 번 그려진 뒤에 넘어간다.
+
+    같은 응답에 부모 사진도 들어 있어 여기서 함께 받는다. 조회에 실패하면 아무
+    데도 보내지 않는다 — 모르는 것을 "안 했다"로 단정하면 이미 핀이 있는 사람을
+    온보딩으로 보내게 된다.
   */
   useEffect(() => {
     if (!getStoredAccessToken()) {
@@ -85,10 +92,16 @@ export function ProfileSelectPage() {
       return
     }
     let active = true
-    void needsParentOnboarding().then((needsOnboarding) => {
-      if (active && needsOnboarding)
-        navigate('/profiles/new', { replace: true })
-    })
+    void getParentProfile()
+      .then((profile) => {
+        if (!active) return
+        if (!profile.pinSet) {
+          navigate('/profiles/new', { replace: true })
+          return
+        }
+        if (profile.profileImageUrl) setParentPhoto(profile.profileImageUrl)
+      })
+      .catch(() => undefined)
     return () => {
       active = false
     }
@@ -416,7 +429,7 @@ export function ProfileSelectPage() {
                 alt="부모"
                 className="h-full w-full object-cover"
                 decoding="async"
-                src={parentAvatarUrl}
+                src={parentPhoto ?? parentAvatarUrl}
               />
             </div>
             <span

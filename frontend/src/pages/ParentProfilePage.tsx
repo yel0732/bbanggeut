@@ -20,6 +20,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
 import { useFitScale } from '@/hooks/useFitScale'
+import { clearParentPhoto, saveParentPhoto } from '@/lib/parentPhoto'
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 const PIN_LENGTH = 4
 /*
@@ -147,6 +148,7 @@ export function ParentProfilePage() {
           if (getStoredAccessToken() && isDataImageUrl(photoUrl)) {
             try {
               await uploadParentProfileImage(await dataImageUrlToBlob(photoUrl))
+              clearParentPhoto()
             } catch {
               hasPhotoError = true
               setIsPinError(true)
@@ -224,7 +226,11 @@ export function ParentProfilePage() {
           300,
           300,
         )
-        setPhotoUrl(canvas.toDataURL('image/png'))
+        const nextPhoto = canvas.toDataURL('image/png')
+        setPhotoUrl(nextPhoto)
+        // 업로드는 핀을 저장한 뒤에야 일어난다. 그 사이 새로고침하거나 업로드가
+        // 실패해도 찍은 사진이 남아 있도록 여기서 맡겨 둔다.
+        saveParentPhoto(nextPhoto)
       }
     }
     stopParentCamera()
@@ -298,12 +304,12 @@ export function ParentProfilePage() {
             className="absolute top-[18.5%] left-1/2 w-[500px] -translate-x-1/2 text-left text-[16px] leading-[1.45] text-[#6b5a34]"
             style={jua}
           >
-            <p>🔒 부모 프로필은 핀번호를 입력하면 들어가요.</p>
+            <p>🔒 부모 프로필에 들어가려면 PIN 번호를 입력해야 해요.</p>
             <p>
               👶 아이 프로필은 부모 모드의 &lsquo;아이 프로필 관리&rsquo;에서
-              만들어요.
+              추가할 수 있어요.
             </p>
-            <p>✏️ 핀번호와 프로필 사진은 나중에 언제든 바꿀 수 있어요.</p>
+            <p>✏️ PIN 번호와 프로필 사진은 언제든 변경할 수 있어요.</p>
           </div>
 
           {isParentCameraOn ? (
@@ -334,6 +340,7 @@ export function ParentProfilePage() {
             onClick={() => {
               stopParentCamera()
               setPhotoUrl(null)
+              clearParentPhoto()
             }}
             style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
             type="button"
@@ -341,15 +348,15 @@ export function ParentProfilePage() {
             기본으로 사용
           </button>
 
-          <div className="absolute top-[48.5%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
+          <div className="absolute top-[49.5%] right-[14%] left-[14%] h-0.5 rounded-sm bg-[rgba(122,100,60,.22)]" />
           <div
-            className="absolute top-[50%] left-1/2 -translate-x-1/2 text-[26px] whitespace-nowrap text-[#3a7d2c]"
+            className="absolute top-[51%] left-1/2 -translate-x-1/2 text-[26px] whitespace-nowrap text-[#3a7d2c]"
             style={jua}
           >
             {pinLabel}
           </div>
           <div
-            className="absolute top-[54.6%] left-1/2 -translate-x-1/2 text-[13px] whitespace-nowrap"
+            className="absolute top-[55%] left-1/2 -translate-x-1/2 text-[13px] whitespace-nowrap"
             style={{
               ...jua,
               color: isPinError

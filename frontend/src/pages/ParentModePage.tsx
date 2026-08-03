@@ -73,6 +73,11 @@ import {
   type ChildProfile,
 } from '@/lib/childProfiles'
 import {
+  clearParentPhoto,
+  loadParentPhoto,
+  saveParentPhoto as storeParentPhoto,
+} from '@/lib/parentPhoto'
+import {
   loadReportArrivals,
   saveReportArrivals,
   upsertReportArrival,
@@ -101,7 +106,6 @@ const jua = { fontFamily: "'Jua', sans-serif" } as const
 const TOAST_VISIBLE_MS = 4500
 /** 완료 문구를 읽을 수 있을 만큼만 두었다가 팝업을 닫는 시간(ms). */
 const POPUP_CLOSE_DELAY_MS = 1400
-const PARENT_PHOTO_KEY = 'bbanggut-parent-photo'
 const NOTIFICATION_KEY = 'bbanggut-report-notification'
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '←']
 const MAX_PIN_FAILS = 5
@@ -303,9 +307,7 @@ export function ParentModePage() {
   const [popup, setPopup] = useState<PopupType>(null)
   const [profileView, setProfileView] = useState<ProfileView>('menu')
   const [profiles, setProfiles] = useState(loadChildProfiles)
-  const [parentPhoto, setParentPhoto] = useState<string | null>(() =>
-    window.localStorage.getItem(PARENT_PHOTO_KEY),
-  )
+  const [parentPhoto, setParentPhoto] = useState<string | null>(loadParentPhoto)
   const [isParentCameraOn, setIsParentCameraOn] = useState(false)
   const [pin, setPin] = useState('')
   const [pinStep, setPinStep] = useState<PinStep>('current')
@@ -411,10 +413,11 @@ export function ParentModePage() {
     void getParentProfile()
       .then((profile) => {
         if (!active) return
+        // 서버에 사진이 없으면 아직 올리지 못한 로컬 사진을 그대로 둔다. 덮어쓰면
+        // 온보딩에서 업로드가 실패한 사람은 찍은 사진을 다시 볼 수 없다.
+        if (!profile.profileImageUrl) return
         setParentPhoto(profile.profileImageUrl)
-        if (profile.profileImageUrl) {
-          window.localStorage.removeItem(PARENT_PHOTO_KEY)
-        }
+        clearParentPhoto()
       })
       .catch(() => undefined)
     return () => {
@@ -775,7 +778,7 @@ export function ParentModePage() {
         )
         const nextPhoto = canvas.toDataURL('image/png')
         setParentPhoto(nextPhoto)
-        window.localStorage.setItem(PARENT_PHOTO_KEY, nextPhoto)
+        storeParentPhoto(nextPhoto)
       }
     }
     stopParentCamera()
@@ -784,7 +787,7 @@ export function ParentModePage() {
   const useDefaultPhoto = () => {
     stopParentCamera()
     setParentPhoto(null)
-    window.localStorage.removeItem(PARENT_PHOTO_KEY)
+    clearParentPhoto()
   }
 
   const saveParentPhoto = async () => {
@@ -793,7 +796,7 @@ export function ParentModePage() {
         ? await uploadParentProfileImage(await dataImageUrlToBlob(parentPhoto))
         : await updateParentProfileImage(PARENT_DEFAULT_IMAGE_KEY)
       setParentPhoto(result.profileImageUrl)
-      window.localStorage.removeItem(PARENT_PHOTO_KEY)
+      clearParentPhoto()
       // 저장했다는 쪽지는 팝업 밖(오른쪽 아래)에 뜨므로 바로 닫아도 보인다.
       setNotificationToast('프로필 사진을 저장했어요.')
       setPopup(null)
@@ -1172,7 +1175,7 @@ export function ParentModePage() {
         if (timeChanged) {
           setSavedMessage('변경한 시간은 다음 일일 리포트부터 적용됩니다.')
         }
-        window.setTimeout(() => setPopup(null), timeChanged ? 1400 : 500)
+        window.setTimeout(() => setPopup(null), timeChanged ? 2500 : 1400)
       })
       .catch((error: unknown) => {
         setSavedMessage(

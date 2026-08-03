@@ -256,6 +256,7 @@ export async function logout() {
 
   if (!accessToken) {
     clearLoginSession()
+    clearAccountLocalData()
     return
   }
 
@@ -274,7 +275,10 @@ export async function logout() {
     )
   }
 
+  // 로그아웃하면 아이·리포트 캐시도 함께 지운다. 남겨 두면 로그인하지 않은
+  // 상태에서도 ChildRouteGuard가 직전에 고른 아이로 통과시킨다.
   clearLoginSession()
+  clearAccountLocalData()
 }
 
 export async function verifyParentPin(pin: string) {
@@ -321,6 +325,9 @@ export async function changeAccountPassword(
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     method: 'PATCH',
+    // 현재 비밀번호가 틀렸다는 401은 토큰 만료가 아니라 업무 응답이다. 재시도하면
+    // 리프레시 토큰만 헛돌고, 실패하면 로그인 세션이 지워진다.
+    skipUnauthorizedRetry: true,
   })
   if (!response.ok) {
     const error = (await response

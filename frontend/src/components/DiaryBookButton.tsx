@@ -32,7 +32,7 @@ export function DiaryBookButton({ className = '' }: { className?: string }) {
   const { pathname } = useLocation()
 
   return (
-    <div className={`h-[61.87px] w-[70px] ${className}`}>
+    <div className={`h-[61.87px] w-[62px] ${className}`}>
       <Link
         aria-label="내 일기장"
         className="peer absolute inset-0 z-10 block transition hover:scale-105"

@@ -185,11 +185,7 @@ export function ChildHomePage() {
 
         <ChildProfileSwitchButton />
 
-        {/*
-          프로필 바꾸기 버튼(top 21, 높이 46) 바로 아래에 오른쪽 끝을 맞춰 세운다.
-          동굴 집 버튼의 누름 영역이 이 자리까지 걸쳐 있어 그보다 위에 둬야 한다.
-        */}
-        <DiaryBookButton className="absolute top-[95px] right-[25px] z-50" />
+        <DiaryBookButton className="absolute bottom-[100px] left-[30px] z-50 size-[62px]" />
       </div>
     </div>
   )

@@ -10,7 +10,7 @@ from app.child_diary.schemas import ChildDiarySummaryRequest
 
 
 class FakeProvider:
-    model = "gpt-5.4-mini"
+    model = "gpt-5-mini"
 
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
@@ -23,7 +23,7 @@ class FakeProvider:
 
 
 class BlockingProvider:
-    model = "gpt-5.4-mini"
+    model = "gpt-5-mini"
 
     def __init__(self) -> None:
         self.calls = 0
@@ -67,7 +67,7 @@ async def test_generates_fixed_title_and_validated_lines() -> None:
 
     assert result.title == "오늘의 일기"
     assert len(result.lines) == 3
-    assert result.model_version == "gpt-5.4-mini"
+    assert result.model_version == "gpt-5-mini"
     assert result.prompt_version == "child-diary-v7"
 
 

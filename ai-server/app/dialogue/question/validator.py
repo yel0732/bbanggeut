@@ -23,6 +23,9 @@ HARD_BANNED_QUESTION_EXPRESSIONS: tuple[str, ...] = (
     "말해야 해",
     "틀렸어",
     "너는 문제가 있어",
+    "왜 그랬",
+    "왜 그런지",
+    "왜 그랬는지",
 )
 
 
@@ -262,10 +265,83 @@ def validate_question_rules(
                 QuestionValidationCode.TOO_SIMILAR,
             )
         )
+    elif any(
+        _semantic_question_bucket(question)
+        == _semantic_question_bucket(recent_question)
+        and _semantic_question_bucket(question) is not None
+        for recent_question in request.recent_questions
+    ):
+        issues.append(
+            QuestionValidationIssue(
+                QuestionValidationCode.TOO_SIMILAR,
+            )
+        )
 
     return QuestionRuleValidationResult(
         normalized_question=question,
         issues=tuple(issues),
+    )
+
+
+def validate_question_against_turn(
+    *,
+    target: QuestionTarget,
+    question: str,
+    current_question: str | None,
+    child_answer: str | None,
+) -> QuestionValidationResult:
+    """Reject a target question already answered by the latest child turn."""
+
+    normalized_question = question.strip()
+    comparison_question = _normalize_for_comparison(normalized_question)
+    comparison_current_question = _normalize_for_comparison(
+        current_question or ""
+    )
+    comparison_answer = _normalize_for_comparison(child_answer or "")
+    if _looks_like_child_question(comparison_answer):
+        return QuestionValidationResult(
+            normalized_question=normalized_question,
+            issues=(),
+        )
+    issues: list[QuestionValidationIssue] = []
+
+    if (
+        target is QuestionTarget.EMOTION
+        and _contains_emotion_cue(comparison_answer)
+    ):
+        issues.append(
+            QuestionValidationIssue(QuestionValidationCode.TARGET_MISMATCH)
+        )
+    if (
+        target is QuestionTarget.EMOTION_REASON
+        and _answer_contains_emotion_reason(comparison_answer)
+    ):
+        issues.append(
+            QuestionValidationIssue(QuestionValidationCode.TARGET_MISMATCH)
+        )
+    if (
+        target in {QuestionTarget.EMOTION, QuestionTarget.EMOTION_REASON}
+        and _asks_positive_moment(comparison_current_question)
+        and _contains_answer_content(comparison_answer)
+    ):
+        issues.append(
+            QuestionValidationIssue(QuestionValidationCode.TOO_SIMILAR)
+        )
+    if (
+        _semantic_question_bucket(normalized_question) == "emotionReason"
+        and _answer_contains_emotion_reason(comparison_answer)
+    ):
+        issues.append(
+            QuestionValidationIssue(QuestionValidationCode.TOO_SIMILAR)
+        )
+    if "왜그랬" in comparison_question or "왜그런지" in comparison_question:
+        issues.append(
+            QuestionValidationIssue(QuestionValidationCode.BANNED_EXPRESSION)
+        )
+
+    return QuestionValidationResult(
+        normalized_question=normalized_question,
+        issues=tuple(dict.fromkeys(issues)),
     )
 
 
@@ -318,4 +394,112 @@ def _contains_hard_banned_expression(comparison_text: str) -> bool:
     return any(
         _normalize_for_comparison(expression) in comparison_text
         for expression in HARD_BANNED_QUESTION_EXPRESSIONS
+    )
+
+
+def _semantic_question_bucket(question: str) -> str | None:
+    normalized = _normalize_for_comparison(question)
+    if any(
+        cue in normalized
+        for cue in (
+            "무엇때문",
+            "뭐때문",
+            "어떤점때문",
+            "어떤부분때문",
+            "왜그런마음",
+            "왜그렇게",
+            "까닭",
+        )
+    ):
+        return "emotionReason"
+    if any(
+        cue in normalized
+        for cue in (
+            "마음이어땠",
+            "마음은어땠",
+            "마음어땠",
+            "기분이어땠",
+            "기분은어땠",
+            "기분어땠",
+        )
+    ):
+        return "emotion"
+    if any(
+        cue in normalized
+        for cue in (
+            "또생각나는",
+            "기억나는",
+            "하고싶은말",
+            "더말하고싶",
+        )
+    ):
+        return "memorableMoment"
+    if any(cue in normalized for cue in ("오늘있었던일", "오늘뭐했")):
+        return "event"
+    return None
+
+
+def _contains_emotion_cue(comparison_text: str) -> bool:
+    return any(
+        cue in comparison_text
+        for cue in (
+            "재밌",
+            "재미",
+            "신기",
+            "좋았",
+            "좋아",
+            "행복",
+            "기뻤",
+            "속상",
+            "슬펐",
+            "슬퍼",
+            "화났",
+            "화가",
+            "아쉬",
+            "무서",
+        )
+    )
+
+
+def _answer_contains_emotion_reason(comparison_answer: str) -> bool:
+    if not _contains_emotion_cue(comparison_answer):
+        return False
+    return any(
+        connector in comparison_answer
+        for connector in ("라서", "이라서", "해서", "때문", "니까", "는데")
+    )
+
+
+def _asks_positive_moment(comparison_question: str) -> bool:
+    return any(
+        cue in comparison_question
+        for cue in (
+            "어떤순간",
+            "어떤모습",
+            "제일재미",
+            "제일좋",
+            "뭐가그렇게",
+        )
+    )
+
+
+def _contains_answer_content(comparison_answer: str) -> bool:
+    return len(comparison_answer) >= 2
+
+
+def _looks_like_child_question(comparison_answer: str) -> bool:
+    return any(
+        cue in comparison_answer
+        for cue in (
+            "너는",
+            "너도",
+            "좋아해",
+            "싫어해",
+            "해봤어",
+            "먹어봤어",
+            "가봤어",
+            "어떻게",
+            "뭐라고",
+            "왜",
+        )
     )

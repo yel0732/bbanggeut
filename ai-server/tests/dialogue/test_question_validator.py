@@ -18,6 +18,7 @@ from app.dialogue import (
     validate_question_rules,
     validate_target_assertion_grounding,
 )
+from app.dialogue.question.validator import validate_question_against_turn
 
 
 def _validate(
@@ -183,6 +184,38 @@ def test_rejects_unambiguous_hard_banned_expression(question: str) -> None:
     assert QuestionValidationCode.BANNED_EXPRESSION in {
         issue.code for issue in result.issues
     }
+
+
+def test_rejects_why_was_that_wording() -> None:
+    result = _validate("왜 그랬는지 말해 줄래?")
+
+    assert QuestionValidationCode.BANNED_EXPRESSION in {
+        issue.code for issue in result.issues
+    }
+
+
+def test_rejects_emotion_question_when_answer_already_has_emotion() -> None:
+    result = validate_question_against_turn(
+        target=QuestionTarget.EMOTION,
+        question="그때 어떤 기분이었어?",
+        current_question="오늘 과일 자르기 했구나! 어떤 순간이 제일 재미있었어?",
+        child_answer="과일이 잘리는데 너무 신기했어",
+    )
+
+    assert QuestionValidationCode.TARGET_MISMATCH in {
+        issue.code for issue in result.issues
+    }
+
+
+def test_rejects_reason_question_when_answer_already_has_reason() -> None:
+    result = validate_question_against_turn(
+        target=QuestionTarget.EMOTION_REASON,
+        question="무엇 때문에 그렇게 신기했어?",
+        current_question="오늘 과일 자르기 했구나! 어떤 순간이 제일 재미있었어?",
+        child_answer="과일이 잘리는데 너무 신기했어",
+    )
+
+    assert not result.is_valid
 
 
 @pytest.mark.parametrize(

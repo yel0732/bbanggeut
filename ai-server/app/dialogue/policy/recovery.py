@@ -32,9 +32,9 @@ class NoResponseRecoveryAction(StrEnum):
 SIMPLIFIED_QUESTION_BY_TARGET: Mapping[QuestionTarget, str] = MappingProxyType(
     {
         QuestionTarget.EVENT: "오늘 있었던 일 하나를 말해 줄래?",
-        QuestionTarget.EMOTION: "그때 마음이 어땠는지 말해 줄래?",
-        QuestionTarget.EMOTION_REASON: "왜 그런 마음이 들었는지 말해 줄래?",
-        QuestionTarget.MEMORABLE_MOMENT: "가장 기억나는 순간을 말해 줄래?",
+        QuestionTarget.EMOTION: "그때 마음은 어땠어?",
+        QuestionTarget.EMOTION_REASON: "그 마음이 든 까닭을 말해 줄래?",
+        QuestionTarget.MEMORABLE_MOMENT: "마지막으로 나한테 하고 싶은 말 있어?",
     }
 )
 
@@ -43,7 +43,7 @@ CHOICE_QUESTION_BY_TARGET: Mapping[QuestionTarget, str] = MappingProxyType(
         QuestionTarget.EVENT: "놀이나 다른 일 중에서 말하고 싶은 걸 골라 줄래?",
         QuestionTarget.EMOTION: "좋은 마음, 속상한 마음, 다른 마음 중에 골라 줄래?",
         QuestionTarget.EMOTION_REASON: "사람 때문인지, 일 때문인지, 다른 이유인지 골라 줄래?",
-        QuestionTarget.MEMORABLE_MOMENT: "처음, 가운데, 마지막 중 기억나는 때를 골라 줄래?",
+        QuestionTarget.MEMORABLE_MOMENT: "더 말하고 싶은 일이나 마음 중에 골라 줄래?",
     }
 )
 

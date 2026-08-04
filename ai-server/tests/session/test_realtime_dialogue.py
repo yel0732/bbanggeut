@@ -530,7 +530,7 @@ class TestNoSpeechLadder:
             "assistant.text.final",
             "conversation.slots.updated",
         ]
-        assert "말해 줄래" in channel.sent[1]["payload"]["text"]
+        assert "어땠어" in channel.sent[1]["payload"]["text"]
         assert state.consecutive_no_responses == 1
 
     def test_second_no_speech_asks_to_repeat(self) -> None:

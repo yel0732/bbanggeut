@@ -44,6 +44,7 @@ def test_builds_prompt_with_minimum_camel_case_context() -> None:
             "emotionReason": None,
             "memorableMoment": None,
         },
+        "topicHistory": [],
         "gameContext": {
             "gameType": "FRUIT_SLICE",
             "score": 820,

@@ -49,6 +49,7 @@ public class ConversationReportAdapter
     private final ReportAiSummaryPort reportAiSummaryPort;
     private final GameReportQueryPort gameReportQueryPort;
     private final ReportAiProperties reportAiProperties;
+    private final ConversationReportTextSanitizer textSanitizer;
 
     public ConversationReportAdapter(
             ConversationSessionRepository sessionRepository,
@@ -57,7 +58,8 @@ public class ConversationReportAdapter
             ObjectMapper objectMapper,
             ReportAiSummaryPort reportAiSummaryPort,
             GameReportQueryPort gameReportQueryPort,
-            ReportAiProperties reportAiProperties
+            ReportAiProperties reportAiProperties,
+            ConversationReportTextSanitizer textSanitizer
     ) {
         this.sessionRepository = sessionRepository;
         this.topicStateRepository = topicStateRepository;
@@ -66,6 +68,7 @@ public class ConversationReportAdapter
         this.reportAiSummaryPort = reportAiSummaryPort;
         this.gameReportQueryPort = gameReportQueryPort;
         this.reportAiProperties = reportAiProperties;
+        this.textSanitizer = textSanitizer;
     }
 
     @Override
@@ -88,17 +91,28 @@ public class ConversationReportAdapter
         List<ReportGameSource> games = gameReportQueryPort.findCompletedGames(
                 childId, startedAt, endedAt);
         List<ConversationTurn> turns = findCompletedTurns(sources);
+        boolean hasSafetySignal = turns.stream()
+                .map(ConversationTurn::getContent)
+                .anyMatch(textSanitizer::containsSafetySignal);
+        boolean hasPrivateDetail = turns.stream()
+                .map(ConversationTurn::getContent)
+                .anyMatch(textSanitizer::containsPrivateDetail);
         List<ReportAiConversationTurn> conversations = turns.stream()
                 .limit(60)
+                .map(turn -> new SanitizedTurn(
+                        turn,
+                        textSanitizer.sanitizeForAi(turn.getContent())))
+                .filter(turn -> hasText(turn.content()))
                 .map(turn -> new ReportAiConversationTurn(
-                        turn.getSpeaker().name(),
-                        limit(turn.getContent(), 500)))
+                        turn.turn().getSpeaker().name(),
+                        limit(turn.content(), 500)))
                 .toList();
         List<String> childUtterances = turns.stream()
                 .filter(turn -> turn.getSpeaker() == Speaker.CHILD)
                 .map(ConversationTurn::getContent)
                 .filter(this::hasText)
                 .map(String::trim)
+                .filter(textSanitizer::canUseAsQuote)
                 .filter(quote -> quote.length() <= 200)
                 .distinct()
                 .toList();
@@ -149,7 +163,10 @@ public class ConversationReportAdapter
                 List.of(),
                 List.of(),
                 childQuotes,
-                ReportConversationGuide.empty(),
+                protectedGuide(
+                        ReportConversationGuide.empty(),
+                        hasSafetySignal,
+                        hasPrivateDetail),
                 MODEL_VERSION,
                 PROMPT_VERSION);
         if (!reportAiProperties.enabled()) {
@@ -178,7 +195,10 @@ public class ConversationReportAdapter
                     ai.interests(),
                     ai.emotionDetails(),
                     verifiedQuotes(ai.notableQuotes(), childUtterances),
-                    ai.conversationGuide(),
+                    protectedGuide(
+                            ai.conversationGuide(),
+                            hasSafetySignal,
+                            hasPrivateDetail),
                     ai.modelVersion(),
                     ai.promptVersion()));
         } catch (ReportAiUnavailableException exception) {
@@ -305,6 +325,27 @@ public class ConversationReportAdapter
         return values != null && values.stream().anyMatch(this::hasText);
     }
 
+    private ReportConversationGuide protectedGuide(
+            ReportConversationGuide original,
+            boolean hasSafetySignal,
+            boolean hasPrivateDetail
+    ) {
+        if (!hasSafetySignal && !hasPrivateDetail) {
+            return original;
+        }
+        List<String> questions = new ArrayList<>(original.questions());
+        if (hasSafetySignal) {
+            questions.add("오늘 마음이 많이 힘들었던 일이 있었는지 편안히 물어봐 주세요.");
+        }
+        if (hasPrivateDetail) {
+            questions.add("아이에게 다른 사람의 자세한 이야기는 조심해서 나누자고 부드럽게 알려 주세요.");
+        }
+        String description = hasSafetySignal
+                ? "대화 중 아이와 편안히 이야기해볼 필요가 있는 표현이 있었습니다."
+                : original.description();
+        return new ReportConversationGuide(description, questions);
+    }
+
     private void validatePeriod(
             Long childId,
             LocalDateTime startedAt,
@@ -323,6 +364,12 @@ public class ConversationReportAdapter
     private record ConversationSource(
             String conversationId,
             DialogueSlotsPayload slots
+    ) {
+    }
+
+    private record SanitizedTurn(
+            ConversationTurn turn,
+            String content
     ) {
     }
 }

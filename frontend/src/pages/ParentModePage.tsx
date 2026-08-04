@@ -1,8 +1,8 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  ApiError,
   changeAccountPassword,
-  getStoredLoginMethod,
   isPinLockedError,
   isPinMismatchError,
   verifyParentPin,
@@ -301,7 +301,6 @@ export function ParentModePage() {
   const navigate = useNavigate()
   const canvasRef = useFitScale<HTMLDivElement>()
   const { isBgmPlaying, toggleBgm } = useParentBgm()
-  const isGoogleAccount = getStoredLoginMethod() === 'google'
   const parentVideoRef = useRef<HTMLVideoElement>(null)
   const parentStreamRef = useRef<MediaStream | null>(null)
   const lastUnreadReportCountRef = useRef(0)
@@ -1152,6 +1151,23 @@ export function ParentModePage() {
         closePopupAfterMessage()
       })
       .catch((error: unknown) => {
+        /*
+          구글로만 가입한 계정은 비밀번호 자체가 없다. 로그인 수단으로는 이걸 판별할 수
+          없다 — 이메일로 가입한 뒤 구글을 연동한 계정은 구글로 로그인해도 비밀번호가
+          있어서 변경이 정상 동작한다. 서버만 아는 사실이므로 응답 코드로 구분한다.
+        */
+        if (
+          error instanceof ApiError &&
+          error.code === 'AUTH_PASSWORD_NOT_SET'
+        ) {
+          setPasswordErrors({
+            current:
+              '구글 로그인으로 가입한 계정이라 변경할 비밀번호가 없어요.',
+            next: '',
+            confirm: '',
+          })
+          return
+        }
         setPasswordErrors({
           current:
             error instanceof Error
@@ -1909,10 +1925,8 @@ export function ParentModePage() {
                   ].map((item) => (
                     <button
                       className="relative mb-[9px] h-[73px] w-[406px] shrink-0 bg-[length:100%_100%] bg-center bg-no-repeat text-center transition first:mt-[46px] hover:scale-103 disabled:cursor-not-allowed disabled:opacity-65 disabled:hover:scale-100"
-                      disabled={item.view === 'password' && isGoogleAccount}
                       key={item.view}
                       onClick={() => {
-                        if (item.view === 'password' && isGoogleAccount) return
                         if (item.view === 'pin') resetPin()
                         if (item.view === 'withdraw') resetWithdrawal()
                         setProfileView(item.view)
@@ -1923,16 +1937,9 @@ export function ParentModePage() {
                       }}
                       type="button"
                     >
-                      <span
-                        className={`${item.view === 'password' && isGoogleAccount ? '-mt-1 text-[22px]' : 'text-[25px]'} block text-[#5f492a]`}
-                      >
+                      <span className="block text-[25px] text-[#5f492a]">
                         {item.label}
                       </span>
-                      {item.view === 'password' && isGoogleAccount ? (
-                        <span className="-mt-1 block text-[14px] text-[#82945a]">
-                          구글로 로그인한 계정
-                        </span>
-                      ) : null}
                     </button>
                   ))}
                 </div>

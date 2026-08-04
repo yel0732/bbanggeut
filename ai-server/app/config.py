@@ -72,7 +72,8 @@ class AppSettings:
     stt_no_speech_timeout_seconds: float = 10.0  # 무응답 신호(정책 연결은 W03)
     # Streaming TTS(W04). 기본값 근거는 jira/plan/DIARY-3-W04.md §4.
     tts_model: str = "gpt-4o-mini-tts"  # GMS의 유일한 TTS 모델
-    tts_voice: str = "alloy"  # §11-B: 캐릭터 목소리는 제품 결정 — 임시 기본값
+    tts_voice: str = "shimmer"  # 아기 공룡 캐릭터용 제품 결정
+    tts_voice_shift_semitones: float = 2.0
     tts_timeout_seconds: float = 10.0  # 첫 바이트까지(실측 TTFB 1.89s의 5배 여유)
     # Conversation Event 발행(W05). 기본값 근거는 jira/plan/DIARY-3-W05.md §4.
     stream_publish_max_attempts: int = 3
@@ -171,6 +172,15 @@ class AppSettings:
         ):
             if not isinstance(text, str) or not text.strip():
                 raise ValueError(f"{name} must contain non-whitespace text")
+        if (
+            isinstance(self.tts_voice_shift_semitones, bool)
+            or not isinstance(self.tts_voice_shift_semitones, (int, float))
+            or not math.isfinite(self.tts_voice_shift_semitones)
+            or not 0 <= self.tts_voice_shift_semitones <= 4
+        ):
+            raise ValueError(
+                "TTS_VOICE_SHIFT_SEMITONES must be between 0 and 4"
+            )
         if (
             isinstance(self.tts_timeout_seconds, bool)
             or not isinstance(self.tts_timeout_seconds, (int, float))
@@ -401,7 +411,11 @@ class AppSettings:
                 "STT_NO_SPEECH_TIMEOUT_SECONDS",
             ),
             tts_model=values.get("TTS_MODEL", "gpt-4o-mini-tts"),
-            tts_voice=values.get("TTS_VOICE", "alloy"),
+            tts_voice=values.get("TTS_VOICE", "shimmer"),
+            tts_voice_shift_semitones=_parse_float(
+                values.get("TTS_VOICE_SHIFT_SEMITONES", "2"),
+                "TTS_VOICE_SHIFT_SEMITONES",
+            ),
             tts_timeout_seconds=_parse_float(
                 values.get("TTS_TIMEOUT_SECONDS", "10"),
                 "TTS_TIMEOUT_SECONDS",

@@ -78,7 +78,8 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.stt_preroll_ms == 300
     assert settings.stt_no_speech_timeout_seconds == 10.0
     assert settings.tts_model == "gpt-4o-mini-tts"
-    assert settings.tts_voice == "alloy"
+    assert settings.tts_voice == "shimmer"
+    assert settings.tts_voice_shift_semitones == 2.0
     assert settings.tts_timeout_seconds == 10.0
     assert settings.stream_publish_max_attempts == 3
     assert settings.stream_publish_retry_seconds == 0.5
@@ -113,6 +114,7 @@ def test_reads_realtime_settings_from_environment() -> None:
             "STT_NO_SPEECH_TIMEOUT_SECONDS": "8",
             "TTS_MODEL": "tts-x",
             "TTS_VOICE": "verse",
+            "TTS_VOICE_SHIFT_SEMITONES": "1.5",
             "TTS_TIMEOUT_SECONDS": "7",
             "STREAM_PUBLISH_MAX_ATTEMPTS": "5",
             "STREAM_PUBLISH_RETRY_SECONDS": "1.5",
@@ -149,6 +151,7 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.stt_no_speech_timeout_seconds == 8.0
     assert settings.tts_model == "tts-x"
     assert settings.tts_voice == "verse"
+    assert settings.tts_voice_shift_semitones == 1.5
     assert settings.tts_timeout_seconds == 7.0
     assert settings.stream_publish_max_attempts == 5
     assert settings.stream_publish_retry_seconds == 1.5
@@ -209,6 +212,8 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "STT_NO_SPEECH_TIMEOUT_SECONDS": "0"},
         {"GMS_KEY": "key", "TTS_MODEL": " "},
         {"GMS_KEY": "key", "TTS_VOICE": " "},
+        {"GMS_KEY": "key", "TTS_VOICE_SHIFT_SEMITONES": "-0.1"},
+        {"GMS_KEY": "key", "TTS_VOICE_SHIFT_SEMITONES": "4.1"},
         {"GMS_KEY": "key", "TTS_TIMEOUT_SECONDS": "0"},
         {"GMS_KEY": "key", "STREAM_PUBLISH_MAX_ATTEMPTS": "0"},
         {"GMS_KEY": "key", "STREAM_OUTBOX_SIZE": "0"},

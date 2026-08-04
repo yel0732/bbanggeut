@@ -4,10 +4,13 @@ The real gateway is only touched by the opt-in smoke test; §10 keeps real
 Providers out of the default suite.
 """
 
+import json
+
 import httpx
 import pytest
 
 from app.speech.tts_client import (
+    DINO_VOICE_INSTRUCTIONS,
     GmsSpeechSynthesizer,
     TtsError,
     TtsFailureCode,
@@ -39,7 +42,7 @@ async def test_streams_pcm_chunks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sends_pcm_request_without_a_prompt() -> None:
+async def test_sends_pcm_request_with_character_instructions() -> None:
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -48,19 +51,19 @@ async def test_sends_pcm_request_without_a_prompt() -> None:
         seen["body"] = request.content
         return httpx.Response(200, content=b"\x00\x00")
 
-    synth, client = _synth(handler, voice="verse")
+    synth, client = _synth(handler)
     async with client:
         await _collect(synth, "오늘 뭐 했어?")
 
     body = seen["body"]
+    payload = json.loads(body)
     assert seen["url"] == "https://gms.example/v1/audio/speech"
     assert seen["auth"] == "Bearer test-key"
     assert b"gpt-4o-mini-tts" in body
     assert b'"response_format":"pcm"' in body
-    assert b'"voice":"verse"' in body
-    # 말투 지시(prompt/instructions)는 보내지 않는다 — §11-B
-    assert b"prompt" not in body
-    assert b"instructions" not in body
+    assert payload["voice"] == "shimmer"
+    assert payload["instructions"] == DINO_VOICE_INSTRUCTIONS
+    assert "prompt" not in payload
 
 
 @pytest.mark.asyncio
@@ -125,5 +128,7 @@ def test_rejects_invalid_construction() -> None:
         GmsSpeechSynthesizer(client, api_key="  ")
     with pytest.raises(ValueError):
         GmsSpeechSynthesizer(client, api_key="k", voice=" ")
+    with pytest.raises(ValueError):
+        GmsSpeechSynthesizer(client, api_key="k", instructions=" ")
     with pytest.raises(ValueError):
         GmsSpeechSynthesizer(client, api_key="k", first_byte_timeout_seconds=0)

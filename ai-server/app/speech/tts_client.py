@@ -6,11 +6,11 @@ with no container. First bytes arrived at ~1.9s while full synthesis took
 ~3.2s, so the point of this boundary is to hand chunks on as they arrive rather
 than wait for the whole clip.
 
-Deliberate omissions, mirroring the STT adapter:
+Request policy, mirroring the STT adapter:
 
-- **No ``prompt``/``instructions``.** Voice styling is a product decision at
-  the level of the character's name (W04 plan §11-B); the voice is a config
-  knob and nothing shapes tone beyond it yet.
+- **Character ``instructions``.** The product-defined baby dinosaur direction
+  is sent with every synthesis request so delivery stays consistent across
+  dynamically generated lines.
 - **No retry.** The question text still exists, so a failure becomes
   ``assistant.audio.failed`` and the client falls back to showing text (§22
   ``TTS_FAILED``) rather than making the child wait through a retry.
@@ -28,6 +28,7 @@ from app.speech.audio_format import TTS_OUTPUT_FORMAT
 
 __all__ = [
     "TTS_OUTPUT_FORMAT",
+    "DINO_VOICE_INSTRUCTIONS",
     "TtsError",
     "TtsFailureCode",
     "SpeechSynthesizer",
@@ -36,6 +37,32 @@ __all__ = [
 ]
 
 _SPEECH_PATH = "/audio/speech"
+
+DINO_VOICE_INSTRUCTIONS = (
+    "Voice Affect: Very young, bright, and playful cartoon character voice.\n\n"
+    "Vocal Quality: Tiny and lightweight, with a small vocal size, bright "
+    "forward resonance, crisp consonants, and almost no chest resonance or "
+    "mature fullness.\n\n"
+    "Pitch and Intonation: Center the voice in the upper part of a childlike "
+    "range, noticeably higher than a typical adult voice. Keep the baseline "
+    "pitch one small step higher throughout every sentence. Start phrases "
+    "lightly and high, lift important words, use wide lively pitch movement, "
+    "and never drop sentence endings into a low register. Questions should rise "
+    "clearly. Keep the high pitch relaxed and natural rather than strained or "
+    "falsetto.\n\n"
+    "Tone: Curious and energetic, like an excited young playmate rather than "
+    "a caregiver.\n\n"
+    "Delivery: Use a light, gently bouncy rhythm, like a friendly young "
+    "playmate. Keep a natural medium pace with short natural pauses.\n\n"
+    "Pronunciation: Clear Korean consonants, light vowels, and lively sentence "
+    "endings.\n\n"
+    "Avoid: Adult mid or low register, mature female tone, maternal warmth, "
+    "soothing narration, hollow adult resonance, heavy lower mids, deep "
+    "resonance, slow soothing delivery, exaggerated aegyo, and squeaky baby "
+    "speech.\n\n"
+    "Content: Speak exactly the provided text without adding laughs, breaths, "
+    "reactions, or extra words."
+)
 
 
 class TtsFailureCode(StrEnum):
@@ -68,19 +95,23 @@ class GmsSpeechSynthesizer:
         *,
         api_key: str,
         model: str = "gpt-4o-mini-tts",
-        voice: str = "alloy",
+        voice: str = "shimmer",
+        instructions: str = DINO_VOICE_INSTRUCTIONS,
         first_byte_timeout_seconds: float = 10.0,
     ) -> None:
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("api_key must contain text")
         if not isinstance(voice, str) or not voice.strip():
             raise ValueError("voice must contain text")
+        if not isinstance(instructions, str) or not instructions.strip():
+            raise ValueError("instructions must contain text")
         if first_byte_timeout_seconds <= 0:
             raise ValueError("first_byte_timeout_seconds must be positive")
         self._http_client = http_client
         self._api_key = api_key
         self._model = model
         self._voice = voice
+        self._instructions = instructions
         self._first_byte_timeout_seconds = first_byte_timeout_seconds
 
     async def synthesize(self, text: str) -> AsyncIterator[bytes]:
@@ -92,6 +123,7 @@ class GmsSpeechSynthesizer:
                 "model": self._model,
                 "voice": self._voice,
                 "input": text,
+                "instructions": self._instructions,
                 "response_format": "pcm",
             },
         )

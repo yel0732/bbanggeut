@@ -346,6 +346,8 @@ class RealtimeDialogueManager:
         if response.decision is DialogueTurnDecision.SWITCH_TOPIC:
             topic.slots = response.updated_slots  # 끝난 주제의 최종 슬롯
             state.advance_topic()
+            if response.next_topic_slots is not None:
+                state.current_topic.slots = response.next_topic_slots
             # 전환 질문은 새 주제의 첫 질문으로 센다.
             state.current_topic.question_count = 1
             self._emit_ai_turn_generated(

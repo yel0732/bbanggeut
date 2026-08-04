@@ -56,3 +56,59 @@ def test_continue_request_is_detected() -> None:
 
     assert understanding.child_question is True
     assert understanding.continue_request is True
+
+
+def test_child_question_does_not_block_diary_content() -> None:
+    understanding = understand_child_turn(
+        child_answer="너도 게임 해봤어? 오늘 1000점 맞았어",
+        current_question="오늘 게임에서 어떤 일이 있었어?",
+        asked_target=QuestionTarget.EVENT,
+        current_slots=DiarySlots(),
+    )
+
+    assert understanding.child_question is True
+    assert understanding.event == "오늘 1000점 맞았어"
+    assert QuestionTarget.EVENT in understanding.satisfied_targets
+
+
+def test_memorable_action_answer_is_kept_as_story_detail() -> None:
+    understanding = understand_child_turn(
+        child_answer="나 수박도 잘랐어!",
+        current_question="그 이야기에서 하나만 더 들려줄래?",
+        asked_target=QuestionTarget.MEMORABLE_MOMENT,
+        current_slots=DiarySlots(event="과일 자르기"),
+    )
+
+    assert understanding.child_question is False
+    assert understanding.event == "나 수박도 잘랐어"
+    assert understanding.memorable_moment == "나 수박도 잘랐어"
+    assert QuestionTarget.MEMORABLE_MOMENT in understanding.satisfied_targets
+
+
+def test_child_question_tail_is_not_stored_as_diary_content() -> None:
+    understanding = understand_child_turn(
+        child_answer="너도 해본 적 있어? 이 게임?",
+        current_question="그 이야기에서 하나만 더 들려줄래?",
+        asked_target=QuestionTarget.MEMORABLE_MOMENT,
+        current_slots=DiarySlots(event="과일 자르기"),
+    )
+
+    assert understanding.child_question is True
+    assert understanding.diary_content is None
+    assert understanding.event is None
+
+
+def test_topic_refusal_keeps_following_daily_story() -> None:
+    understanding = understand_child_turn(
+        child_answer=(
+            "게임 얘기 안 할래. 놀이터에서 그네 못 타서 속상했어"
+        ),
+        current_question="게임에서 어떤 일이 있었어?",
+        asked_target=QuestionTarget.EVENT,
+        current_slots=DiarySlots(),
+    )
+
+    assert understanding.topic_refusal is True
+    assert understanding.event == "놀이터에서 그네 못 타서 속상했어"
+    assert understanding.emotion == "속상했어"
+    assert understanding.emotion_reason == "놀이터에서 그네 못 타서"

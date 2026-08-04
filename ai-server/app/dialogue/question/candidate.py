@@ -163,7 +163,7 @@ def _parse_legacy_candidate(
 ) -> GeneratedDialogueTurnCandidate:
     question_start = max(candidate.rfind(". "), candidate.rfind("! "))
     if question_start < 0:
-        acknowledgement = "그랬구나!"
+        acknowledgement = "네 이야기를 더 듣고 싶어!"
         question = candidate
     else:
         acknowledgement = candidate[: question_start + 1]

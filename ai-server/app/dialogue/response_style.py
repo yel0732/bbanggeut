@@ -1,6 +1,7 @@
 """Deterministic child-friendly response snippets for dialogue policy."""
 
 from app.dialogue.policy.target import QuestionTarget
+from app.dialogue.schemas import DialogueTopic, DiarySlots
 
 
 _NEGATIVE_CUES: tuple[str, ...] = (
@@ -25,6 +26,8 @@ _NEGATIVE_CUES: tuple[str, ...] = (
     "안비켜",
     "안나와",
     "안줘",
+    "놀렸",
+    "새치기",
 )
 
 _POSITIVE_CUES: tuple[str, ...] = (
@@ -70,6 +73,36 @@ _FOOD_CUES: tuple[str, ...] = (
     "아이스크림",
 )
 
+_BIRTHDAY_CUES: tuple[str, ...] = (
+    "생일",
+    "할머니생일",
+    "생신",
+)
+
+_PLAYGROUND_CUES: tuple[str, ...] = (
+    "놀이터",
+    "그네",
+    "시소",
+    "미끄럼틀",
+)
+
+_GAME_CUES: tuple[str, ...] = (
+    "게임",
+    "점",
+    "맞았",
+    "로블록스",
+    "과일",
+)
+
+_FRUIT_ACTION_CUES: tuple[str, ...] = (
+    "과일",
+    "수박",
+    "자르",
+    "잘랐",
+    "잘려",
+    "흔드",
+)
+
 
 def build_fallback_assistant_message(
     *,
@@ -96,6 +129,8 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
 
     normalized = _normalize(child_answer or "")
     if any(cue in normalized for cue in _NEGATIVE_CUES):
+        if any(cue in normalized for cue in ("놀렸", "새치기")):
+            return "그건 마음이 안 좋을 수 있어."
         if any(cue in normalized for cue in ("속상", "슬퍼", "슬펐")):
             return "많이 속상했겠다."
         if "화" in normalized:
@@ -118,6 +153,10 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
             return "갑자기 그렇게 되면 속상할 수 있어."
         return "쉽지 않은 일이었겠다."
     if any(cue in normalized for cue in _POSITIVE_CUES):
+        if any(cue in normalized for cue in _BIRTHDAY_CUES):
+            return "생일 케이크라서 더 맛있었겠다!"
+        if any(cue in normalized for cue in _FOOD_CUES):
+            return "맛있어서 정말 좋았겠다!"
         if "칭찬" in normalized:
             return "칭찬을 받아서 정말 좋았겠다!"
         if any(cue in normalized for cue in ("신기", "멋지", "예쁘")):
@@ -125,9 +164,17 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
         if "행복" in normalized:
             return "정말 행복했겠다!"
         return "재미있었겠다!"
+    if any(cue in normalized for cue in _BIRTHDAY_CUES):
+        return "생일 이야기를 들으니 따뜻해."
+    if any(cue in normalized for cue in _FOOD_CUES):
+        return "맛있는 걸 먹은 이야기를 해줬구나!"
+    if any(cue in normalized for cue in _PLAYGROUND_CUES):
+        return "놀이터에서 있었던 일을 말해줬구나!"
+    if any(cue in normalized for cue in _FRUIT_ACTION_CUES):
+        return "과일 자른 이야기를 해줬구나!"
     if is_child_invitation(child_answer):
         return "같이 하자고 말해줘서 고마워."
-    return "그 이야기를 들려줘서 고마워."
+    return "오늘 그런 일이 있었구나."
 
 
 def closing_message(
@@ -159,13 +206,84 @@ def optional_final_question() -> str:
 def soft_continue_question() -> str:
     """A softer extra turn before announcing the last turn."""
 
-    return "조금 더 이야기해 줄래?"
+    return optional_final_question()
 
 
 def soft_continue_message(child_answer: str | None) -> str:
     """Acknowledge a quick slot completion before one more open turn."""
 
     return f"{_sentence(acknowledge_child_answer(child_answer))} {soft_continue_question()}"
+
+
+def tomorrow_plan_question() -> str:
+    """A child-friendly closing bridge that is not a diary slot."""
+
+    return "내일은 뭐하고 싶어?"
+
+
+def contextual_followup_question(
+    *,
+    slots: DiarySlots,
+    topic: DialogueTopic,
+) -> str:
+    """Ask one more natural question from already collected story context."""
+
+    text = _normalize(
+        " ".join(
+            value
+            for value in (
+                slots.event,
+                slots.emotion,
+                slots.emotion_reason,
+                slots.memorable_moment,
+            )
+            if value
+        )
+    )
+    if topic is DialogueTopic.GAME:
+        if any(cue in text for cue in _FRUIT_ACTION_CUES + _GAME_CUES):
+            return "그 게임에서 어떤 순간이 제일 재미있었어?"
+        return "게임하면서 또 생각나는 일이 있어?"
+    if any(cue in text for cue in _PLAYGROUND_CUES):
+        return "놀이터에서 또 뭐 했어?"
+    if any(cue in text for cue in _FOOD_CUES + _BIRTHDAY_CUES):
+        return "그때 또 생각나는 일이 있어?"
+    return "오늘 또 나한테 해주고 싶은 이야기 있어?"
+
+
+def tomorrow_closing_message(child_answer: str | None) -> str:
+    """Close after the tomorrow bridge without adding tomorrow facts to slots."""
+
+    normalized = _normalize(child_answer or "")
+    if any(cue in normalized for cue in ("몰라", "없어", "없음", "글쎄")):
+        return "괜찮아. 오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
+    return (
+        "좋아! 내일 하고 나서 나한테 또 말해줘. "
+        "오늘 이야기를 일기로 남겨볼래?"
+    )
+
+
+def transition_acknowledgement(child_answer: str | None) -> str:
+    """Acknowledge a same-turn topic switch without ambiguous fallback wording."""
+
+    normalized = _normalize(child_answer or "")
+    if any(cue in normalized for cue in ("속상", "슬퍼", "슬펐")):
+        return "많이 속상했겠다."
+    if "화" in normalized:
+        return "정말 화가 났겠다."
+    if any(cue in normalized for cue in _BIRTHDAY_CUES):
+        if any(cue in normalized for cue in _FOOD_CUES):
+            return "케이크 맛있었겠다!"
+        return "생일 이야기를 들려줬구나!"
+    if "케이크" in normalized:
+        return "케이크 맛있었겠다!"
+    if any(cue in normalized for cue in _FOOD_CUES):
+        return "맛있는 걸 먹었구나!"
+    if any(cue in normalized for cue in _PLAYGROUND_CUES):
+        if any(cue in normalized for cue in ("못타", "못탔", "새치기", "안비켜")):
+            return "그네를 못 타서 많이 아쉬웠겠다."
+        return "놀이터 이야기를 들려줬구나!"
+    return acknowledge_child_answer(child_answer)
 
 
 def optional_final_message(
@@ -205,28 +323,41 @@ def safe_child_question_reply(
 ) -> str:
     """Answer common child questions without claiming human experiences."""
 
-    if _safe_bridge_hint(bridge_hint):
-        return bridge_hint.strip()
     normalized = _normalize(child_answer or "")
     if "왜마지막" in normalized or "왜끝" in normalized or "벌써끝" in normalized:
         return "아직 더 말하고 싶었구나."
     if "더대화" in normalized or "더얘기" in normalized or "더이야기" in normalized:
         return "좋아, 조금 더 이야기하자."
+    if "뭐가궁금" in normalized or "무엇이궁금" in normalized:
+        return "네가 직접 해본 이야기가 궁금해."
     if any(cue in normalized for cue in _AFFIRMATION_QUESTION_CUES):
         return "응, 네가 말해주니까 정말 재미있게 느껴져."
+    if "몇점" in normalized or "점받" in normalized or "점수" in normalized:
+        return "나는 점수를 받지는 않지만, 네 점수 이야기는 궁금해."
     if "어떻게" in normalized or "뭐라고" in normalized or "어떤말" in normalized:
         return "그럴 땐 '나도 타고 싶어'라고 말해볼 수 있어."
+    if any(cue in normalized for cue in _GAME_CUES) and (
+        "해봤" in normalized or "해본" in normalized or "했어" in normalized
+    ):
+        return "나는 직접 게임하진 못하지만, 네가 한 이야기는 들을 수 있어."
     if "먹" in normalized:
         return "나는 먹지는 못해. 그래도 맛있는 이야기는 좋아."
     if any(cue in normalized for cue in _FOOD_CUES):
         return "나는 먹지는 못해. 그래도 맛있는 이야기는 좋아."
     if "좋아" in normalized:
         return "나는 직접 고르긴 어렵지만, 네 이야기를 듣는 게 좋아."
-    if "할수있" in normalized or "할줄알" in normalized or "만들수있" in normalized:
+    if (
+        "할수있" in normalized
+        or "놀수있" in normalized
+        or "할줄알" in normalized
+        or "만들수있" in normalized
+    ):
         return "나는 직접 하지는 못하지만, 네 이야기를 같이 들을 수 있어."
     if "가봤" in normalized or "봤어" in normalized:
         return "나는 직접 가보지는 못하지만, 네가 본 이야기는 들을 수 있어."
-    return "나는 네 이야기를 듣고 있어."
+    if _safe_bridge_hint(bridge_hint):
+        return bridge_hint.strip()
+    return "나는 직접 해보진 못해도, 네 마음 이야기는 잘 들을 수 있어."
 
 
 def is_child_invitation(child_answer: str | None) -> bool:
@@ -252,6 +383,7 @@ def _safe_bridge_hint(value: str | None) -> bool:
         value is not None
         and value.strip().startswith("나는")
         and "?" not in value
+        and "듣" not in value
         and len(value.strip()) <= 40
     )
 

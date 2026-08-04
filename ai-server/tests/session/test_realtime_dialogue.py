@@ -1,4 +1,4 @@
-"""Realtime dialogue manager tests (T11~T15).
+﻿"""Realtime dialogue manager tests (T11~T15).
 
 The dialogue pipeline itself is DIARY-1 code with its own test suite — here it
 is a scripted fake, and what is under test is exactly W03's own work: session
@@ -102,6 +102,27 @@ def _switch_response(question: str = "오늘 있었던 다른 일도 이야기�
         assistant_message=f"게임 이야기 고마워! {question}",
         assistant_question=question,
         assistant_target=QuestionTarget.EVENT,
+        question_generation_status=QuestionGenerationStatus.TEMPLATE_USED,
+        question_generation_source=QuestionGenerationSource.RULE_BASED_TEMPLATE,
+    )
+
+
+def _switch_response_with_next_slots() -> DialogueTurnResponse:
+    return DialogueTurnResponse(
+        updated_slots=DiarySlots(event="game story", emotion="excited"),
+        next_topic_slots=DiarySlots(
+            event="playground swing missed",
+            emotion="upset",
+            emotionReason="because the swing was unavailable",
+        ),
+        decision=DialogueTurnDecision.SWITCH_TOPIC,
+        termination_reason=DialogueTerminationReason.CHILD_REQUESTED_TOPIC_SWITCH,
+        assistant_message=(
+            "I will listen to the playground story instead of the game story. "
+            "That must have felt upsetting. Can you tell me a little more?"
+        ),
+        assistant_question="Can you tell me a little more?",
+        assistant_target=QuestionTarget.MEMORABLE_MOMENT,
         question_generation_status=QuestionGenerationStatus.TEMPLATE_USED,
         question_generation_source=QuestionGenerationSource.RULE_BASED_TEMPLATE,
     )
@@ -312,6 +333,23 @@ class TestChildTurn:
         assert request.current_topic.value == "DAILY"
         assert request.current_slots.event is None  # 새 주제는 initialSlots에서 시작
         assert request.next_topic is None
+
+    @pytest.mark.asyncio
+    async def test_switch_topic_applies_next_topic_slots(self) -> None:
+        pipeline = _FakeDialoguePipeline(
+            [_switch_response_with_next_slots(), _continue_response()]
+        )
+        manager, state, _, _, _, sequencer = _build_manager(pipeline)
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+        assert state.current_topic.snapshot.type.value == "DAILY"
+        assert state.current_topic.slots.event == "playground swing missed"
+        assert state.current_topic.slots.emotion == "upset"
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result("more story"))
+        request = pipeline.requests[1]
+        assert request.current_slots.event == "playground swing missed"
+        assert request.current_slots.emotion == "upset"
 
     @pytest.mark.asyncio
     async def test_terminate_says_goodbye_then_signals_and_blocks_further_turns(self) -> None:

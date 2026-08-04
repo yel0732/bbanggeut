@@ -26,6 +26,15 @@ HARD_BANNED_QUESTION_EXPRESSIONS: tuple[str, ...] = (
     "왜 그랬",
     "왜 그런지",
     "왜 그랬는지",
+    "기억에 남았구나",
+    "기억에 남았네",
+    "그 이야기에서 하나만 더",
+    "잘 말해줬어",
+    "나는 네 이야기를 듣고 있어",
+    "내일 꼭",
+    "내일은 반드시",
+    "해야 해",
+    "안 하면",
 )
 
 
@@ -335,6 +344,10 @@ def validate_question_against_turn(
             QuestionValidationIssue(QuestionValidationCode.TOO_SIMILAR)
         )
     if "왜그랬" in comparison_question or "왜그런지" in comparison_question:
+        issues.append(
+            QuestionValidationIssue(QuestionValidationCode.BANNED_EXPRESSION)
+        )
+    if comparison_question.startswith("그랬구나"):
         issues.append(
             QuestionValidationIssue(QuestionValidationCode.BANNED_EXPRESSION)
         )

@@ -60,6 +60,10 @@ public class Parent extends BaseTimeEntity {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ParentRole role = ParentRole.PARENT;
+
     // 부모도 자녀와 동일하게 프로필 사진을 갖는다. 프리셋과 업로드(웹캠) 사진을 S3 키 하나로 표현하고,
     // 공개 여부는 키 접두사가 결정한다(common/storage).
     //
@@ -136,6 +140,10 @@ public class Parent extends BaseTimeEntity {
 
     public boolean isDeleted() {
         return deletedAt != null;
+    }
+
+    public boolean isAdmin() {
+        return role == ParentRole.ADMIN;
     }
 
     public boolean hasPin() {

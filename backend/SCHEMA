@@ -58,6 +58,7 @@ CREATE TABLE parent (
     birth_date          DATE          NOT NULL,
     provider            VARCHAR(20)   NOT NULL,
     provider_id         VARCHAR(255)  NULL,
+    role                VARCHAR(20)   NOT NULL DEFAULT 'PARENT',
     pin_hash            VARCHAR(255)  NULL,
     pin_failed_attempts INT           NOT NULL DEFAULT 0,
     pin_locked_until    DATETIME(6)   NULL,
@@ -681,3 +682,20 @@ CREATE INDEX idx_child_diary_child_date
 -- local(H2)은 spring.batch.jdbc.initialize-schema=always 설정으로 메타 테이블을 자동 생성한다.
 -- prod(MySQL)은 Spring Batch 6 공식 schema-mysql.sql 내용을 Flyway V1에 포함한다.
 -- Resource: org/springframework/batch/core/schema-mysql.sql
+-- ADMIN-01: admin_report_generation_audit ---------------------------------
+
+CREATE TABLE admin_report_generation_audit (
+    audit_id        BIGINT      NOT NULL AUTO_INCREMENT,
+    admin_parent_id BIGINT      NOT NULL,
+    child_id        BIGINT      NOT NULL,
+    report_id       BIGINT      NOT NULL,
+    report_date     DATE        NOT NULL,
+    created_at      DATETIME(6) NOT NULL,
+    updated_at      DATETIME(6) NOT NULL,
+    PRIMARY KEY (audit_id)
+);
+
+CREATE INDEX idx_admin_report_audit_admin_created
+    ON admin_report_generation_audit (admin_parent_id, created_at);
+CREATE INDEX idx_admin_report_audit_child_date
+    ON admin_report_generation_audit (child_id, report_date);

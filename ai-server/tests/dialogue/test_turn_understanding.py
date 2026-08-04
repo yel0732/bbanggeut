@@ -125,3 +125,26 @@ def test_topic_refusal_keeps_following_daily_story() -> None:
     assert understanding.event == "놀이터에서 그네 못 타서 속상했어"
     assert understanding.emotion == "속상했어"
     assert understanding.emotion_reason == "놀이터에서 그네 못 타서"
+
+
+def test_topic_refusal_ignores_finished_topic_question() -> None:
+    """끝난 주제의 질문이 새 주제 슬롯을 채우면 안 된다.
+
+    직전 질문이 감정을 묻고 있었다는 이유로 감정을 채우면, 아이가 하지 않은 말이
+    들어가고 일상 주제가 시작하자마자 필수 목표가 다 찬 것으로 보인다.
+    """
+
+    understanding = understand_child_turn(
+        child_answer="게임 얘기 안 할래. 오늘 할머니 생일이었어",
+        current_question="게임에서 어떤 점이 재미있었어?",
+        asked_target=QuestionTarget.EMOTION_REASON,
+        current_slots=DiarySlots(event="과일 자르기 게임"),
+    )
+
+    assert understanding.topic_refusal is True
+    # 동작 동사가 없어도 아이가 먼저 꺼낸 이야기는 사건으로 받는다.
+    assert understanding.event == "오늘 할머니 생일이었어"
+    assert understanding.emotion is None
+    assert understanding.emotion_reason is None
+    assert understanding.memorable_moment is None
+    assert QuestionTarget.EMOTION not in understanding.satisfied_targets

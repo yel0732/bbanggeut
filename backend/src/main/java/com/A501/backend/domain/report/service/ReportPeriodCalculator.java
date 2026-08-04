@@ -45,7 +45,7 @@ public class ReportPeriodCalculator {
         return calculate(schedule, reportDate);
     }
 
-    private ReportPeriod calculate(
+    public ReportPeriod calculate(
             ReportDeliverySchedule schedule,
             LocalDate reportDate) {
         LocalDateTime endedAt = reportDate

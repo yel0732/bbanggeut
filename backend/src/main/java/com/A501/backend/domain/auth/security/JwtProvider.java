@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.entity.ParentRole;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 
 import io.jsonwebtoken.Claims;
@@ -24,6 +25,7 @@ public class JwtProvider {
     private static final String CLAIM_EMAIL = "email";
     private static final String CLAIM_PURPOSE = "purpose";
     private static final String CLAIM_PROVIDER_ID = "providerId";
+    private static final String CLAIM_ROLE = "role";
     private static final String PURPOSE_ACCESS = "ACCESS";
     private static final String PURPOSE_SIGNUP = "SIGNUP";
     private static final String PURPOSE_LINK = "LINK";
@@ -36,6 +38,9 @@ public class JwtProvider {
     public record LinkTokenClaims(Long parentId, String providerId) {
     }
 
+    public record AccessTokenClaims(Long parentId, ParentRole role) {
+    }
+
     public String generateAccessToken(Parent parent) {
         Instant now = Instant.now();
         Instant expiry = now.plusSeconds(getAccessTokenExpirySeconds());
@@ -43,6 +48,7 @@ public class JwtProvider {
         return Jwts.builder()
                 .subject(String.valueOf(parent.getParentId()))
                 .claim(CLAIM_EMAIL, parent.getEmail())
+                .claim(CLAIM_ROLE, parent.getRole().name())
                 .claim(CLAIM_PURPOSE, PURPOSE_ACCESS)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
@@ -56,6 +62,11 @@ public class JwtProvider {
 
     // 서명·만료·purpose 검증에 실패하면 예외 대신 null을 반환해 필터가 미인증으로 처리하게 한다.
     public Long parseAccessToken(String token) {
+        AccessTokenClaims claims = parseAccessTokenClaims(token);
+        return claims == null ? null : claims.parentId();
+    }
+
+    public AccessTokenClaims parseAccessTokenClaims(String token) {
         Claims claims;
         try {
             claims = Jwts.parser()
@@ -70,7 +81,15 @@ public class JwtProvider {
         if (!PURPOSE_ACCESS.equals(claims.get(CLAIM_PURPOSE, String.class))) {
             return null;
         }
-        return Long.valueOf(claims.getSubject());
+        try {
+            String roleClaim = claims.get(CLAIM_ROLE, String.class);
+            ParentRole role = roleClaim == null
+                    ? ParentRole.PARENT
+                    : ParentRole.valueOf(roleClaim);
+            return new AccessTokenClaims(Long.valueOf(claims.getSubject()), role);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     public String generateSignupToken(String providerId, String email) {

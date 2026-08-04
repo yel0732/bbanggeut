@@ -98,6 +98,19 @@ def test_child_question_tail_is_not_stored_as_diary_content() -> None:
     assert understanding.event is None
 
 
+def test_brag_question_tail_keeps_story_but_drops_tail() -> None:
+    understanding = understand_child_turn(
+        child_answer="내가 수박을 한 번에 여러 개 잘랐어. 짱이지?",
+        current_question="그 게임에서 어떤 순간이 제일 재미있었어?",
+        asked_target=QuestionTarget.MEMORABLE_MOMENT,
+        current_slots=DiarySlots(event="과일 자르기 게임"),
+    )
+
+    assert understanding.child_question is True
+    assert understanding.diary_content == "내가 수박을 한 번에 여러 개 잘랐어"
+    assert understanding.memorable_moment == "내가 수박을 한 번에 여러 개 잘랐어"
+
+
 def test_topic_refusal_keeps_following_daily_story() -> None:
     understanding = understand_child_turn(
         child_answer=(

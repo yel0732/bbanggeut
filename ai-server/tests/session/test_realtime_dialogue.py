@@ -133,6 +133,10 @@ def _terminate_response() -> DialogueTurnResponse:
         updated_slots=DiarySlots(event="과일 게임", emotion="신남"),
         decision=DialogueTurnDecision.TERMINATE_SESSION,
         termination_reason=DialogueTerminationReason.MAX_QUESTION_REACHED,
+        closing_message=(
+            "좋아! 내일 그네 타고 나서 또 만나자. "
+            "오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
+        ),
     )
 
 
@@ -366,7 +370,8 @@ class TestChildTurn:
             "session.completed",
         ]
         assert channel.sent[1]["payload"]["text"] == (
-            "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
+            "좋아! 내일 그네 타고 나서 또 만나자. "
+            "오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
         )
         # 자막 동기화를 위해 인사 텍스트와 오디오는 같은 responseId를 공유한다.
         assert channel.sent[0]["responseId"] == channel.sent[1]["responseId"]

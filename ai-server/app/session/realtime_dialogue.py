@@ -336,7 +336,10 @@ class RealtimeDialogueManager:
                 "conversation terminated by dialogue policy",
                 extra={"termination_reason": _reason_value(response)},
             )
-            self._emit_session_completed(_reason_value(response))
+            self._emit_session_completed(
+                _reason_value(response),
+                closing_message=response.closing_message,
+            )
             return
 
         ai_ref = self._publish_assistant_text(response.assistant_message)
@@ -646,7 +649,12 @@ class RealtimeDialogueManager:
             topic_completion_reason=topic_completion_reason,
         )
 
-    def _emit_session_completed(self, reason: str | None) -> None:
+    def _emit_session_completed(
+        self,
+        reason: str | None,
+        *,
+        closing_message: str | None = None,
+    ) -> None:
         """대화를 마무리한다 — 인사 발화 → 종료 신호 → 확정 이벤트 순.
 
         인사는 DataChannel과 TTS로만 내보내고 Stream에는 싣지 않는다. 질문이 아니고
@@ -657,7 +665,9 @@ class RealtimeDialogueManager:
         """
 
         resolved = reason or "COMPLETED"
-        self._publish_assistant_text(CONVERSATION_CLOSING_MESSAGE)
+        self._publish_assistant_text(
+            closing_message or CONVERSATION_CLOSING_MESSAGE
+        )
         self._publisher.publish("session.completed", {"reason": resolved})
         if self._stream is None:
             return

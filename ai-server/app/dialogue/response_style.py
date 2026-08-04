@@ -43,7 +43,6 @@ _POSITIVE_CUES: tuple[str, ...] = (
 )
 
 _INVITATION_CUES: tuple[str, ...] = (
-    "같이",
     "하자",
     "먹자",
     "놀자",
@@ -51,6 +50,7 @@ _INVITATION_CUES: tuple[str, ...] = (
     "가자",
     "보자",
     "해보자",
+    "만나자",
 )
 
 _AFFIRMATION_QUESTION_CUES: tuple[str, ...] = (
@@ -58,8 +58,13 @@ _AFFIRMATION_QUESTION_CUES: tuple[str, ...] = (
     "재미있지",
     "신기하지",
     "멋지지",
+    "멋있지",
     "좋지",
     "예쁘지",
+    "짱이지",
+    "잘하지",
+    "잘했지",
+    "대단하지",
 )
 
 _FOOD_CUES: tuple[str, ...] = (
@@ -84,6 +89,14 @@ _PLAYGROUND_CUES: tuple[str, ...] = (
     "그네",
     "시소",
     "미끄럼틀",
+)
+
+_PLAYGROUND_ACTION_CUES: tuple[str, ...] = (
+    "타고",
+    "탔",
+    "놀았",
+    "놀고",
+    "미끄러",
 )
 
 _GAME_CUES: tuple[str, ...] = (
@@ -169,6 +182,14 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
     if any(cue in normalized for cue in _FOOD_CUES):
         return "맛있는 걸 먹은 이야기를 해줬구나!"
     if any(cue in normalized for cue in _PLAYGROUND_CUES):
+        if any(cue in normalized for cue in _PLAYGROUND_ACTION_CUES):
+            if "그네" in normalized:
+                return "그네 타고 놀아서 재미있었겠다!"
+            if "시소" in normalized:
+                return "시소 타고 놀아서 재미있었겠다!"
+            if "미끄럼틀" in normalized:
+                return "미끄럼틀도 재미있었겠다!"
+            return "놀이터에서 재미있게 놀았겠다!"
         return "놀이터에서 있었던 일을 말해줬구나!"
     if any(cue in normalized for cue in _FRUIT_ACTION_CUES):
         return "과일 자른 이야기를 해줬구나!"
@@ -257,6 +278,12 @@ def tomorrow_closing_message(child_answer: str | None) -> str:
     normalized = _normalize(child_answer or "")
     if any(cue in normalized for cue in ("몰라", "없어", "없음", "글쎄")):
         return "괜찮아. 오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
+    activity = _tomorrow_activity_phrase(child_answer)
+    if activity:
+        return (
+            f"좋아! 내일 {activity} 나서 또 만나자. "
+            "오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
+        )
     return (
         "좋아! 내일 하고 나서 나한테 또 말해줘. "
         "오늘 이야기를 일기로 남겨볼래?"
@@ -331,11 +358,35 @@ def safe_child_question_reply(
     if "뭐가궁금" in normalized or "무엇이궁금" in normalized:
         return "네가 직접 해본 이야기가 궁금해."
     if any(cue in normalized for cue in _AFFIRMATION_QUESTION_CUES):
-        return "응, 네가 말해주니까 정말 재미있게 느껴져."
+        if any(cue in normalized for cue in ("짱이지", "잘하지", "잘했지", "대단하지")):
+            return "응, 정말 대단해!"
+        if "멋" in normalized:
+            return "응, 정말 멋지다!"
+        if "신기" in normalized:
+            return "응, 정말 신기하다!"
+        return "응, 정말 재미있겠다!"
     if "몇점" in normalized or "점받" in normalized or "점수" in normalized:
         return "나는 점수를 받지는 않지만, 네 점수 이야기는 궁금해."
     if "어떻게" in normalized or "뭐라고" in normalized or "어떤말" in normalized:
         return "그럴 땐 '나도 타고 싶어'라고 말해볼 수 있어."
+    if any(cue in normalized for cue in _PLAYGROUND_CUES) and (
+        "타봤" in normalized
+        or "타본" in normalized
+        or "타본적" in normalized
+        or "타보" in normalized
+    ):
+        prefix = (
+            "간식도 같이 먹었구나! "
+            if "간식" in normalized and "먹" in normalized
+            else ""
+        )
+        if "그네" in normalized:
+            return f"{prefix}나는 직접 그네를 타보진 못해도, 네 그네 이야기는 좋아."
+        if "시소" in normalized:
+            return f"{prefix}나는 직접 시소를 타보진 못해도, 네 시소 이야기는 좋아."
+        if "미끄럼틀" in normalized:
+            return f"{prefix}나는 직접 미끄럼틀을 타보진 못해도, 네 이야기는 좋아."
+        return f"{prefix}나는 직접 타보진 못해도, 네 놀이 이야기는 좋아."
     if any(cue in normalized for cue in _GAME_CUES) and (
         "해봤" in normalized or "해본" in normalized or "했어" in normalized
     ):
@@ -358,6 +409,29 @@ def safe_child_question_reply(
     if _safe_bridge_hint(bridge_hint):
         return bridge_hint.strip()
     return "나는 직접 해보진 못해도, 네 마음 이야기는 잘 들을 수 있어."
+
+
+def _tomorrow_activity_phrase(child_answer: str | None) -> str | None:
+    normalized = _normalize(child_answer or "")
+    if not normalized:
+        return None
+    if "그네" in normalized:
+        return "그네 타고"
+    if "시소" in normalized:
+        return "시소 타고"
+    if "미끄럼틀" in normalized:
+        return "미끄럼틀 타고"
+    if "놀이터" in normalized:
+        return "놀이터에서 놀고"
+    if "게임" in normalized:
+        return "게임하고"
+    if "케이크" in normalized or "치킨" in normalized or "라면" in normalized:
+        return "맛있는 거 먹고"
+    if "그림" in normalized or "그리" in normalized:
+        return "그림 그리고"
+    if "친구" in normalized and "놀" in normalized:
+        return "친구랑 놀고"
+    return None
 
 
 def is_child_invitation(child_answer: str | None) -> bool:

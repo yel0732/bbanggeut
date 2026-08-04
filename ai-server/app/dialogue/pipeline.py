@@ -39,6 +39,7 @@ from app.dialogue.question.prompts import (
     DiaryQuestionGenerationRequest,
     QuestionRedirectContext,
 )
+from app.dialogue.question.validator import HARD_BANNED_QUESTION_EXPRESSIONS
 from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
     CHOICE_QUESTION_BY_TARGET,
@@ -908,6 +909,13 @@ class DialogueTurnPipeline:
         elif generated.source is QuestionGenerationSource.LLM:
             assistant_message = generated.question
             assistant_question = _extract_final_question(generated.question)
+            if _contains_banned_surface(assistant_message):
+                assistant_message = _fallback_assistant_message(
+                    fallback_question,
+                    redirect_context,
+                    request.child_answer,
+                )
+                assistant_question = fallback_question
             generation_status = generated.status
             generation_source = generated.source
             generation_failure_code = generated.failure_code
@@ -1450,6 +1458,14 @@ def _extract_final_question(message: str) -> str:
         normalized[boundary + len(marker) :].strip()
         if boundary >= 0
         else normalized
+    )
+
+
+def _contains_banned_surface(message: str) -> bool:
+    normalized = "".join(message.strip().casefold().split())
+    return any(
+        "".join(expression.casefold().split()) in normalized
+        for expression in HARD_BANNED_QUESTION_EXPRESSIONS
     )
 
 

@@ -1570,8 +1570,175 @@ async def test_tomorrow_answer_closes_without_slot_update() -> None:
     assert result.decision is DialogueTurnDecision.TERMINATE
     assert result.updated_slots == slots
     assert result.closing_message is not None
-    assert "내일 하고 나서" in result.closing_message
+    assert "내일 그네 타고 나서 또 만나자" in result.closing_message
     assert "일기로 남겨볼래" in result.closing_message
+
+
+@pytest.mark.asyncio
+async def test_playground_contextual_followup_gets_warm_ack() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":"시소 타고 논 것"}'
+            ),
+            (
+                '{"answered":true,"childQuestion":false,'
+                '"bridgeResponse":null}'
+            ),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(
+                event="놀이터에서 길동이랑 놀기",
+                emotion="신났어",
+                emotion_reason="길동이랑 놀아서",
+            ),
+            "current_question": "놀이터에서 또 뭐 했어?",
+            "current_target": QuestionTarget.MEMORABLE_MOMENT,
+            "recent_questions": ("놀이터에서 또 뭐 했어?",),
+            "child_answer": "시소 타고 놀았어",
+            "question_count": 3,
+        }
+    )
+
+    result = await _pipeline_with_required_three(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.assistant_question == "내일은 뭐하고 싶어?"
+    assert "시소 타고 놀아서 재미있었겠다" in result.assistant_message
+
+
+@pytest.mark.asyncio
+async def test_together_playground_story_is_not_invitation() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":["철수"],"place":"놀이터",'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":"철수랑 시소와 미끄럼틀을 탄 것"}'
+            ),
+            (
+                '{"answered":true,"childQuestion":false,'
+                '"bridgeResponse":null}'
+            ),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(
+                event="놀이터에서 놀기",
+                emotion="재미있었어",
+                emotion_reason="친구랑 놀아서",
+            ),
+            "current_question": "놀이터에서 또 뭐 했어?",
+            "current_target": QuestionTarget.MEMORABLE_MOMENT,
+            "recent_questions": ("놀이터에서 또 뭐 했어?",),
+            "child_answer": "철수랑 같이 시소도 타고 미끄럼틀도 탔어",
+            "question_count": 3,
+        }
+    )
+
+    result = await _pipeline_with_required_three(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.assistant_question == "내일은 뭐하고 싶어?"
+    assert "같이 하자고" not in result.assistant_message
+    assert "시소 타고 놀아서 재미있었겠다" in result.assistant_message
+
+
+@pytest.mark.asyncio
+async def test_mixed_snack_story_and_swing_question_answers_swing() -> None:
+    client = FakeClient(
+        [
+            (
+                '{"event":null,"people":["철수"],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":"철수랑 간식을 같이 먹은 것"}'
+            ),
+            (
+                '{"answered":false,"childQuestion":true,'
+                '"intent":"CHILD_QUESTION","controlAction":"CONTINUE",'
+                '"bridgeResponse":null,'
+                '"suggestedTarget":null,"evidenceText":null}'
+            ),
+        ]
+    )
+    request = _request().model_copy(
+        update={
+            "current_slots": DiarySlots(
+                event="놀이터에서 놀기",
+                emotion="재미있었어",
+                emotion_reason="그네가 재미있어서",
+            ),
+            "current_question": "놀이터에서 또 뭐 했어?",
+            "current_target": QuestionTarget.MEMORABLE_MOMENT,
+            "recent_questions": ("놀이터에서 또 뭐 했어?",),
+            "child_answer": (
+                "엄마가 준 간식도 같이 먹었어. "
+                "근데 진짜 재밌는데 너도 그네 타본 적 있어?"
+            ),
+            "question_count": 3,
+        }
+    )
+
+    result = await _pipeline_with_required_three(client).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.assistant_question == "내일은 뭐하고 싶어?"
+    assert "간식도 같이 먹었구나" in result.assistant_message
+    assert "그네를 타보진 못해도" in result.assistant_message
+    assert "먹지는 못해" not in result.assistant_message
+    assert "같이 먹자고" not in result.assistant_message
+
+
+@pytest.mark.asyncio
+async def test_brag_question_gets_praise_in_pipeline() -> None:
+    analysis_client = FakeClient(
+        [
+            (
+                '{"event":null,"people":[],"place":null,'
+                '"emotion":null,"emotionReason":null,'
+                '"memorableMoment":"수박을 한 번에 여러 개 자른 것"}'
+            ),
+            (
+                '{"intent":"CHILD_QUESTION","answered":true,'
+                '"childQuestion":true,"controlAction":"CONTINUE",'
+                '"bridgeResponse":null,"suggestedTarget":null,'
+                '"evidenceText":"짱이지"}'
+            ),
+        ]
+    )
+    response_client = FakeClient([])
+    request = _request().model_copy(
+        update={
+            "current_topic": DialogueTopic.GAME,
+            "current_slots": DiarySlots(
+                event="과일 자르기 게임",
+                emotion="재미있었어",
+                emotion_reason="수박을 많이 잘라서",
+            ),
+            "current_question": "그 게임에서 어떤 순간이 제일 재미있었어?",
+            "current_target": QuestionTarget.MEMORABLE_MOMENT,
+            "recent_questions": (
+                "그 게임에서 어떤 순간이 제일 재미있었어?",
+            ),
+            "child_answer": "내가 수박을 한 번에 여러 개 잘랐어. 짱이지?",
+            "question_count": 3,
+        }
+    )
+
+    result = await _pipeline_with_clients(
+        analysis_client,
+        response_client,
+    ).process(request)
+
+    assert result.decision is DialogueTurnDecision.CONTINUE
+    assert result.assistant_question == "내일은 뭐하고 싶어?"
+    assert "응, 정말 대단해" in result.assistant_message
+    assert "직접" not in result.assistant_message
 
 
 @pytest.mark.asyncio

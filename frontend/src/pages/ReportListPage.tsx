@@ -231,7 +231,12 @@ export function ReportListPage() {
           className={
             !isLoading && !error && reports.length > 0
               ? `absolute top-[125px] bottom-[74px] left-[68px] z-5 flex flex-col overflow-hidden transition-[right] duration-300 ${selectedDate ? 'right-[760px]' : 'right-[96px]'}`
-              : 'absolute top-[165px] right-[120px] bottom-[145px] left-[120px] z-5 flex flex-col overflow-hidden'
+              : /*
+                  상세 패널이 열려 있으면 목록이 차지할 수 있는 폭도 그만큼 줄어든다.
+                  안내 문구만 남는 상태에서도 마찬가지다 — 전체 폭으로 두면 문구가
+                  패널 아래에 깔려 가운데가 아닌 자리에 놓인 것처럼 보인다.
+                */
+                `absolute top-[165px] bottom-[145px] left-[120px] z-5 flex flex-col overflow-hidden ${selectedDate ? 'right-[760px]' : 'right-[120px]'}`
           }
         >
           {isLoading ? (
@@ -394,7 +399,12 @@ export function ReportListPage() {
               </button>
               {detailLoading ? (
                 <div className="absolute top-[22%] right-[12%] left-[12%]">
-                  <DetailMessage>리포트를 불러오고 있어요...</DetailMessage>
+                  {/*
+                    목록과 상세는 각자 따로 불러온다. 알림을 눌러 들어오면 둘이
+                    동시에 로딩 중일 수 있어, 같은 문구를 쓰면 화면에 똑같은 말이
+                    두 군데 뜬다.
+                  */}
+                  <DetailMessage>리포트를 여는 중이에요...</DetailMessage>
                 </div>
               ) : detailError ? (
                 <div className="absolute top-[22%] right-[12%] left-[12%]">

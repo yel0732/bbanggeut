@@ -6,6 +6,11 @@ import replayButtonUrl from '@/assets/images/game-common/replay-button.webp'
 import resumeButtonUrl from '@/assets/images/game-common/resume-button.webp'
 import errorPopupUrl from '@/assets/images/parent-mode/error-popup.webp'
 import type { CameraStatus } from '@/hooks/useCameraStream'
+import {
+  GO_HOME_BUTTON_CLIP,
+  REPLAY_BUTTON_CLIP,
+  RESUME_BUTTON_CLIP,
+} from '@/lib/buttonClip'
 
 /**
  * 게임 플레이 화면 공통 조각.
@@ -230,16 +235,19 @@ export function PauseOverlay({
 
         <div className="absolute top-[130px] left-1/2 flex -translate-x-1/2 flex-col items-center gap-[18px]">
           <PauseMenuButton
+            clipPath={RESUME_BUTTON_CLIP}
             imageUrl={resumeButtonUrl}
             label="이어하기"
             onClick={onResume}
           />
           <PauseMenuButton
+            clipPath={REPLAY_BUTTON_CLIP}
             imageUrl={replayButtonUrl}
             label="다시하기"
             onClick={onRestart}
           />
           <PauseMenuButton
+            clipPath={GO_HOME_BUTTON_CLIP}
             imageUrl={goHomeButtonUrl}
             label="홈으로 가기"
             onClick={onQuit}
@@ -251,10 +259,12 @@ export function PauseOverlay({
 }
 
 function PauseMenuButton({
+  clipPath,
   imageUrl,
   label,
   onClick,
 }: {
+  clipPath: string
   imageUrl: string
   label: string
   onClick: () => void
@@ -263,6 +273,7 @@ function PauseMenuButton({
     <button
       className="relative grid h-[82px] w-[300px] place-items-center border-0 bg-transparent p-0 transition hover:scale-[1.035] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-white active:scale-[0.98]"
       onClick={onClick}
+      style={{ clipPath }}
       type="button"
     >
       <img

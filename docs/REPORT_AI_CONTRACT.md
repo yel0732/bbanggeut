@@ -35,7 +35,7 @@ Successful response:
     "description": "친구와 함께한 축구 경험에 관심을 보여주세요.",
     "questions": ["어떤 순간이 가장 즐거웠어?"]
   },
-  "modelVersion": "gpt-5.4-mini",
+  "modelVersion": "gpt-5-mini",
   "promptVersion": "daily-report-v2"
 }
 ```
@@ -50,7 +50,7 @@ Runtime configuration:
 
 ```text
 GMS_KEY=<set directly in the runtime secret store>
-GMS_REPORT_MODEL=gpt-5.4-mini
+GMS_REPORT_MODEL=gpt-5-mini
 ```
 
 The real key must never be committed to the repository or included in logs.

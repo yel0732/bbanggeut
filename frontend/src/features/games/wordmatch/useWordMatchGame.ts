@@ -74,7 +74,7 @@ export type WordMatchGameState = {
   /** 방금 판정 결과. 연출 중에만 값이 있다. */
   judge: WordMatchJudge | null
   /** 힌트로 반짝일 정답 칸 번호와 글자 uid (WGAME-13) */
-  hint: { slotIndex: number; tileUid: number } | null
+  hints: { slotIndex: number; tileUid: number }[]
   /** 손별 조준 중인 글자 uid */
   hover: Record<HandSlot, number | null>
   /** 손별 올라가 있는 정답 칸 번호 */
@@ -97,7 +97,7 @@ type Round = {
   startedAt: number
   wrongCount: number
   hintUsed: boolean
-  hint: { slotIndex: number; tileUid: number } | null
+  hints: { slotIndex: number; tileUid: number }[]
 }
 
 type Engine = {
@@ -150,7 +150,7 @@ function createRound(problem: WordProblem, now: number): Round {
     startedAt: now,
     wrongCount: 0,
     hintUsed: false,
-    hint: null,
+    hints: [],
   }
 }
 
@@ -263,7 +263,7 @@ export function useWordMatchGame(
     problem: null,
     tiles: [],
     judge: null,
-    hint: null,
+    hints: [],
     hover: { a: null, b: null },
     slotHover: { a: null, b: null },
   }))
@@ -333,7 +333,14 @@ export function useWordMatchGame(
       pointerRefs[slot].current?.style.setProperty('--aim', progress.toFixed(3))
     }
 
-    /** 힌트 켜기 — 못 채운 칸 하나와 그 칸에 들어갈 카드를 고른다(WGAME-13). */
+    /*
+      힌트 하나 더 켜기 — 못 채운 칸 하나와 그 칸에 들어갈 카드를 고른다(WGAME-13).
+
+      오답 두 번마다 하나씩 늘어난다. 이미 힌트가 붙은 칸과 이미 힌트로 지목된
+      카드는 건너뛴다 — 같은 것을 두 번 알려 주면 힌트가 늘지 않는다.
+
+      남은 빈칸이 없거나 알려 줄 카드가 없으면 아무것도 켜지 않는다.
+    */
     const turnOnHint = (round: Round): void => {
       const answer = [...round.problem.answer]
 
@@ -342,16 +349,18 @@ export function useWordMatchGame(
           (tile) => tile.slotIndex === index && tile.letter === answer[index],
         )
         if (filled) continue
+        if (round.hints.some((hint) => hint.slotIndex === index)) continue
 
-        // 그 글자를 가진 카드 중 아직 안 놓인 것을 고른다.
+        // 그 글자를 가진 카드 중 아직 안 놓이고 아직 지목되지 않은 것을 고른다.
         const candidate = round.tiles.find(
           (tile) =>
             tile.letter === answer[index] &&
             !tile.locked &&
-            tile.heldBy === null,
+            tile.heldBy === null &&
+            !round.hints.some((hint) => hint.tileUid === tile.uid),
         )
         if (candidate) {
-          round.hint = { slotIndex: index, tileUid: candidate.uid }
+          round.hints.push({ slotIndex: index, tileUid: candidate.uid })
           round.hintUsed = true
           return
         }
@@ -404,7 +413,13 @@ export function useWordMatchGame(
           tile.slotIndex = null
         }
       }
-      if (!round.hintUsed && round.wrongCount >= CFG.hintWrongThreshold) {
+      /*
+        오답 두 번마다 힌트를 하나 더 켠다.
+
+        서버는 "힌트를 썼다면 오답이 두 번 이상"을 검증하므로(GameSessionService)
+        나누어 떨어지는 순간에만 켜는 이 방식이 그 조건을 늘 만족한다.
+      */
+      if (round.wrongCount % CFG.hintWrongThreshold === 0) {
         turnOnHint(round)
       }
       engine.judge = 'wrong'
@@ -451,13 +466,14 @@ export function useWordMatchGame(
         )
         paintAim(slot, stepped.progress)
 
-        if (stepped.grabbed) {
-          stepped.grabbed.heldBy = slot
-          stepped.grabbed.slotIndex = null
-          // 힌트로 가리키던 카드를 집으면 안내를 끝낸다.
-          if (round.hint?.tileUid === stepped.grabbed.uid) {
-            round.hint = null
-          }
+        const grabbed = stepped.grabbed
+        if (grabbed) {
+          grabbed.heldBy = slot
+          grabbed.slotIndex = null
+          // 알려 준 카드를 집었으면 그 힌트만 끈다. 나머지는 그대로 둔다.
+          round.hints = round.hints.filter(
+            (hint) => hint.tileUid !== grabbed.uid,
+          )
           handlersRef.current.onGrab?.()
         }
 
@@ -650,7 +666,9 @@ export function useWordMatchGame(
         engine.solvedWordCount,
         round?.problem.code,
         engine.judge,
-        round?.hint?.slotIndex,
+        round?.hints
+          .map((hint) => `${hint.slotIndex}:${hint.tileUid}`)
+          .join(','),
         engine.aim.a.hoverUid,
         engine.aim.b.hoverUid,
         engine.slotHover.a,
@@ -674,7 +692,7 @@ export function useWordMatchGame(
           problem: round?.problem ?? null,
           tiles: round ? round.tiles.map((tile) => ({ ...tile })) : [],
           judge: engine.judge,
-          hint: round?.hint ?? null,
+          hints: round?.hints ?? [],
           hover: { a: engine.aim.a.hoverUid, b: engine.aim.b.hoverUid },
           slotHover: { ...engine.slotHover },
         })

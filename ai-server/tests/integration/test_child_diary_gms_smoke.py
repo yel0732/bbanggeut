@@ -20,7 +20,7 @@ async def test_real_gms_child_diary_generation() -> None:
 
     async with httpx.AsyncClient(
         base_url=settings.gms_base_url,
-        timeout=settings.gms_timeout_seconds,
+        timeout=settings.gms_child_diary_timeout_seconds,
     ) as http_client:
         generator = ChildDiaryGenerator(
             provider=GmsChatClient(
@@ -28,8 +28,7 @@ async def test_real_gms_child_diary_generation() -> None:
                 api_key=settings.gms_key,
                 model=settings.gms_child_diary_model,
             ),
-            timeout_seconds=settings.gms_timeout_seconds,
-            max_attempts=settings.gms_max_attempts,
+            timeout_seconds=settings.gms_child_diary_timeout_seconds,
         )
         result = await generator.generate(
             ChildDiarySummaryRequest.model_validate({

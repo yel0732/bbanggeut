@@ -13,6 +13,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.A501.backend.common.exception.BusinessException;
 import com.A501.backend.domain.auth.entity.Parent;
+import com.A501.backend.domain.auth.entity.ParentRole;
 import com.A501.backend.domain.auth.exception.AuthErrorCode;
 
 import io.jsonwebtoken.Claims;
@@ -37,6 +38,7 @@ class JwtProviderTest {
         assertThat(claims.getSubject()).isEqualTo("42");
         assertThat(claims.get("email", String.class)).isEqualTo(parent.getEmail());
         assertThat(claims.get("purpose", String.class)).isEqualTo("ACCESS");
+        assertThat(claims.get("role", String.class)).isEqualTo("PARENT");
     }
 
     @Test
@@ -72,6 +74,18 @@ class JwtProviderTest {
         String token = jwtProvider.generateAccessToken(parent);
 
         assertThat(jwtProvider.parseAccessToken(token)).isEqualTo(42L);
+    }
+
+    @Test
+    void parseAccessTokenClaims_returnsAdminRole() {
+        Parent parent = createParentWithId(42L);
+        ReflectionTestUtils.setField(parent, "role", ParentRole.ADMIN);
+
+        JwtProvider.AccessTokenClaims claims = jwtProvider.parseAccessTokenClaims(
+                jwtProvider.generateAccessToken(parent));
+
+        assertThat(claims.parentId()).isEqualTo(42L);
+        assertThat(claims.role()).isEqualTo(ParentRole.ADMIN);
     }
 
     @Test

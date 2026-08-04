@@ -27,6 +27,7 @@ import lombok.NoArgsConstructor;
 public class ReportNotificationPreference extends BaseTimeEntity {
 
     public static final LocalTime DEFAULT_TIME = LocalTime.of(20, 0);
+    public static final int DEFAULT_MINUTE = DEFAULT_TIME.getHour() * 60;
     public static final String DEFAULT_TIME_ZONE = "Asia/Seoul";
 
     @Id
@@ -40,8 +41,8 @@ public class ReportNotificationPreference extends BaseTimeEntity {
     @Column(nullable = false)
     private boolean enabled;
 
-    @Column(name = "notification_time", nullable = false)
-    private LocalTime notificationTime;
+    @Column(name = "notification_minute", nullable = false)
+    private short notificationMinute;
 
     @Column(name = "time_zone", nullable = false, length = 50)
     private String timeZone;
@@ -49,7 +50,7 @@ public class ReportNotificationPreference extends BaseTimeEntity {
     private ReportNotificationPreference(Long parentId) {
         this.parentId = parentId;
         this.enabled = true;
-        this.notificationTime = DEFAULT_TIME;
+        this.notificationMinute = (short) DEFAULT_MINUTE;
         this.timeZone = DEFAULT_TIME_ZONE;
     }
 
@@ -66,7 +67,12 @@ public class ReportNotificationPreference extends BaseTimeEntity {
         }
         ZoneId.of(timeZone);
         this.enabled = enabled;
-        this.notificationTime = notificationTime.withSecond(0).withNano(0);
+        this.notificationMinute = (short) (notificationTime.getHour() * 60
+                + notificationTime.getMinute());
         this.timeZone = timeZone;
+    }
+
+    public LocalTime getNotificationTime() {
+        return LocalTime.of(notificationMinute / 60, notificationMinute % 60);
     }
 }

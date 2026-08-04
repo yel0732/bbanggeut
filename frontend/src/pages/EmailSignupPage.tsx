@@ -13,6 +13,7 @@ import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ParentNoticeDialog } from '@/components/ParentNoticeDialog'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
+import { COMPLETE_BUTTON_CLIP } from '@/lib/buttonClip'
 import { useFitScale } from '@/hooks/useFitScale'
 import { EMAIL_PATTERN } from '@/utils/validation'
 import {
@@ -473,6 +474,7 @@ export function EmailSignupPage() {
                 style={{
                   ...jua,
                   backgroundImage: `url(${signupCompleteButtonUrl})`,
+                  clipPath: COMPLETE_BUTTON_CLIP,
                 }}
                 type="button"
               >

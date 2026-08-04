@@ -327,7 +327,7 @@ function PlayField({
   game: WordMatchGameState
   handModelReady: boolean
 }) {
-  const { phase, problem, tiles, judge, hint, hover, slotHover, pointerRefs } =
+  const { phase, problem, tiles, judge, hints, hover, slotHover, pointerRefs } =
     game
   const wordLength = problem ? problem.answer.length : 0
   const picture = pictureCenter()
@@ -365,7 +365,7 @@ function PlayField({
           {Array.from({ length: wordLength }, (_, index) => {
             const center = slotCenter(index, wordLength)
             const hovered = slotHover.a === index || slotHover.b === index
-            const hinted = hint?.slotIndex === index
+            const hinted = hints.some((item) => item.slotIndex === index)
 
             return (
               <div
@@ -405,7 +405,7 @@ function PlayField({
             const center = tileCenter(tile, wordLength)
             const hovered = hover.a === tile.uid || hover.b === tile.uid
             const held = tile.heldBy !== null
-            const hinted = hint?.tileUid === tile.uid
+            const hinted = hints.some((item) => item.tileUid === tile.uid)
             const size = tileSize(tile)
 
             return (

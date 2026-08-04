@@ -84,7 +84,7 @@ def test_response_requires_fixed_title_and_three_to_four_short_lines() -> None:
         "diaryDate": "2026-07-27",
         "title": DIARY_TITLE,
         "lines": ["오늘은 그림을 그렸다.", "색칠해서 즐거웠다.", "그림이 기억에 남았다."],
-        "modelVersion": "gpt-5.4-mini",
+        "modelVersion": "gpt-5-mini",
         "promptVersion": "child-diary-v1",
     })
 
@@ -106,6 +106,6 @@ def test_rejects_invalid_ui_constraints(title: str, lines: list[str]) -> None:
             "diaryDate": "2026-07-27",
             "title": title,
             "lines": lines,
-            "modelVersion": "gpt-5.4-mini",
+            "modelVersion": "gpt-5-mini",
             "promptVersion": "child-diary-v1",
         })

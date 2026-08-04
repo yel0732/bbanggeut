@@ -48,6 +48,6 @@ class ChildDiaryPreviewTokenServiceTest {
     private ChildDiaryDraft draft(long expiresAt) {
         return new ChildDiaryDraft(1L, 15L, "conversation-1", LocalDate.of(2026, 7, 27),
                 "오늘의 일기", List.of("친구와 놀았다.", "즐거웠다.", "그 순간이 기억에 남았다."),
-                ChildDiaryGenerationMethod.AI, "gpt-5.4-mini", "child-diary-v3", expiresAt);
+                ChildDiaryGenerationMethod.AI, "gpt-5-mini", "child-diary-v3", expiresAt);
     }
 }

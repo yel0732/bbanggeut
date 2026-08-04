@@ -5,7 +5,7 @@ from app.report.schemas import DailyReportSummaryRequest
 
 
 class FakeProvider:
-    model = "gpt-5.4-mini"
+    model = "gpt-5-mini"
 
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
@@ -36,7 +36,7 @@ async def test_generates_validated_daily_report() -> None:
     result = await generator.generate(request)
 
     assert result.title == "즐거운 하루"
-    assert result.model_version == "gpt-5.4-mini"
+    assert result.model_version == "gpt-5-mini"
     assert result.daily_story == "친구와 축구한 이야기를 나누었어요."
     assert result.prompt_version == "daily-report-v2"
 

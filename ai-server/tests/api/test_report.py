@@ -9,7 +9,7 @@ from app.main import create_app
 
 def _gms_handler(request: httpx.Request) -> httpx.Response:
     payload = json.loads(request.content)
-    assert payload["model"] == "gpt-5.4-mini"
+    assert payload["model"] == "gpt-5-mini"
     return httpx.Response(
         200,
         json={
@@ -64,7 +64,7 @@ async def test_generates_daily_report_summary() -> None:
             "description": "축구 이야기를 나눠보세요.",
             "questions": ["어떤 순간이 즐거웠어?"],
         },
-        "modelVersion": "gpt-5.4-mini",
+        "modelVersion": "gpt-5-mini",
         "promptVersion": "daily-report-v2",
     }
 

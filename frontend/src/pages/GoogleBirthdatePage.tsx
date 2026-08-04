@@ -18,6 +18,7 @@ import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
 import { useAdventureBgm } from '@/hooks/useAdventureBgm'
+import { COMPLETE_BUTTON_CLIP } from '@/lib/buttonClip'
 import { useFitScale } from '@/hooks/useFitScale'
 
 type GoogleCredentialResponse = { credential: string }
@@ -614,6 +615,7 @@ function ActionButton({
       style={{
         ...jua,
         backgroundImage: `url(${signupCompleteButtonUrl})`,
+        clipPath: COMPLETE_BUTTON_CLIP,
       }}
       type="button"
     >

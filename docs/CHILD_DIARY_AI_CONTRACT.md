@@ -55,7 +55,7 @@ Success response:
     "마지막 과일을 자른 순간이 기억에 남았다.",
     "친구와 놀이터에서 놀아서 즐거웠다."
   ],
-  "modelVersion": "gpt-5.4-mini",
+  "modelVersion": "gpt-5-mini",
   "promptVersion": "child-diary-v7"
 }
 ```
@@ -83,9 +83,14 @@ Success response:
 
 ```text
 GMS_KEY=<runtime secret>
-GMS_CHILD_DIARY_MODEL=gpt-5.4-mini
+GMS_CHILD_DIARY_MODEL=gpt-5-mini
+GMS_CHILD_DIARY_TIMEOUT_SECONDS=90
 GMS_TIMEOUT_SECONDS=10
-GMS_MAX_ATTEMPTS=2
 ```
+
+Child diary generation sends exactly one GMS request. It does not retry after a
+timeout or provider failure, preventing a late first response from overlapping a
+duplicate request. The child-diary-specific timeout is longer than the shared GMS
+timeout because this model can take more than one minute to complete.
 
 Secrets must never be committed or logged.

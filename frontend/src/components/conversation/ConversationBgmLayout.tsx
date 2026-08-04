@@ -53,7 +53,7 @@ export function ConversationBgmLayout() {
       <audio
         aria-label="대화방 배경 음악"
         loop
-        preload="auto"
+        preload="metadata"
         ref={audioRef}
         src={conversationBgmUrl}
       />

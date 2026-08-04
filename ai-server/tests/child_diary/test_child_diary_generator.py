@@ -10,7 +10,7 @@ from app.child_diary.schemas import ChildDiarySummaryRequest
 
 
 class FakeProvider:
-    model = "gpt-5.4-mini"
+    model = "gpt-5-mini"
 
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
@@ -23,7 +23,7 @@ class FakeProvider:
 
 
 class BlockingProvider:
-    model = "gpt-5.4-mini"
+    model = "gpt-5-mini"
 
     def __init__(self) -> None:
         self.calls = 0
@@ -60,14 +60,13 @@ async def test_generates_fixed_title_and_validated_lines() -> None:
             '"완성한 순간이 가장 기억에 남았다."]}'
         ]),
         timeout_seconds=1.0,
-        max_attempts=2,
     )
 
     result = await generator.generate(_request())
 
     assert result.title == "오늘의 일기"
     assert len(result.lines) == 3
-    assert result.model_version == "gpt-5.4-mini"
+    assert result.model_version == "gpt-5-mini"
     assert result.prompt_version == "child-diary-v7"
 
 
@@ -77,7 +76,7 @@ async def test_rejects_malformed_or_overlong_model_output_without_retry() -> Non
         '{"gameLines":[],"dailyLines":["가나다", "라마바", "'
         + "가" * 61 + '"]}'
     ])
-    generator = ChildDiaryGenerator(provider, 1.0, 2)
+    generator = ChildDiaryGenerator(provider, 1.0)
 
     with pytest.raises(ChildDiaryGenerationError):
         await generator.generate(_request())
@@ -86,14 +85,14 @@ async def test_rejects_malformed_or_overlong_model_output_without_retry() -> Non
 
 
 @pytest.mark.asyncio
-async def test_retries_bounded_number_of_times_on_timeout() -> None:
+async def test_does_not_retry_on_timeout() -> None:
     provider = BlockingProvider()
-    generator = ChildDiaryGenerator(provider, 0.001, 2)
+    generator = ChildDiaryGenerator(provider, 0.001)
 
     with pytest.raises(ChildDiaryGenerationError):
         await generator.generate(_request())
 
-    assert provider.calls == 2
+    assert provider.calls == 1
 
 
 @pytest.mark.asyncio
@@ -113,6 +112,6 @@ async def test_rejects_combined_topic_without_a_line_per_topic() -> None:
     ])
 
     with pytest.raises(ChildDiaryGenerationError):
-        await ChildDiaryGenerator(provider, 1.0, 2).generate(request)
+        await ChildDiaryGenerator(provider, 1.0).generate(request)
 
     assert provider.calls == 1

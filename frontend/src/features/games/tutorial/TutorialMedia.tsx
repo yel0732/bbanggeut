@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 import celebrationUrl from '@/assets/images/tutorial/common/common-celebration.webm'
 import greetingUrl from '@/assets/images/tutorial/common/common-greeting.webm'
 import dobbleDemoUrl from '@/assets/images/tutorial/dobble/dobble-open-fist-demo.webm'
-import handsFistUrl from '@/assets/images/tutorial/dobble/dino-hands-fist.png'
-import handsOpenUrl from '@/assets/images/tutorial/dobble/dino-hands-open.png'
+import handsFistUrl from '@/assets/images/tutorial/dobble/dino-hands-fist.webp'
+import handsOpenUrl from '@/assets/images/tutorial/dobble/dino-hands-open.webp'
 import fruitDemoUrl from '@/assets/images/tutorial/fruit/fruit-slice-demo.webm'
-import fruitPosesUrl from '@/assets/images/tutorial/fruit/dino-fruit-left-arm-2poses-low.png'
+import fruitPosesUrl from '@/assets/images/tutorial/fruit/dino-fruit-left-arm-2poses-low.webp'
 import type { GameId } from '@/features/games/games'
 
 import {

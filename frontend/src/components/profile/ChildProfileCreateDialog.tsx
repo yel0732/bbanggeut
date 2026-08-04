@@ -7,6 +7,7 @@ import completeButtonUrl from '@/assets/images/parent-profile/btn-complete.webp'
 import inputBarUrl from '@/assets/images/parent-profile/input-bar.webp'
 import portraitFrameUrl from '@/assets/images/parent-profile/frame-portrait.webp'
 import photoButtonUrl from '@/assets/images/parent-profile/btn-photo.webp'
+import { COMPLETE_BUTTON_CLIP, PHOTO_BUTTON_CLIP } from '@/lib/buttonClip'
 import { MAX_CHILD_PROFILES, type ChildProfile } from '@/lib/childProfiles'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
@@ -221,6 +222,7 @@ export function ChildProfileCreateDialog({
           style={{
             ...jua,
             backgroundImage: `url(${completeButtonUrl})`,
+            clipPath: COMPLETE_BUTTON_CLIP,
             paintOrder: 'stroke fill',
             WebkitTextStroke: '3px #4a7d1e',
           }}
@@ -234,7 +236,11 @@ export function ChildProfileCreateDialog({
             stopCamera()
             onBack()
           }}
-          style={{ ...jua, backgroundImage: `url(${photoButtonUrl})` }}
+          style={{
+            ...jua,
+            backgroundImage: `url(${photoButtonUrl})`,
+            clipPath: PHOTO_BUTTON_CLIP,
+          }}
           type="button"
         >
           뒤로 가기

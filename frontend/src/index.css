@@ -150,6 +150,41 @@
   }
 }
 
+/*
+  물길 위를 흐르는 물결.
+
+  무늬 그림을 가로로 두 번 이어 붙인 띠를 폭의 절반만큼 밀어 준다. 그림이 좌우로
+  이어지도록 만들어져 있어 절반을 지나면 처음과 같은 그림이 되고, 그래서 되돌아
+  가는 순간이 보이지 않는다.
+
+  background-position이 아니라 transform을 움직인다. 매 프레임 다시 그리지 않고
+  합성만 하므로, 손 인식이 도는 중에도 프레임을 잡아먹지 않는다.
+*/
+@keyframes recycle-river-flow {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/*
+  물살에 떠밀려 기우뚱거리는 쓰레기.
+
+  쓰레기마다 animation-delay를 음수로 달리 주어 위상을 흩는다. 다 같이 기울면
+  한 판이 통째로 움직이는 것처럼 보인다.
+*/
+@keyframes recycle-item-sway {
+  0%,
+  100% {
+    transform: rotate(calc(var(--sway) * -1));
+  }
+  50% {
+    transform: rotate(var(--sway));
+  }
+}
+
 @keyframes dobble-side-in {
   0% {
     opacity: 0;

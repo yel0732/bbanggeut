@@ -76,9 +76,9 @@ services:
       GMS_KEY: ${GMS_KEY:?GMS_KEY is required}
       GMS_BASE_URL: ${GMS_BASE_URL:-https://gms.ssafy.io/gmsapi/api.openai.com/v1}
       GMS_ANALYSIS_MODEL: ${GMS_ANALYSIS_MODEL:-gpt-5.4-nano}
-      GMS_RESPONSE_MODEL: ${GMS_RESPONSE_MODEL:-gpt-5.4-mini}
-      GMS_REPORT_MODEL: ${GMS_REPORT_MODEL:-gpt-5.4-mini}
-      GMS_CHILD_DIARY_MODEL: ${GMS_CHILD_DIARY_MODEL:-gpt-5.4-mini}
+      GMS_RESPONSE_MODEL: ${GMS_RESPONSE_MODEL:-gpt-5-mini}
+      GMS_REPORT_MODEL: ${GMS_REPORT_MODEL:-gpt-5-mini}
+      GMS_CHILD_DIARY_MODEL: ${GMS_CHILD_DIARY_MODEL:-gpt-5-mini}
       REALTIME_REDIS_HOST: 127.0.0.1
       REALTIME_REDIS_PORT: 6379
       # 8080은 호스트에서 Jenkins가 쓰고 있어 backend는 18080으로 publish한다.

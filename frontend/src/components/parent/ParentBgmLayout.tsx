@@ -20,7 +20,7 @@ export function ParentBgmLayout() {
       <audio
         aria-label="부모 모드 배경 음악"
         loop
-        preload="auto"
+        preload="metadata"
         ref={audioRef}
         src={bgmUrl}
       />

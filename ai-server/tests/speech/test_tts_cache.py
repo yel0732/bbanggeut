@@ -106,6 +106,12 @@ class TestFixedMessageInventory:
         assert "괜찮아, 천천히 다시 말해 줄래?" in messages
         assert "그때 마음은 어땠어?" in messages
         # 주제 전환 메시지는 전환 질문을 품고 있어 조합이 유한하다.
-        assert any(message.startswith("게임 이야기를 들려줘서 고마워!") for message in messages)
+        # 아이 답변에 딸린 호응이 붙는 변형은 매번 달라지므로 여기 담기지 않는다.
+        assert any(
+            message.startswith("그래, 그럼 다른 얘기하자!") for message in messages
+        )
+        assert any(
+            message.startswith("이야기를 들려줘서 고마워!") for message in messages
+        )
         # 아이 답변에서 파생되는 호응은 절대 포함되지 않는다.
         assert not any("구나." in message for message in messages)

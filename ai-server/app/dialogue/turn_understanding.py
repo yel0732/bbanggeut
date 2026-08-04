@@ -157,7 +157,12 @@ def understand_child_turn(
     negative_event = _contains_any(normalized_answer, _NEGATIVE_EVENT_CUES)
     topic_refusal = _is_topic_refusal(normalized_answer)
     diary_content = _extract_diary_content(answer)
-    analysis_text = diary_content or ("" if child_question else answer)
+    # 주제를 거부하기만 하고 다른 이야기를 꺼내지 않았다면 남은 말은 통제 표현뿐이다.
+    # 그대로 두면 직전 질문 목표가 event일 때 "게임 얘기 안 할래"가 그날의 사건으로
+    # 저장되어 일기와 리포트에 실린다.
+    analysis_text = diary_content or (
+        "" if child_question or topic_refusal else answer
+    )
     normalized_analysis = _normalize(analysis_text)
 
     # 주제를 거부하면서 스스로 다른 이야기를 꺼낸 턴은 다음 주제의 첫 답변이다.

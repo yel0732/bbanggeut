@@ -127,6 +127,27 @@ def test_topic_refusal_keeps_following_daily_story() -> None:
     assert understanding.emotion_reason == "놀이터에서 그네 못 타서"
 
 
+def test_topic_refusal_without_story_fills_no_slot() -> None:
+    """거부만 한 턴은 그날의 사건이 아니다.
+
+    직전 질문 목표가 event였다는 이유로 거부 문장을 사건으로 받으면
+    "게임 얘기 안 할래"가 일기와 리포트에 그날의 사건으로 실린다.
+    """
+
+    understanding = understand_child_turn(
+        child_answer="게임 얘기 안 할래",
+        current_question="오늘 과일 자르기 했구나! 어떤 일이 있었어?",
+        asked_target=QuestionTarget.EVENT,
+        current_slots=DiarySlots(event="과일 자르기 게임"),
+    )
+
+    assert understanding.topic_refusal is True
+    assert understanding.event is None
+    assert understanding.emotion is None
+    assert understanding.memorable_moment is None
+    assert not understanding.satisfied_targets
+
+
 def test_topic_refusal_ignores_finished_topic_question() -> None:
     """끝난 주제의 질문이 새 주제 슬롯을 채우면 안 된다.
 

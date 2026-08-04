@@ -52,6 +52,7 @@ def test_reads_realtime_settings_with_defaults() -> None:
     settings = AppSettings.from_environment({"GMS_KEY": "key"})
 
     assert settings.realtime_redis_host == "127.0.0.1"
+    assert settings.gms_child_diary_timeout_seconds == 90.0
     assert settings.realtime_redis_port == 6379
     assert settings.realtime_jwks_url == (
         "http://127.0.0.1:8080/internal/v1/realtime/jwks"
@@ -189,6 +190,7 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
         {"GMS_KEY": "key", "GMS_REPORT_MODEL": " "},
         {"GMS_KEY": "key", "GMS_CHILD_DIARY_MODEL": " "},
+        {"GMS_KEY": "key", "GMS_CHILD_DIARY_TIMEOUT_SECONDS": "0"},
         {"GMS_KEY": "key", "REALTIME_STUN_URLS": "not-a-stun-url"},
         {"GMS_KEY": "key", "REALTIME_STUN_URLS": "http://stun.internal:3478"},
         {"GMS_KEY": "key", "STT_MODEL": " "},

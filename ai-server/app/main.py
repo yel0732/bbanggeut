@@ -111,8 +111,7 @@ def create_app(
         )
         app.state.child_diary_generator = ChildDiaryGenerator(
             provider=child_diary_client,
-            timeout_seconds=resolved_settings.gms_timeout_seconds,
-            max_attempts=resolved_settings.gms_max_attempts,
+            timeout_seconds=resolved_settings.gms_child_diary_timeout_seconds,
             logger=logging.getLogger("app.child_diary.generator"),
         )
 

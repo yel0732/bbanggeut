@@ -101,7 +101,8 @@ account:
 child-diary:
   ai:
     base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
-    timeout: ${CHILD_DIARY_AI_TIMEOUT:PT12S}
+    # AI 서버의 일기 전용 90초 제한보다 길게 두어 단일 GMS 응답 또는 폴백을 받는다.
+    timeout: ${CHILD_DIARY_AI_TIMEOUT:PT100S}
   preview:
     secret: ${CHILD_DIARY_PREVIEW_SECRET:${JWT_SECRET:local-child-diary-preview-secret-change-me}}
     ttl: ${CHILD_DIARY_PREVIEW_TTL:PT10M}

@@ -22,6 +22,7 @@ class AppSettings:
     gms_response_model: str = "gpt-5-mini"
     gms_report_model: str = "gpt-5-mini"
     gms_child_diary_model: str = "gpt-5-mini"
+    gms_child_diary_timeout_seconds: float = 90.0
     gms_timeout_seconds: float = 10.0
     gms_max_attempts: int = 2
     realtime_redis_host: str = "127.0.0.1"
@@ -95,6 +96,17 @@ class AppSettings:
         ):
             if not isinstance(model, str) or not model.strip():
                 raise ValueError(f"{name} must contain non-whitespace text")
+        if (
+            isinstance(self.gms_child_diary_timeout_seconds, bool)
+            or not isinstance(
+                self.gms_child_diary_timeout_seconds, (int, float)
+            )
+            or not math.isfinite(self.gms_child_diary_timeout_seconds)
+            or self.gms_child_diary_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "GMS_CHILD_DIARY_TIMEOUT_SECONDS must be a positive finite number"
+            )
         if (
             isinstance(self.gms_timeout_seconds, bool)
             or not isinstance(self.gms_timeout_seconds, (int, float))
@@ -297,6 +309,10 @@ class AppSettings:
             gms_child_diary_model=values.get(
                 "GMS_CHILD_DIARY_MODEL",
                 "gpt-5-mini",
+            ),
+            gms_child_diary_timeout_seconds=_parse_float(
+                values.get("GMS_CHILD_DIARY_TIMEOUT_SECONDS", "90"),
+                "GMS_CHILD_DIARY_TIMEOUT_SECONDS",
             ),
             gms_timeout_seconds=_parse_float(
                 values.get("GMS_TIMEOUT_SECONDS", "10"),

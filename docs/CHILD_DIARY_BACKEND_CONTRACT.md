@@ -61,7 +61,7 @@ GET /api/v1/children/{childId}/child-diaries/{diaryId}
 
 ```text
 AI_SERVER_BASE_URL=http://ai-server:8000
-CHILD_DIARY_AI_TIMEOUT=PT12S
+CHILD_DIARY_AI_TIMEOUT=PT100S
 CHILD_DIARY_PREVIEW_SECRET=<random secret of at least 32 characters>
 CHILD_DIARY_PREVIEW_TTL=PT10M
 ```
@@ -72,3 +72,7 @@ is recommended so the two credentials can be rotated independently.
 
 Production deployment must apply the `child_diary` DDL in `backend/SCHEMA`
 before starting the application because production uses `ddl-auto: validate`.
+
+The backend timeout must remain longer than `GMS_CHILD_DIARY_TIMEOUT_SECONDS` so
+it can receive the AI server's single response or rule-based fallback without
+starting another preview request.

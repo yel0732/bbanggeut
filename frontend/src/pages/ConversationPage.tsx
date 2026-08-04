@@ -33,11 +33,6 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
-/** preview는 대화가 서버에서 COMPLETED로 확정돼야 성공한다. 종료 이벤트가
- * Redis Stream을 거쳐 MySQL에 반영되기까지의 지연을 이 창 안에서 재시도로 흡수한다. */
-const PREVIEW_RETRY_WINDOW_MS = 10_000
-const PREVIEW_RETRY_INTERVAL_MS = 800
-
 type DiaryStatus = 'idle' | 'loading' | 'ready' | 'error'
 type DiaryData = { title: string; lines: string[]; previewToken: string }
 
@@ -104,7 +99,7 @@ export function ConversationPage() {
   const [diaryStatus, setDiaryStatus] = useState<DiaryStatus>('idle')
   const [diaryData, setDiaryData] = useState<DiaryData | null>(null)
   const [isSavingDiary, setIsSavingDiary] = useState(false)
-  const diaryPrefetchedRef = useRef(false)
+  const diaryRequestConversationRef = useRef<string | null>(null)
 
   const isListening = state.voice === 'listening' && state.micEnabled
 
@@ -166,49 +161,28 @@ export function ConversationPage() {
     }
   }, [isListening, state.localStream])
 
-  // 방금 끝낸 대화 하나로 일기를 미리 만들어 둔다. '이야기 완성!'이 뜨는 순간
-  // 백그라운드로 시작해, 아이가 '일기 보기'를 누를 때 대부분 이미 준비돼 있게 한다.
+  // 대화 종료가 확정되면 일기 미리보기를 즉시 한 번만 요청한다. 아이가 모달을
+  // 열었을 때 아직 생성 중이면 안내 문구를 유지하고, 완료됐다면 바로 교체한다.
   const { conversationId, childId } = state
   useEffect(() => {
     if (!isEnded || !canMakeDiary) return
-    if (diaryPrefetchedRef.current) return
     if (conversationId === null || childId === null) return
-    diaryPrefetchedRef.current = true
-
-    let cancelled = false
+    if (diaryRequestConversationRef.current === conversationId) return
+    diaryRequestConversationRef.current = conversationId
     setDiaryStatus('loading')
 
-    void (async () => {
-      const deadline = Date.now() + PREVIEW_RETRY_WINDOW_MS
-      for (;;) {
-        try {
-          const preview = await previewChildDiary(childId, conversationId)
-          if (cancelled) return
-          setDiaryData({
-            lines: preview.lines,
-            previewToken: preview.previewToken,
-            title: preview.title,
-          })
-          setDiaryStatus('ready')
-          return
-        } catch {
-          // 아직 COMPLETED로 반영되기 전이면 잠깐 뒤 다시 시도한다.
-          if (cancelled) return
-          if (Date.now() >= deadline) {
-            setDiaryStatus('error')
-            return
-          }
-          await new Promise((resolve) => {
-            window.setTimeout(resolve, PREVIEW_RETRY_INTERVAL_MS)
-          })
-          if (cancelled) return
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
+    void previewChildDiary(childId, conversationId)
+      .then((preview) => {
+        setDiaryData({
+          lines: preview.lines,
+          previewToken: preview.previewToken,
+          title: preview.title,
+        })
+        setDiaryStatus('ready')
+      })
+      .catch(() => {
+        setDiaryStatus('error')
+      })
   }, [isEnded, canMakeDiary, conversationId, childId])
 
   const openDiary = useCallback(() => {
@@ -631,7 +605,7 @@ export function ConversationPage() {
                       className="text-[22px] leading-[1.5] text-[#6f8e3f]"
                       style={jua}
                     >
-                      빵긋이가 일기를 만들어주고 있어요…
+                      빵긋이가 일기를 만들고 있어요…
                     </p>
                   )}
                 </div>

@@ -13,6 +13,7 @@ def test_reads_gms_settings_without_exposing_key() -> None:
             "GMS_RESPONSE_MODEL": "gpt-5-mini",
             "GMS_REPORT_MODEL": "gpt-5-mini",
             "GMS_CHILD_DIARY_MODEL": "gpt-5-mini",
+            "GMS_CHILD_DIARY_TIMEOUT_SECONDS": "75",
             "GMS_TIMEOUT_SECONDS": "3.5",
             "GMS_MAX_ATTEMPTS": "2",
         }
@@ -24,6 +25,7 @@ def test_reads_gms_settings_without_exposing_key() -> None:
     assert settings.gms_response_model == "gpt-5-mini"
     assert settings.gms_report_model == "gpt-5-mini"
     assert settings.gms_child_diary_model == "gpt-5-mini"
+    assert settings.gms_child_diary_timeout_seconds == 75.0
     assert "PRIVATE_GMS_KEY" not in repr(settings)
 
 

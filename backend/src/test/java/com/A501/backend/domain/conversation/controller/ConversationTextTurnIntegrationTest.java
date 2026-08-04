@@ -434,6 +434,43 @@ class ConversationTextTurnIntegrationTest {
         assertThat(topics.get(1).getQuestionCount()).isEqualTo(1);
     }
 
+    @Test
+    void 주제_전환에_담겨_온_다음_주제_슬롯을_저장한다() throws Exception {
+        saveGameAndDailySession("conv_topic_carry");
+        when(dialogueAiClient.processTurn(any())).thenReturn(
+                new DialogueAiResponse(
+                        DialogueSlotsPayload.empty(),
+                        null,
+                        DialogueAiDecision.SWITCH_TOPIC,
+                        TerminationReason.CHILD_REQUESTED_TOPIC_SWITCH,
+                        "그래, 그럼 다른 얘기하자! 그때 마음은 어땠어?",
+                        "그때 마음은 어땠어?",
+                        "emotion",
+                        "fallback",
+                        "policy",
+                        null,
+                        null,
+                        new DialogueSlotsPayload(
+                                "오늘 할머니 생일이었어",
+                                List.of(),
+                                null,
+                                null,
+                                null,
+                                null)));
+
+        mockMvc.perform(post(
+                        "/api/v1/conversations/conv_topic_carry/text-turns")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"게임 얘기 안 할래. 오늘 할머니 생일이었어\"}"))
+                .andExpect(status().isOk());
+
+        List<ConversationTopicState> topics =
+                topicRepository.findAllByConversationIdOrderByTopicOrderAsc(
+                        "conv_topic_carry");
+        assertThat(topics.get(1).getSlotsJson())
+                .contains("오늘 할머니 생일이었어");
+    }
+
     private void saveReadySession(String conversationId) {
         sessionRepository.saveAndFlush(
                 ConversationSession.create(

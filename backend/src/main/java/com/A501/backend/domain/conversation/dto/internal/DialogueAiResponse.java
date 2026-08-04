@@ -15,7 +15,11 @@ public record DialogueAiResponse(
         String questionGenerationStatus,
         String questionGenerationSource,
         String questionGenerationFailureCode,
-        String closingMessage) {
+        String closingMessage,
+        // 주제 전환 턴에서 아이가 함께 꺼낸 다음 주제 이야기. 저장하지 않으면 아이가
+        // 방금 말한 사건을 새 주제 첫 질문에서 다시 묻게 된다.
+        // 상세는 docs/CONVERSATION_TOPIC_CONTRACT.md의 "전환 슬롯 인계".
+        DialogueSlotsPayload nextTopicSlots) {
 
     public DialogueAiResponse {
         if (updatedSlots == null || decision == null) {
@@ -23,6 +27,10 @@ public record DialogueAiResponse(
         }
         if (updatedSkippedTargets != null) {
             updatedSkippedTargets = List.copyOf(updatedSkippedTargets);
+        }
+        if (nextTopicSlots != null && decision != DialogueAiDecision.SWITCH_TOPIC) {
+            throw new IllegalArgumentException(
+                    "다음 주제 슬롯은 주제 전환 응답에만 담을 수 있습니다.");
         }
         if (decision == DialogueAiDecision.TERMINATE_SESSION) {
             if (terminationReason == null
@@ -54,6 +62,33 @@ public record DialogueAiResponse(
             String assistantTarget,
             String questionGenerationStatus,
             String questionGenerationSource,
+            String questionGenerationFailureCode,
+            String closingMessage) {
+        this(
+                updatedSlots,
+                updatedSkippedTargets,
+                decision,
+                terminationReason,
+                assistantMessage,
+                assistantQuestion,
+                assistantTarget,
+                questionGenerationStatus,
+                questionGenerationSource,
+                questionGenerationFailureCode,
+                closingMessage,
+                null);
+    }
+
+    public DialogueAiResponse(
+            DialogueSlotsPayload updatedSlots,
+            List<String> updatedSkippedTargets,
+            DialogueAiDecision decision,
+            TerminationReason terminationReason,
+            String assistantMessage,
+            String assistantQuestion,
+            String assistantTarget,
+            String questionGenerationStatus,
+            String questionGenerationSource,
             String questionGenerationFailureCode) {
         this(
                 updatedSlots,
@@ -66,6 +101,7 @@ public record DialogueAiResponse(
                 questionGenerationStatus,
                 questionGenerationSource,
                 questionGenerationFailureCode,
+                null,
                 null);
     }
 
@@ -90,6 +126,7 @@ public record DialogueAiResponse(
                 questionGenerationStatus,
                 questionGenerationSource,
                 questionGenerationFailureCode,
+                null,
                 null);
     }
 

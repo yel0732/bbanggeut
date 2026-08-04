@@ -76,7 +76,6 @@ class WebrtcVoiceActivityDetector:
     @property
     def frame_milliseconds(self) -> int:
         return VAD_FRAME_MILLISECONDS
-
     def is_speech(self, frame: bytes) -> bool:
         if len(frame) != self._frame_bytes:
             raise ValueError("frame length does not match the VAD frame size")

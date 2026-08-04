@@ -59,15 +59,15 @@ class AppSettings:
     stt_vad_aggressiveness: int = 2  # 3은 저음량 아동 발화를 놓칠 위험(§11-D)
     # webrtcvad 앞단 에너지 하한(s16 RMS). webrtcvad는 절대 문턱이 없어 진폭 400
     # 화이트노이즈도 speech로 판정(실측)하고, 브라우저 AGC가 무발화 구간의 소음을
-    # 증폭해 턴 종료를 영구히 막을 수 있다. 0이면 비활성 — 실환경 보정 후 기본값을
-    # 정한다(하네스 테스트에서 250 부근 권장, 참고: 진폭 400 균일잡음 RMS≈231).
-    stt_vad_min_frame_rms: int = 0
+    # 증폭해 턴 종료를 영구히 막을 수 있다. 하네스 실측에서 250이 저에너지 지속
+    # 잡음을 막으면서 실제 발화 수준은 유지했다. 0으로 설정하면 비활성화할 수 있다.
+    stt_vad_min_frame_rms: int = 250
     stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
     # 종료 판정 침묵. 발화가 끝나고 AI가 말하기까지의 체감 지연에서 이 값이 가장 큰
     # 비중을 차지한다(나머지: STT 호출 + 슬롯·관련성 LLM 병렬 + TTS TTFB 실측 1.89s).
     # 3.0s는 아이가 문장 중간에 오래 쉬는 경우까지 감안한 상단값이었지만, 매 턴
     # 3초의 정적이 대화를 끊기게 만든다. 실환경에서 되묻기·끊김이 늘면 올린다.
-    stt_trailing_silence_seconds: float = 1.8
+    stt_trailing_silence_seconds: float = 1.0
     stt_preroll_ms: int = 300  # 발화 확정 전 보존할 선행 오디오
     stt_no_speech_timeout_seconds: float = 10.0  # 무응답 신호(정책 연결은 W03)
     # Streaming TTS(W04). 기본값 근거는 jira/plan/DIARY-3-W04.md §4.
@@ -381,7 +381,7 @@ class AppSettings:
                 "STT_VAD_AGGRESSIVENESS",
             ),
             stt_vad_min_frame_rms=_parse_int(
-                values.get("STT_VAD_MIN_FRAME_RMS", "0"),
+                values.get("STT_VAD_MIN_FRAME_RMS", "250"),
                 "STT_VAD_MIN_FRAME_RMS",
             ),
             stt_min_speech_ms=_parse_int(
@@ -389,7 +389,7 @@ class AppSettings:
                 "STT_MIN_SPEECH_MS",
             ),
             stt_trailing_silence_seconds=_parse_float(
-                values.get("STT_TRAILING_SILENCE_SECONDS", "1.8"),
+                values.get("STT_TRAILING_SILENCE_SECONDS", "1.0"),
                 "STT_TRAILING_SILENCE_SECONDS",
             ),
             stt_preroll_ms=_parse_int(

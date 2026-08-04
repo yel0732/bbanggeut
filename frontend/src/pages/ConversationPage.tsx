@@ -33,6 +33,11 @@ import {
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
+const MIC_LEVEL_NOISE_FLOOR = 0.015
+const MIC_LEVEL_FULL_SCALE = 0.12
+const MIC_LEVEL_SMOOTHING = 0.25
+const MIC_LEVEL_ZERO_CUTOFF = 0.01
+
 type DiaryStatus = 'idle' | 'loading' | 'ready' | 'error'
 type DiaryData = { title: string; lines: string[]; previewToken: string }
 
@@ -84,7 +89,7 @@ export function ConversationPage() {
   const canMakeDiary = isCompletedTerminationReason(state.endedReason)
 
   const conversationBgmVolume =
-    state.voice === 'listening' || state.voice === 'speaking' ? 0.055 : 0.22
+    state.voice === 'listening' ? 0 : state.voice === 'speaking' ? 0.055 : 0.22
   const { isBgmPlaying, setVolume, toggleBgm } = useConversationBgm()
 
   useEffect(() => {
@@ -139,17 +144,31 @@ export function ConversationPage() {
 
     const audioContext = new AudioContext()
     const analyser = audioContext.createAnalyser()
-    analyser.fftSize = 64
+    analyser.fftSize = 1024
     const source = audioContext.createMediaStreamSource(state.localStream)
     source.connect(analyser)
-    const samples = new Uint8Array(analyser.frequencyBinCount)
+    const samples = new Float32Array(analyser.fftSize)
     let animationFrame = 0
+    let smoothedLevel = 0
 
     const updateLevel = () => {
-      analyser.getByteFrequencyData(samples)
-      const average =
-        samples.reduce((sum, sample) => sum + sample, 0) / samples.length
-      setMicLevel(Math.min(1, average / 75))
+      analyser.getFloatTimeDomainData(samples)
+      const meanSquare =
+        samples.reduce((sum, sample) => sum + sample * sample, 0) /
+        samples.length
+      const rms = Math.sqrt(meanSquare)
+
+      // 브라우저 AGC가 키운 팬·마찰음 같은 무음 바닥은 시각화하지 않는다.
+      // 일반적인 말소리 대역은 0~1로 정규화하고 EMA로 링 떨림을 줄인다.
+      const normalized =
+        rms <= MIC_LEVEL_NOISE_FLOOR
+          ? 0
+          : Math.min(1, (rms - MIC_LEVEL_NOISE_FLOOR) / MIC_LEVEL_FULL_SCALE)
+      smoothedLevel =
+        smoothedLevel * (1 - MIC_LEVEL_SMOOTHING) +
+        normalized * MIC_LEVEL_SMOOTHING
+      if (smoothedLevel < MIC_LEVEL_ZERO_CUTOFF) smoothedLevel = 0
+      setMicLevel(smoothedLevel)
       animationFrame = window.requestAnimationFrame(updateLevel)
     }
     updateLevel()
@@ -409,8 +428,11 @@ export function ConversationPage() {
                   ) : null}
                   {isListening ? (
                     <span
-                      className="absolute inset-[-10px] -z-10 rounded-full border-4 border-[#ff9d88]/70"
-                      style={{ transform: `scale(${1 + micLevel * 0.24})` }}
+                      className="absolute inset-[-10px] -z-10 rounded-full border-4 border-[#ff9d88]/70 transition-[opacity,transform] duration-100"
+                      style={{
+                        opacity: micLevel === 0 ? 0 : 0.35 + micLevel * 0.65,
+                        transform: `scale(${1 + micLevel * 0.24})`,
+                      }}
                     />
                   ) : null}
                 </button>

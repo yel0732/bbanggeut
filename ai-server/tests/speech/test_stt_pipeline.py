@@ -495,7 +495,7 @@ class TestOutputGate:
         _feed(pipeline, 1.0, tone_hz=440)   # 게이트 닫힘 — 무시
         speaking[0] = False
         _feed(pipeline, 1.0, tone_hz=440)   # 아이 발화
-        _feed(pipeline, 3.2)                # 종료 판정 침묵
+        _feed(pipeline, 1.2)                # 종료 판정 침묵
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
@@ -573,7 +573,7 @@ class TestTurnDetectorIntegration:
         pipeline, channel, _ = self._build_with_vad(recognizer)
 
         _feed(pipeline, 1.0, tone_hz=440)   # 발화
-        _feed(pipeline, 3.2)                 # 침묵 3.0초 초과 → on_turn_end
+        _feed(pipeline, 1.2)                 # 침묵 1.0초 초과 → on_turn_end
         for _ in range(4):
             await asyncio.sleep(0)           # 예약된 finalize task 실행
 
@@ -582,21 +582,21 @@ class TestTurnDetectorIntegration:
 
     @pytest.mark.asyncio
     async def test_a_mid_utterance_pause_does_not_split_the_turn(self) -> None:
-        """CONV-REQ-072 end to end: 2.9s pause then more speech = one turn."""
+        """CONV-REQ-072 end to end: 0.9s pause then more speech = one turn."""
 
         recognizer = FakeSpeechRecognizer([_good_result()])
         pipeline, channel, _ = self._build_with_vad(recognizer)
 
         _feed(pipeline, 0.5, tone_hz=440)
-        _feed(pipeline, 2.9)                 # 임계값 직전 멈춤
+        _feed(pipeline, 0.9)                 # 임계값 직전 멈춤
         _feed(pipeline, 0.5, tone_hz=440)
-        _feed(pipeline, 3.2)                 # 진짜 종료
+        _feed(pipeline, 1.2)                 # 진짜 종료
         for _ in range(4):
             await asyncio.sleep(0)
 
         assert len(recognizer.calls) == 1    # 한 턴, 한 번의 인식
         duration = recognizer.calls[0][1]
-        assert duration >= 3.5               # 멈춤 구간까지 한 발화로 포함됐다
+        assert duration >= 1.5               # 멈춤 구간까지 한 발화로 포함됐다
 
     @pytest.mark.asyncio
     async def test_two_utterances_become_two_turns(self) -> None:
@@ -604,11 +604,11 @@ class TestTurnDetectorIntegration:
         pipeline, channel, _ = self._build_with_vad(recognizer)
 
         _feed(pipeline, 0.6, tone_hz=440)
-        _feed(pipeline, 3.2)
+        _feed(pipeline, 1.2)
         for _ in range(4):
             await asyncio.sleep(0)
         _feed(pipeline, 0.6, tone_hz=440)
-        _feed(pipeline, 3.2)
+        _feed(pipeline, 1.2)
         for _ in range(4):
             await asyncio.sleep(0)
 

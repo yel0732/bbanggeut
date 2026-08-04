@@ -1,6 +1,6 @@
 """Turn detector state machine tests (T06/T07/T08).
 
-All timing is sample-time: "3 seconds of silence" is literally three seconds of
+All timing is sample-time: "1 second of silence" is literally one second of
 silent PCM fed through the detector — no ``sleep()``, no clocks, fully
 deterministic (W02 plan §3-1). The FakeVoiceActivityDetector judges by content
 (non-zero bytes = speech), so scenarios read as plain audio scripts.
@@ -128,7 +128,7 @@ class TestTurnEnd:
         detector = _detector(events)
         _feed_ms(detector, _speech(500))
 
-        _feed_ms(detector, _silence(3000))
+        _feed_ms(detector, _silence(1000))
         _feed_ms(detector, _silence(1000))  # more silence — no second end
 
         assert events.turn_ends == 1
@@ -141,9 +141,9 @@ class TestTurnEnd:
         detector = _detector(events)
         _feed_ms(detector, _speech(500))
 
-        _feed_ms(detector, _silence(2900))  # 임계값(3.0초) 직전까지 멈춤
+        _feed_ms(detector, _silence(900))  # 임계값(1.0초) 직전까지 멈춤
         _feed_ms(detector, _speech(500))    # 다시 말을 이어감
-        _feed_ms(detector, _silence(2900))
+        _feed_ms(detector, _silence(900))
 
         assert events.turn_ends == 0
         assert detector.phase is TurnPhase.SPEAKING
@@ -159,12 +159,12 @@ class TestTurnEnd:
         detector = _detector(events)
 
         emitted = _feed_ms(detector, _speech(300))
-        withheld = _feed_ms(detector, _silence(2000))   # 판단 보류: 아직 안 나감
+        withheld = _feed_ms(detector, _silence(800))   # 판단 보류: 아직 안 나감
         emitted += withheld
         emitted += _feed_ms(detector, _speech(500))     # 재개 → 멈춤 구간 복원
 
         assert withheld == 0
-        assert emitted == STT_INPUT_FORMAT.bytes_per_second * 2800 // 1000
+        assert emitted == STT_INPUT_FORMAT.bytes_per_second * 1600 // 1000
         assert events.turn_ends == 0
 
     def test_trailing_silence_is_trimmed_to_the_hangover(self) -> None:
@@ -174,7 +174,7 @@ class TestTurnEnd:
         detector = _detector(events)
         _feed_ms(detector, _speech(300))
 
-        returned = _feed_ms(detector, _silence(3000))
+        returned = _feed_ms(detector, _silence(1000))
 
         assert events.turn_ends == 1
         assert returned == STT_INPUT_FORMAT.bytes_per_second * 200 // 1000
@@ -223,7 +223,7 @@ class TestTurnEnd:
         detector = _detector(events)
 
         _feed_ms(detector, _speech(500))
-        _feed_ms(detector, _silence(3000))
+        _feed_ms(detector, _silence(1000))
         returned = _feed_ms(detector, _speech(300))
 
         assert events.speech_starts == 2
@@ -267,7 +267,7 @@ class TestNoSpeech:
         events = _Events()
         detector = _detector(events)
         _feed_ms(detector, _speech(500))
-        _feed_ms(detector, _silence(3000))  # turn end — 침묵 카운터 리셋
+        _feed_ms(detector, _silence(1000))  # turn end — 침묵 카운터 리셋
 
         _feed_ms(detector, _silence(9_000))
         assert events.no_speech == 0

@@ -46,6 +46,7 @@ from app.events.stream import ConversationStreamProducer
 from app.speech.synthesis import SpeechSynthesisService
 from app.speech.tts_cache import CachedSpeechSynthesizer
 from app.speech.tts_client import GmsSpeechSynthesizer
+from app.speech.tts_effects import ChildVoiceEffectSynthesizer
 from app.speech.turn_detector import TurnDetectionConfig
 from app.speech.vad import WebrtcVoiceActivityDetector
 from app.speech.whisper_client import WhisperSpeechRecognizer
@@ -111,8 +112,7 @@ def create_app(
         )
         app.state.child_diary_generator = ChildDiaryGenerator(
             provider=child_diary_client,
-            timeout_seconds=resolved_settings.gms_timeout_seconds,
-            max_attempts=resolved_settings.gms_max_attempts,
+            timeout_seconds=resolved_settings.gms_child_diary_timeout_seconds,
             logger=logging.getLogger("app.child_diary.generator"),
         )
 
@@ -202,12 +202,15 @@ def create_app(
         # TTS synthesizer는 상태 비저장(HTTP)이라 연결 간 공유. 합성 서비스는
         # speaker·publisher·registry가 연결별이라 세션마다 새로 만든다(§8).
         speech_synthesizer = CachedSpeechSynthesizer(
-            GmsSpeechSynthesizer(
-                http_client,
-                api_key=resolved_settings.gms_key,
-                model=resolved_settings.tts_model,
-                voice=resolved_settings.tts_voice,
-                first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
+            ChildVoiceEffectSynthesizer(
+                GmsSpeechSynthesizer(
+                    http_client,
+                    api_key=resolved_settings.gms_key,
+                    model=resolved_settings.tts_model,
+                    voice=resolved_settings.tts_voice,
+                    first_byte_timeout_seconds=resolved_settings.tts_timeout_seconds,
+                ),
+                shift_semitones=resolved_settings.tts_voice_shift_semitones,
             ),
         )
         # 매번 같은 문장(무응답 복구·되묻기·주제 전환)은 실제 첫 사용 때 합성하고

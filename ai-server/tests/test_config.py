@@ -13,6 +13,7 @@ def test_reads_gms_settings_without_exposing_key() -> None:
             "GMS_RESPONSE_MODEL": "gpt-5-mini",
             "GMS_REPORT_MODEL": "gpt-5-mini",
             "GMS_CHILD_DIARY_MODEL": "gpt-5-mini",
+            "GMS_CHILD_DIARY_TIMEOUT_SECONDS": "75",
             "GMS_TIMEOUT_SECONDS": "3.5",
             "GMS_MAX_ATTEMPTS": "2",
         }
@@ -24,6 +25,7 @@ def test_reads_gms_settings_without_exposing_key() -> None:
     assert settings.gms_response_model == "gpt-5-mini"
     assert settings.gms_report_model == "gpt-5-mini"
     assert settings.gms_child_diary_model == "gpt-5-mini"
+    assert settings.gms_child_diary_timeout_seconds == 75.0
     assert "PRIVATE_GMS_KEY" not in repr(settings)
 
 
@@ -50,6 +52,7 @@ def test_reads_realtime_settings_with_defaults() -> None:
     settings = AppSettings.from_environment({"GMS_KEY": "key"})
 
     assert settings.realtime_redis_host == "127.0.0.1"
+    assert settings.gms_child_diary_timeout_seconds == 90.0
     assert settings.realtime_redis_port == 6379
     assert settings.realtime_jwks_url == (
         "http://127.0.0.1:8080/internal/v1/realtime/jwks"
@@ -70,13 +73,14 @@ def test_reads_realtime_settings_with_defaults() -> None:
     assert settings.stt_low_confidence_threshold == 0.35
     assert settings.stt_low_confidence_reask_limit == 1
     assert settings.stt_vad_aggressiveness == 2
-    assert settings.stt_vad_min_frame_rms == 0
+    assert settings.stt_vad_min_frame_rms == 250
     assert settings.stt_min_speech_ms == 250
-    assert settings.stt_trailing_silence_seconds == 1.8
+    assert settings.stt_trailing_silence_seconds == 1.0
     assert settings.stt_preroll_ms == 300
     assert settings.stt_no_speech_timeout_seconds == 10.0
     assert settings.tts_model == "gpt-4o-mini-tts"
-    assert settings.tts_voice == "alloy"
+    assert settings.tts_voice == "shimmer"
+    assert settings.tts_voice_shift_semitones == 2.0
     assert settings.tts_timeout_seconds == 10.0
     assert settings.stream_publish_max_attempts == 3
     assert settings.stream_publish_retry_seconds == 0.5
@@ -111,6 +115,7 @@ def test_reads_realtime_settings_from_environment() -> None:
             "STT_NO_SPEECH_TIMEOUT_SECONDS": "8",
             "TTS_MODEL": "tts-x",
             "TTS_VOICE": "verse",
+            "TTS_VOICE_SHIFT_SEMITONES": "1.5",
             "TTS_TIMEOUT_SECONDS": "7",
             "STREAM_PUBLISH_MAX_ATTEMPTS": "5",
             "STREAM_PUBLISH_RETRY_SECONDS": "1.5",
@@ -147,6 +152,7 @@ def test_reads_realtime_settings_from_environment() -> None:
     assert settings.stt_no_speech_timeout_seconds == 8.0
     assert settings.tts_model == "tts-x"
     assert settings.tts_voice == "verse"
+    assert settings.tts_voice_shift_semitones == 1.5
     assert settings.tts_timeout_seconds == 7.0
     assert settings.stream_publish_max_attempts == 5
     assert settings.stream_publish_retry_seconds == 1.5
@@ -184,6 +190,7 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "REALTIME_LEASE_TTL_SECONDS": "-1"},
         {"GMS_KEY": "key", "GMS_REPORT_MODEL": " "},
         {"GMS_KEY": "key", "GMS_CHILD_DIARY_MODEL": " "},
+        {"GMS_KEY": "key", "GMS_CHILD_DIARY_TIMEOUT_SECONDS": "0"},
         {"GMS_KEY": "key", "REALTIME_STUN_URLS": "not-a-stun-url"},
         {"GMS_KEY": "key", "REALTIME_STUN_URLS": "http://stun.internal:3478"},
         {"GMS_KEY": "key", "STT_MODEL": " "},
@@ -207,6 +214,8 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "STT_NO_SPEECH_TIMEOUT_SECONDS": "0"},
         {"GMS_KEY": "key", "TTS_MODEL": " "},
         {"GMS_KEY": "key", "TTS_VOICE": " "},
+        {"GMS_KEY": "key", "TTS_VOICE_SHIFT_SEMITONES": "-0.1"},
+        {"GMS_KEY": "key", "TTS_VOICE_SHIFT_SEMITONES": "4.1"},
         {"GMS_KEY": "key", "TTS_TIMEOUT_SECONDS": "0"},
         {"GMS_KEY": "key", "STREAM_PUBLISH_MAX_ATTEMPTS": "0"},
         {"GMS_KEY": "key", "STREAM_OUTBOX_SIZE": "0"},

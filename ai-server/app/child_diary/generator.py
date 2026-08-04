@@ -66,7 +66,6 @@ class ChildDiaryGenerationError(RuntimeError):
 class ChildDiaryGenerator:
     provider: ChildDiaryTextProvider
     timeout_seconds: float
-    max_attempts: int
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger("app.child_diary.generator")
     )
@@ -77,61 +76,49 @@ class ChildDiaryGenerator:
     ) -> ChildDiarySummaryResponse:
         messages = build_child_diary_messages(request)
         # 실패 원인 카테고리만 추적한다. 원문·슬롯·LLM 응답은 절대 담지 않는다.
-        reason = "unknown"
-        attempts_made = 0
-        for attempt in range(self.max_attempts):
-            attempts_made = attempt + 1
-            try:
-                raw = await asyncio.wait_for(
-                    self.provider.complete(messages),
-                    timeout=self.timeout_seconds,
-                )
-                generated = _parse_generated_diary(raw, request)
-                lines = generated.game_lines + generated.daily_lines
-                return ChildDiarySummaryResponse(
-                    conversationId=request.conversation_id,
-                    diaryDate=request.diary_date,
-                    title=DIARY_TITLE,
-                    lines=lines,
-                    modelVersion=self.provider.model,
-                    promptVersion=PROMPT_VERSION,
-                )
-            except TimeoutError:
-                reason = "timeout"
-                retryable = True
-            except QuestionProviderError as error:
-                reason = f"provider:{error.code.value}"
-                retryable = error.retryable
-            # 아래 세 분기는 상속 관계상 하위 타입을 먼저 잡아야 한다
-            # (json.JSONDecodeError·pydantic.ValidationError 모두 ValueError 하위).
-            except json.JSONDecodeError:
-                reason = "invalidOutput:notJson"
-                retryable = False
-            except ValidationError as error:
-                # 필드 경로·제약 코드만. 입력 값은 hide_input_in_errors로 숨겨진다.
-                codes = sorted(
-                    {
-                        str(item["type"])
-                        for item in error.errors(
-                            include_url=False,
-                            include_input=False,
-                        )
-                    }
-                )
-                reason = "invalidOutput:schema:" + ",".join(codes)
-                retryable = False
-            except ValueError as error:
-                # _parse_generated_diary의 정적 규칙 메시지(내용 없음)만 담긴다.
-                reason = f"invalidOutput:rule:{error}"
-                retryable = False
-            if not retryable or attempt + 1 >= self.max_attempts:
-                break
+        try:
+            raw = await asyncio.wait_for(
+                self.provider.complete(messages),
+                timeout=self.timeout_seconds,
+            )
+            generated = _parse_generated_diary(raw, request)
+            lines = generated.game_lines + generated.daily_lines
+            return ChildDiarySummaryResponse(
+                conversationId=request.conversation_id,
+                diaryDate=request.diary_date,
+                title=DIARY_TITLE,
+                lines=lines,
+                modelVersion=self.provider.model,
+                promptVersion=PROMPT_VERSION,
+            )
+        except TimeoutError:
+            reason = "timeout"
+        except QuestionProviderError as error:
+            reason = f"provider:{error.code.value}"
+        # 아래 세 분기는 상속 관계상 하위 타입을 먼저 잡아야 한다
+        # (json.JSONDecodeError·pydantic.ValidationError 모두 ValueError 하위).
+        except json.JSONDecodeError:
+            reason = "invalidOutput:notJson"
+        except ValidationError as error:
+            # 필드 경로·제약 코드만. 입력 값은 hide_input_in_errors로 숨겨진다.
+            codes = sorted(
+                {
+                    str(item["type"])
+                    for item in error.errors(
+                        include_url=False,
+                        include_input=False,
+                    )
+                }
+            )
+            reason = "invalidOutput:schema:" + ",".join(codes)
+        except ValueError as error:
+            # _parse_generated_diary의 정적 규칙 메시지(내용 없음)만 담긴다.
+            reason = f"invalidOutput:rule:{error}"
         # 왜 503으로 폴백되는지 CLI에서 보이도록 남긴다(안전한 카테고리 + 식별자만).
         self.logger.warning(
-            "child diary generation unavailable: reason=%s conversationId=%s attempts=%d",
+            "child diary generation unavailable: reason=%s conversationId=%s attempts=1",
             reason,
             request.conversation_id,
-            attempts_made,
         )
         raise ChildDiaryGenerationError("CHILD_DIARY_GENERATION_UNAVAILABLE")
 

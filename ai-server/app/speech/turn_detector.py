@@ -4,7 +4,7 @@ Decides when an utterance starts and ends, and gates what reaches the
 utterance buffer. `DEC-04` made this pure-silence based: batch STT cannot
 provide the sentence-completeness signal the original spec combined with VAD
 (text only exists after the turn ends — jira/work-packages/DIARY-3-W02.md
-scope adjustment), so the end-of-turn threshold is deliberately generous.
+scope adjustment), so the product-configured silence threshold closes turns.
 
 Time here is **received samples, not the wall clock**. A live WebRTC
 microphone keeps sending silent frames while the child is quiet, so silence
@@ -44,7 +44,7 @@ class TurnDetectionConfig:
     """Tunables, all injected from AppSettings (jira/plan/DIARY-3-W02.md §5)."""
 
     min_speech_ms: int = 250
-    trailing_silence_seconds: float = 3.0
+    trailing_silence_seconds: float = 1.0
     no_speech_timeout_seconds: float = 10.0
     preroll_ms: int = 300
     # 발화 중간 1~2프레임 미검출(호흡·무성 자음)이 시작 판정을 리셋하지 않도록

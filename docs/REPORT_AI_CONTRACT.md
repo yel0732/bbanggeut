@@ -36,9 +36,21 @@ Successful response:
     "questions": ["어떤 순간이 가장 즐거웠어?"]
   },
   "modelVersion": "gpt-5-mini",
-  "promptVersion": "daily-report-v2"
+  "promptVersion": "daily-report-v3"
 }
 ```
+
+`dailyStory`는 보호자에게 전하는 서술이며 모든 문장을 `-요`로 끝낸다. 선생님이 부모에게
+알림장을 쓰듯 담백하게 쓰고, 한국어에서 생략되는 주어는 생략한다.
+
+`notableQuotes`와 `emotionDetails`는 아이가 한 말을 그대로 두므로 이 규칙을 적용하지
+않는다. 같은 표현이 `dailyStory`에도 나올 때는 원문을 옮기지 않고 `-요`체로 다시 쓴다.
+
+`speaker`가 `AI`인 발화는 아이의 답이 어떤 맥락에서 나왔는지 파악하는 데만 쓴다.
+AI가 한 공감·요약·질문은 서술의 근거가 아니며 그대로 옮겨 적지 않는다.
+
+AI 서버는 생성 결과가 이 규칙을 지키는지 검사하고, 어긋나면 같은 입력으로 다시 생성한다.
+`maxAttempts`를 모두 쓰고도 어긋나면 503으로 응답해 백엔드가 결정론적 요약으로 넘어간다.
 
 The AI may edit expression only. The backend preserves the original event,
 emotion, interest, and game snapshots as authoritative facts. Provider failure,

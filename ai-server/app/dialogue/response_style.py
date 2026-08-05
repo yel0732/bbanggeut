@@ -28,10 +28,19 @@ _NEGATIVE_CUES: tuple[str, ...] = (
     "안줘",
     "놀렸",
     "새치기",
+    # _POSITIVE_CUES의 "재미"보다 먼저 걸려야 한다 — 호응은 부정 단서를 먼저 본다.
+    "재미없",
+    "재미가없",
+    "재밌지않",
+    "재미있지않",
+    "안재밌",
+    "안재미",
+    "노잼",
 )
 
 _POSITIVE_CUES: tuple[str, ...] = (
     "재미",
+    "재밌",
     "신기",
     "좋았",
     "좋아",
@@ -145,6 +154,8 @@ _FRUIT_ACTION_CUES: tuple[str, ...] = (
 # 집합이라 전부 대응해 둔다 — 하나라도 빠지면 문장 전체 매칭으로 새어 원인 절의
 # 낱말이 감정을 이긴다.
 _EMOTION_REPLIES: tuple[tuple[str, str], ...] = (
+    # "재미없었어"가 "재미"보다 앞에 있어야 한다 — 아래는 위에서부터 훑는다.
+    ("재미없", "재미없었구나."),
     ("속상", "많이 속상했겠다."),
     ("슬펐", "많이 속상했겠다."),
     ("화났", "정말 화가 났겠다."),
@@ -219,6 +230,11 @@ def acknowledge_child_answer(
             return reply
     normalized = _normalize(child_answer or "")
     if any(cue in normalized for cue in _NEGATIVE_CUES):
+        if any(
+            cue in normalized
+            for cue in ("재미없", "재미가없", "재밌지않", "재미있지않", "안재밌", "안재미", "노잼")
+        ):
+            return "재미없었구나."
         if any(cue in normalized for cue in ("놀렸", "새치기")):
             return "그건 마음이 안 좋을 수 있어."
         if any(cue in normalized for cue in ("속상", "슬퍼", "슬펐")):

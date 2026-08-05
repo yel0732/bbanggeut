@@ -6,6 +6,19 @@ from app.dialogue.response_style import (
 )
 
 
+def test_negated_fun_is_not_acknowledged_as_enjoyment() -> None:
+    assert acknowledge_child_answer("재미없었어") == "재미없었구나."
+    assert acknowledge_child_answer("노잼이야") == "재미없었구나."
+    assert acknowledge_child_answer("재밌었어") == "재미있었겠다!"
+
+
+def test_lukewarm_answer_is_not_read_as_no_fun() -> None:
+    """밋밋한 답변은 감정을 말한 것이 아니다. 재미없었다고 정하면 안 된다."""
+
+    assert acknowledge_child_answer("그냥 그랬어") != "재미없었구나."
+    assert acknowledge_child_answer("몰라") != "재미없었구나."
+
+
 def test_stated_emotion_wins_over_words_in_the_reason_clause() -> None:
     """아이가 말한 감정이 원인 절의 낱말보다 앞선다.
 

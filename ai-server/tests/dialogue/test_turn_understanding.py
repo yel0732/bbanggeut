@@ -178,6 +178,20 @@ def test_topic_refusal_without_story_fills_no_slot() -> None:
     assert not understanding.satisfied_targets
 
 
+def test_negated_fun_is_not_read_as_enjoyment() -> None:
+    """"재미없어"는 "재미"를 품고 있어 긍정 표를 먼저 보면 뜻이 뒤집힌다."""
+
+    for answer in ["재미없어", "재미없었어", "안 재밌었어", "노잼이야"]:
+        understanding = understand_child_turn(
+            child_answer=answer,
+            current_question="그때 마음은 어땠어?",
+            asked_target=QuestionTarget.EMOTION,
+            current_slots=DiarySlots(event="과일 자르기"),
+        )
+
+        assert understanding.emotion == "재미없었어", answer
+
+
 def test_refusal_without_story_ignores_a_fun_moment_question() -> None:
     """이야기를 꺼내지 않은 거부에는 감정도 생기지 않는다.
 

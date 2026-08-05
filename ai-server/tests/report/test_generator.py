@@ -70,6 +70,31 @@ async def test_retries_until_the_story_keeps_the_caregiver_voice() -> None:
 
 
 @pytest.mark.asyncio
+async def test_keeps_the_report_when_too_many_quotes_come_back() -> None:
+    """인용문이 상한을 넘겨도 리포트를 버리지 않는다.
+
+    백엔드도 세 개만 남기므로, 여기서 거절하면 같은 결과를 두고 리포트만 잃는다.
+    """
+
+    provider = FakeProvider([
+        '{"title":"오늘","dailyStory":"놀이터에서 그네를 탔어요.",'
+        '"emotionDetails":[],"interests":[],'
+        '"notableQuotes":["하나","둘","셋","넷"],'
+        '"conversationGuide":{"description":"","questions":[]}}'
+    ])
+    generator = DailyReportGenerator(provider, 1.0, 2)
+    request = DailyReportSummaryRequest.model_validate({
+        "reportDate": "2026-07-27",
+        "events": ["놀이터에서 그네 탔다"],
+    })
+
+    result = await generator.generate(request)
+
+    assert provider.calls == 1
+    assert result.notable_quotes == ("하나", "둘", "셋")
+
+
+@pytest.mark.asyncio
 async def test_rejects_a_story_that_copies_an_assistant_turn() -> None:
     """AI 발화는 맥락 참고용이다. 서술로 옮기면 아이가 하지 않은 말이 실린다."""
 

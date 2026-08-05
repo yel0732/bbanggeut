@@ -5,11 +5,18 @@ import json
 from dataclasses import dataclass
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 from app.dialogue.question.provider import QuestionProviderError
 from app.report.prompts import PROMPT_VERSION, build_report_messages
 from app.report.schemas import (
+    MAX_NOTABLE_QUOTES,
     DailyReportSummaryRequest,
     DailyReportSummaryResponse,
     ReportConversationGuide,
@@ -32,10 +39,17 @@ class _GeneratedNarrative(BaseModel):
         alias="emotionDetails", default_factory=tuple, max_length=10
     )
     interests: tuple[str, ...] = Field(default_factory=tuple, max_length=10)
+    # 상한을 넘겼다고 리포트 전체를 버리지 않는다. 백엔드도 verifiedQuotes에서 세 개로
+    # 자르므로, 여기서 거절하면 같은 결과를 두고 리포트만 잃는다.
     notable_quotes: tuple[str, ...] = Field(
-        alias="notableQuotes", default_factory=tuple, max_length=3
+        alias="notableQuotes", default_factory=tuple, max_length=30
     )
     conversation_guide: ReportConversationGuide = Field(alias="conversationGuide")
+
+    @field_validator("notable_quotes")
+    @classmethod
+    def keep_first_quotes(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return values[:MAX_NOTABLE_QUOTES]
 
 
 class ReportGenerationError(RuntimeError):

@@ -33,13 +33,13 @@ from app.dialogue.question.fallback import (
     QuestionGenerationLogContext,
     QuestionGenerationSource,
     QuestionGenerationStatus,
-    build_fallback_question,
 )
 from app.dialogue.question.generation import generate_question_with_fallback
 from app.dialogue.question.prompts import (
     DiaryQuestionGenerationRequest,
     QuestionRedirectContext,
 )
+from app.dialogue.question.validator import HARD_BANNED_QUESTION_EXPRESSIONS
 from app.dialogue.policy.recovery import (
     ASK_TO_REPEAT_PROMPT,
     CHOICE_QUESTION_BY_TARGET,
@@ -47,6 +47,21 @@ from app.dialogue.policy.recovery import (
     SIMPLIFIED_QUESTION_BY_TARGET,
     evaluate_dialogue_policy,
 )
+from app.dialogue.response_style import (
+    acknowledge_child_answer,
+    build_fallback_assistant_message,
+    closing_message,
+    contextual_followup_question,
+    fallback_question_for_target,
+    optional_final_question,
+    optional_final_message,
+    safe_child_question_reply,
+    soft_continue_question,
+    tomorrow_closing_message,
+    tomorrow_plan_question,
+    transition_acknowledgement,
+)
+from app.dialogue.safety import detect_dialogue_safety
 from app.dialogue.schemas import (
     DialogueTopic,
     DialogueTopicContext,
@@ -73,6 +88,11 @@ from app.dialogue.policy.termination import (
     DialoguePolicyRequest,
     DialogueTerminationPolicy,
     DialogueTerminationReason,
+)
+from app.dialogue.turn_understanding import (
+    TurnUnderstanding,
+    apply_turn_understanding,
+    understand_child_turn,
 )
 
 
@@ -292,6 +312,11 @@ class DialogueTurnResponse(BaseModel):
         default=None,
         alias="updatedSkippedTargets",
     )
+    next_topic_slots: DiarySlots | None = Field(
+        default=None,
+        alias="nextTopicSlots",
+        repr=False,
+    )
     closing_message: str | None = Field(
         default=None,
         alias="closingMessage",
@@ -334,6 +359,10 @@ class DialogueTurnResponse(BaseModel):
             or (
                 self.decision is DialogueTurnDecision.SWITCH_TOPIC
                 and self.termination_reason is None
+            )
+            or (
+                self.decision is not DialogueTurnDecision.SWITCH_TOPIC
+                and self.next_topic_slots is not None
             )
             or self.assistant_message is None
             or not self.assistant_message.strip()
@@ -389,6 +418,45 @@ class DialogueTurnPipeline:
                 closing_message=CONVERSATION_CLOSING_MESSAGE,
             )
 
+        safety_decision = detect_dialogue_safety(request.child_answer)
+        if safety_decision is not None:
+            if (
+                request.current_topic is DialogueTopic.GAME
+                and request.next_topic is DialogueTopic.DAILY
+            ):
+                return DialogueTurnResponse(
+                    updated_slots=request.current_slots.model_copy(deep=True),
+                    decision=DialogueTurnDecision.SWITCH_TOPIC,
+                    termination_reason=(
+                        DialogueTerminationReason.CHILD_REQUESTED_TOPIC_SWITCH
+                    ),
+                    next_topic_slots=DiarySlots(),
+                    assistant_message=safety_decision.assistant_message,
+                    assistant_question=safety_decision.assistant_question,
+                    assistant_target=QuestionTarget.EVENT,
+                    updated_skipped_targets=request.skipped_targets,
+                    question_generation_status=(
+                        QuestionGenerationStatus.TEMPLATE_USED
+                    ),
+                    question_generation_source=(
+                        QuestionGenerationSource.RULE_BASED_TEMPLATE
+                    ),
+                )
+            return DialogueTurnResponse(
+                updated_slots=request.current_slots.model_copy(deep=True),
+                decision=DialogueTurnDecision.CONTINUE_TOPIC,
+                assistant_message=safety_decision.assistant_message,
+                assistant_question=safety_decision.assistant_question,
+                assistant_target=QuestionTarget.EVENT,
+                updated_skipped_targets=request.skipped_targets,
+                question_generation_status=(
+                    QuestionGenerationStatus.TEMPLATE_USED
+                ),
+                question_generation_source=(
+                    QuestionGenerationSource.RULE_BASED_TEMPLATE
+                ),
+            )
+
         asked_target = _current_unanswered_target(request)
         available_targets = _available_question_targets(
             request.current_slots,
@@ -400,6 +468,7 @@ class DialogueTurnPipeline:
                 child_answer=request.child_answer,
                 stt_confidence=request.stt_confidence,
                 current_slots=request.current_slots,
+                topic_history=request.topic_history,
                 game_context=request.game_context,
             ),
             self._analysis_client,
@@ -422,6 +491,7 @@ class DialogueTurnPipeline:
                             current_question=request.current_question,
                             child_answer=request.child_answer,
                             current_slots=request.current_slots,
+                            topic_history=request.topic_history,
                             current_target=asked_target,
                             available_targets=available_targets,
                             next_topic_available=(
@@ -438,15 +508,27 @@ class DialogueTurnPipeline:
                     ),
                 )
         except SlotAnalysisError as error:
-            if _can_recover_first_turn_slot_analysis(request, error):
-                updated_slots = request.current_slots.model_copy(
-                    update={"event": request.child_answer},
-                    deep=True,
+            recoverable_target = _recoverable_target_for_slot_analysis(
+                request,
+                error,
+            )
+            if recoverable_target is not None:
+                updated_slots = _backfill_answered_target(
+                    slots=request.current_slots.model_copy(deep=True),
+                    target=recoverable_target,
+                    child_answer=request.child_answer,
                 )
             else:
-                raise DialoguePipelineError(
-                    DialoguePipelineFailureCode.SLOT_ANALYSIS_FAILED
-                ) from None
+                fallback_understanding = understand_child_turn(
+                    child_answer=request.child_answer,
+                    current_question=request.current_question,
+                    asked_target=asked_target,
+                    current_slots=request.current_slots,
+                )
+                updated_slots = apply_turn_understanding(
+                    request.current_slots.model_copy(deep=True),
+                    fallback_understanding,
+                )
 
         if (
             relevance_decision is not None
@@ -462,10 +544,28 @@ class DialogueTurnPipeline:
                 updated_skipped_targets=request.skipped_targets,
                 closing_message=CONVERSATION_CLOSING_MESSAGE,
             )
+        turn_understanding = understand_child_turn(
+            child_answer=request.child_answer,
+            current_question=request.current_question,
+            asked_target=asked_target,
+            current_slots=request.current_slots,
+        )
         if (
-            relevance_decision is not None
-            and relevance_decision.control_action
-            is TurnControlAction.SWITCH_TOPIC
+            turn_understanding.child_question
+            and turn_understanding.diary_content is None
+        ):
+            updated_slots = request.current_slots.model_copy(deep=True)
+        if (
+            (
+                relevance_decision is not None
+                and relevance_decision.control_action
+                is TurnControlAction.SWITCH_TOPIC
+            )
+            or (
+                turn_understanding.topic_refusal
+                and request.current_topic is DialogueTopic.GAME
+                and request.next_topic is DialogueTopic.DAILY
+            )
         ):
             if request.next_topic is None:
                 return DialogueTurnResponse(
@@ -477,8 +577,13 @@ class DialogueTurnPipeline:
                     updated_skipped_targets=request.skipped_targets,
                     closing_message=CONVERSATION_CLOSING_MESSAGE,
                 )
-            transition_question = _topic_opening_question(
-                request.next_topic
+            next_topic_slots = _next_topic_slots_from_turn(
+                turn_understanding
+            )
+            transition_target = _target_for_topic_slots(next_topic_slots)
+            transition_question = _topic_opening_question_for_slots(
+                request.next_topic,
+                next_topic_slots,
             )
             return DialogueTurnResponse(
                 updated_slots=request.current_slots.model_copy(deep=True),
@@ -486,12 +591,18 @@ class DialogueTurnPipeline:
                 termination_reason=(
                     DialogueTerminationReason.CHILD_REQUESTED_TOPIC_SWITCH
                 ),
+                next_topic_slots=next_topic_slots,
                 assistant_message=(
-                    "알겠어. 이 이야기는 여기까지 하고, "
-                    f"{transition_question}"
+                    _topic_transition_message(
+                        request.current_topic,
+                        request.next_topic,
+                        transition_question,
+                        child_answer=request.child_answer,
+                        next_topic_slots=next_topic_slots,
+                    )
                 ),
                 assistant_question=transition_question,
-                assistant_target=QuestionTarget.EVENT,
+                assistant_target=transition_target,
                 updated_skipped_targets=request.skipped_targets,
                 question_generation_status=(
                     QuestionGenerationStatus.TEMPLATE_USED
@@ -540,6 +651,87 @@ class DialogueTurnPipeline:
                 updated_slots,
                 request.child_answer,
             )
+        updated_slots = _backfill_contextual_emotion_reason(
+            slots=updated_slots,
+            request=request,
+            asked_target=asked_target,
+            relevance_decision=relevance_decision,
+        )
+        if (
+            relevance_decision is None
+            or relevance_decision.answered
+            or turn_understanding.diary_content is not None
+            or _is_final_buffer_question(request.current_question or "")
+        ):
+            updated_slots = apply_turn_understanding(
+                updated_slots,
+                turn_understanding,
+                excluded_targets=request.skipped_targets,
+            )
+        if _is_tomorrow_plan_question(request.current_question or ""):
+            return DialogueTurnResponse(
+                updated_slots=request.current_slots.model_copy(deep=True),
+                decision=DialogueTurnDecision.TERMINATE_SESSION,
+                termination_reason=(
+                    DialogueTerminationReason.REQUIRED_SLOTS_FILLED
+                ),
+                updated_skipped_targets=updated_skipped_targets,
+                closing_message=tomorrow_closing_message(
+                    request.child_answer
+                ),
+            )
+        if _is_final_buffer_question(request.current_question or ""):
+            if _should_continue_after_optional_final(
+                request,
+                turn_understanding,
+            ):
+                target = _target_for_topic_slots(updated_slots)
+                question = (
+                    soft_continue_question()
+                    if target is QuestionTarget.MEMORABLE_MOMENT
+                    else _topic_fallback_question(
+                        request.current_topic,
+                        target,
+                        request.game_context,
+                    )
+                )
+                return DialogueTurnResponse(
+                    updated_slots=updated_slots,
+                    decision=DialogueTurnDecision.CONTINUE_TOPIC,
+                    assistant_message=(
+                        f"{_optional_final_continue_ack(request, relevance_decision, turn_understanding)} "
+                        f"{question}"
+                    ),
+                    assistant_question=question,
+                    assistant_target=target,
+                    updated_skipped_targets=updated_skipped_targets,
+                    question_generation_status=(
+                        QuestionGenerationStatus.TEMPLATE_USED
+                    ),
+                    question_generation_source=(
+                        QuestionGenerationSource.RULE_BASED_TEMPLATE
+                    ),
+                )
+            return DialogueTurnResponse(
+                updated_slots=updated_slots,
+                decision=DialogueTurnDecision.TERMINATE_SESSION,
+                termination_reason=(
+                    DialogueTerminationReason.REQUIRED_SLOTS_FILLED
+                ),
+                updated_skipped_targets=updated_skipped_targets,
+                closing_message=closing_message(
+                    child_answer=request.child_answer,
+                    child_question=_is_child_question(
+                        request,
+                        relevance_decision,
+                    ),
+                    bridge_hint=(
+                        None
+                        if relevance_decision is None
+                        else relevance_decision.bridge_response
+                    ),
+                ),
+            )
 
         unanswered_target = _resolve_unanswered_target(
             asked_target=asked_target,
@@ -562,21 +754,65 @@ class DialogueTurnPipeline:
             DEFAULT_NO_RESPONSE_RECOVERY_POLICY,
         )
         if policy_decision.should_terminate:
+            if _should_offer_optional_final_prompt(
+                request=request,
+                slots=updated_slots,
+                reason=policy_decision.termination_reason,
+            ):
+                question = _next_completion_buffer_question(
+                    request=request,
+                    slots=updated_slots,
+                )
+                message = optional_final_message(
+                    child_answer=request.child_answer,
+                    question=question,
+                    child_question=_is_child_question(
+                        request,
+                        relevance_decision,
+                    ),
+                    bridge_hint=(
+                        None
+                        if relevance_decision is None
+                        else relevance_decision.bridge_response
+                    ),
+                )
+                return DialogueTurnResponse(
+                    updated_slots=updated_slots,
+                    decision=DialogueTurnDecision.CONTINUE_TOPIC,
+                    assistant_message=message,
+                    assistant_question=question,
+                    assistant_target=QuestionTarget.MEMORABLE_MOMENT,
+                    updated_skipped_targets=updated_skipped_targets,
+                    question_generation_status=(
+                        QuestionGenerationStatus.TEMPLATE_USED
+                    ),
+                    question_generation_source=(
+                        QuestionGenerationSource.RULE_BASED_TEMPLATE
+                    ),
+                )
             if request.next_topic is not None:
-                transition_question = _topic_opening_question(
-                    request.next_topic
+                next_topic_slots = _next_topic_slots_from_turn(
+                    turn_understanding
+                )
+                transition_target = _target_for_topic_slots(next_topic_slots)
+                transition_question = _topic_opening_question_for_slots(
+                    request.next_topic,
+                    next_topic_slots,
                 )
                 return DialogueTurnResponse(
                     updated_slots=updated_slots,
                     decision=DialogueTurnDecision.SWITCH_TOPIC,
                     termination_reason=policy_decision.termination_reason,
+                    next_topic_slots=next_topic_slots,
                     assistant_message=_topic_transition_message(
                         request.current_topic,
                         request.next_topic,
                         transition_question,
+                        child_answer=request.child_answer,
+                        next_topic_slots=next_topic_slots,
                     ),
                     assistant_question=transition_question,
-                    assistant_target=QuestionTarget.EVENT,
+                    assistant_target=transition_target,
                     updated_skipped_targets=updated_skipped_targets,
                     question_generation_status=(
                         QuestionGenerationStatus.TEMPLATE_USED
@@ -590,7 +826,18 @@ class DialogueTurnPipeline:
                 decision=DialogueTurnDecision.TERMINATE_SESSION,
                 termination_reason=policy_decision.termination_reason,
                 updated_skipped_targets=updated_skipped_targets,
-                closing_message=CONVERSATION_CLOSING_MESSAGE,
+                closing_message=closing_message(
+                    child_answer=request.child_answer,
+                    child_question=_is_child_question(
+                        request,
+                        relevance_decision,
+                    ),
+                    bridge_hint=(
+                        None
+                        if relevance_decision is None
+                        else relevance_decision.bridge_response
+                    ),
+                ),
             )
 
         target = _select_contextual_target(
@@ -601,7 +848,9 @@ class DialogueTurnPipeline:
             ),
             fallback_target=policy_decision.next_target,
             slots=updated_slots,
-            skipped_targets=updated_skipped_targets,
+            skipped_targets=frozenset(
+                (*updated_skipped_targets, *turn_understanding.suppressed_targets)
+            ),
         )
         if target is None:
             raise DialoguePipelineError(
@@ -652,6 +901,8 @@ class DialogueTurnPipeline:
             assistant_message = _fallback_assistant_message(
                 assistant_question,
                 redirect_context,
+                request.child_answer,
+                turn_understanding.emotion,
             )
             generation_status = QuestionGenerationStatus.FALLBACK_USED
             generation_source = QuestionGenerationSource.RULE_BASED_FALLBACK
@@ -659,6 +910,14 @@ class DialogueTurnPipeline:
         elif generated.source is QuestionGenerationSource.LLM:
             assistant_message = generated.question
             assistant_question = _extract_final_question(generated.question)
+            if _contains_banned_surface(assistant_message):
+                assistant_message = _fallback_assistant_message(
+                    fallback_question,
+                    redirect_context,
+                    request.child_answer,
+                    turn_understanding.emotion,
+                )
+                assistant_question = fallback_question
             generation_status = generated.status
             generation_source = generated.source
             generation_failure_code = generated.failure_code
@@ -667,6 +926,8 @@ class DialogueTurnPipeline:
             assistant_message = _fallback_assistant_message(
                 assistant_question,
                 redirect_context,
+                request.child_answer,
+                turn_understanding.emotion,
             )
             generation_status = generated.status
             generation_source = generated.source
@@ -752,6 +1013,47 @@ def _resolve_unanswered_target(
     return None
 
 
+def _backfill_contextual_emotion_reason(
+    *,
+    slots: DiarySlots,
+    request: DialogueTurnRequest,
+    asked_target: QuestionTarget | None,
+    relevance_decision: AnswerRelevanceDecision | None,
+) -> DiarySlots:
+    if (
+        asked_target is not QuestionTarget.EMOTION
+        or _is_filled_slot(slots.emotion_reason)
+        or not _is_filled_slot(slots.emotion)
+        or not _is_filled_slot(slots.event)
+    ):
+        return slots
+    if (
+        relevance_decision is not None
+        and relevance_decision.answered is False
+    ):
+        return slots
+    if not _emotion_question_refers_to_existing_event(
+        request.current_question
+    ):
+        return slots
+    return slots.model_copy(
+        update={"emotion_reason": slots.event.strip()},
+        deep=True,
+    )
+
+
+def _emotion_question_refers_to_existing_event(
+    current_question: str | None,
+) -> bool:
+    if current_question is None:
+        return False
+    normalized = current_question.strip()
+    return any(
+        cue in normalized
+        for cue in ("그때", "그 순간", "그곳", "거기", "할 때")
+    )
+
+
 def _backfill_answered_target(
     *,
     slots: DiarySlots,
@@ -792,24 +1094,77 @@ def _normalize_first_turn_slots(
     )
 
 
-def _can_recover_first_turn_slot_analysis(
+def _recoverable_target_for_slot_analysis(
     request: DialogueTurnRequest,
     error: SlotAnalysisError,
-) -> bool:
-    return (
-        request.current_question is None
-        and error.code
-        is not SlotAnalysisFailureCode.PROVIDER_PERMANENT_FAILURE
-    )
+) -> QuestionTarget | None:
+    if error.code is SlotAnalysisFailureCode.PROVIDER_PERMANENT_FAILURE:
+        return None
+    if request.current_question is None:
+        return QuestionTarget.EVENT
+    target = request.current_target
+    if target is None:
+        return None
+    field_name = QUESTION_TARGET_SLOT_FIELDS[target]
+    if _slot_has_value(getattr(request.current_slots, field_name)):
+        return None
+    return target
+
+
+def _slot_has_value(value: str | None) -> bool:
+    return value is not None and bool(value.strip())
 
 
 def _is_child_question(
     request: DialogueTurnRequest,
     decision: AnswerRelevanceDecision | None,
 ) -> bool:
+    if _looks_like_korean_child_question(request.child_answer):
+        return True
     if decision is not None and decision.child_question:
         return True
     return _looks_like_child_question(request.child_answer)
+
+
+def _looks_like_korean_child_question(child_answer: str) -> bool:
+    normalized = " ".join(child_answer.strip().split())
+    compact = "".join(normalized.casefold().split())
+    if "?" in normalized:
+        return True
+    direct_question_cues = (
+        "너도",
+        "너는",
+        "선생님은",
+        "ai는",
+        "에이아이는",
+        "뭐라고",
+        "어떻게",
+        "왜",
+    )
+    question_cues = (
+        "누구",
+        "뭐",
+        "무엇",
+        "어떤",
+        "어디",
+        "언제",
+        "왜",
+        "어떻게",
+        "얼마",
+        "좋아",
+        "먹어",
+        "먹을",
+        "할수",
+        "할줄",
+        "가봤",
+        "봤어",
+        "해야",
+        "말해",
+    )
+    return (
+        any(cue in compact for cue in direct_question_cues)
+        and any(cue in compact for cue in question_cues)
+    )
 
 
 def _looks_like_child_question(child_answer: str) -> bool:
@@ -889,50 +1244,210 @@ def _select_contextual_target(
     slots: DiarySlots,
     skipped_targets: frozenset[QuestionTarget],
 ) -> QuestionTarget | None:
+    excluded_targets = skipped_targets
     if suggested_target is not None:
         field_name = QUESTION_TARGET_SLOT_FIELDS[suggested_target]
         if (
-            suggested_target not in skipped_targets
+            suggested_target not in excluded_targets
             and not _is_filled_slot(getattr(slots, field_name))
         ):
             return suggested_target
+    if fallback_target in excluded_targets:
+        return select_next_question_target(
+            slots,
+            excluded_targets=excluded_targets,
+        )
     return fallback_target
+
+
+def _should_offer_optional_final_prompt(
+    *,
+    request: DialogueTurnRequest,
+    slots: DiarySlots,
+    reason: DialogueTerminationReason | None,
+) -> bool:
+    if reason not in {
+        DialogueTerminationReason.REQUIRED_SLOTS_FILLED,
+        DialogueTerminationReason.INACTIVITY_TIMEOUT,
+    }:
+        return False
+    if request.question_count >= request.max_question_count:
+        return False
+    if _has_asked_tomorrow_plan_question(request):
+        return False
+    return True
+
+
+def _next_completion_buffer_question(
+    *,
+    request: DialogueTurnRequest,
+    slots: DiarySlots,
+) -> str:
+    remaining_questions = request.max_question_count - request.question_count
+    if (
+        remaining_questions >= 2
+        and not _has_asked_contextual_followup_question(request)
+    ):
+        return contextual_followup_question(
+            slots=slots,
+            topic=request.current_topic,
+        )
+    return tomorrow_plan_question()
+
+
+def _has_asked_optional_final_question(
+    request: DialogueTurnRequest,
+) -> bool:
+    return any(
+        _is_final_buffer_question(question)
+        for question in (*request.recent_questions, request.current_question)
+        if question is not None
+    )
+
+
+def _has_asked_contextual_followup_question(
+    request: DialogueTurnRequest,
+) -> bool:
+    return any(
+        _is_contextual_followup_question(question)
+        for question in (*request.recent_questions, request.current_question)
+        if question is not None
+    )
+
+
+def _has_asked_tomorrow_plan_question(
+    request: DialogueTurnRequest,
+) -> bool:
+    return any(
+        _is_tomorrow_plan_question(question)
+        for question in (*request.recent_questions, request.current_question)
+        if question is not None
+    )
+
+
+def _is_final_buffer_question(question: str) -> bool:
+    return (
+        _is_optional_final_question(question)
+        or _is_soft_continue_question(question)
+        or _is_tomorrow_plan_question(question)
+    )
+
+
+def _is_optional_final_question(question: str) -> bool:
+    normalized = "".join(question.strip().split())
+    return normalized == "".join(optional_final_question().split())
+
+
+def _is_soft_continue_question(question: str) -> bool:
+    normalized = "".join(question.strip().split())
+    return normalized in {
+        "".join(soft_continue_question().split()),
+        "그이야기에서하나만더들려줄래?",
+    }
+
+
+def _is_tomorrow_plan_question(question: str) -> bool:
+    normalized = "".join(question.strip().split())
+    return normalized == "".join(tomorrow_plan_question().split())
+
+
+def _is_contextual_followup_question(question: str) -> bool:
+    normalized = "".join(question.strip().split())
+    return normalized in {
+        "놀이터에서또뭐했어?",
+        "그때또생각나는일이있어?",
+        "그게임에서어떤순간이제일재미있었어?",
+        "게임하면서또생각나는일이있어?",
+        "오늘또나한테해주고싶은이야기있어?",
+    }
+
+
+def _should_continue_after_optional_final(
+    request: DialogueTurnRequest,
+    turn_understanding: TurnUnderstanding,
+) -> bool:
+    if request.question_count >= request.max_question_count:
+        return False
+    if _is_final_buffer_question(request.current_question or ""):
+        return turn_understanding.continue_request
+    return any(
+        (
+            turn_understanding.continue_request,
+            turn_understanding.child_question,
+            turn_understanding.negative_event,
+            bool(turn_understanding.event),
+            bool(turn_understanding.emotion),
+        )
+    )
+
+
+def _optional_final_continue_ack(
+    request: DialogueTurnRequest,
+    relevance_decision: AnswerRelevanceDecision | None,
+    turn_understanding: TurnUnderstanding,
+) -> str:
+    if turn_understanding.child_question:
+        return safe_child_question_reply(
+            request.child_answer,
+            None if relevance_decision is None else relevance_decision.bridge_response,
+        )
+    return acknowledge_child_answer(
+        turn_understanding.diary_content
+        or request.child_answer
+    )
+
+
+def _target_for_topic_slots(slots: DiarySlots) -> QuestionTarget:
+    return select_next_question_target(slots) or QuestionTarget.MEMORABLE_MOMENT
+
+
+def _next_topic_slots_from_turn(turn_understanding: TurnUnderstanding) -> DiarySlots:
+    return apply_turn_understanding(
+        DiarySlots(),
+        turn_understanding,
+    )
+
+
+def _topic_opening_question_for_slots(
+    topic: DialogueTopic,
+    slots: DiarySlots,
+) -> str:
+    target = _target_for_topic_slots(slots)
+    if target is QuestionTarget.EVENT:
+        return _topic_opening_question(topic)
+    if target is QuestionTarget.EMOTION:
+        return "그때 마음은 어땠어?"
+    if target is QuestionTarget.EMOTION_REASON:
+        return "어떤 점이 제일 마음에 남았어?"
+    return optional_final_question()
+
+
+def _closing_acknowledgement(child_answer: str) -> str:
+    return acknowledge_child_answer(child_answer)
 
 
 def _is_filled_slot(value: str | None) -> bool:
     return value is not None and bool(value.strip())
 
 
-def _join_bridge_and_question(
-    bridge: str,
-    question: str,
-) -> str:
-    acknowledgement = bridge.rstrip()
-    if acknowledgement.endswith("."):
-        acknowledgement = f"{acknowledgement[:-1]}!"
-    elif not acknowledgement.endswith("!"):
-        acknowledgement = f"{acknowledgement}!"
-    return f"{acknowledgement} {question}"
-
-
 def _fallback_assistant_message(
     question: str,
     redirect_context: QuestionRedirectContext | None,
+    child_answer: str | None,
+    emotion: str | None = None,
 ) -> str:
     if redirect_context is None:
-        return f"그랬구나! {question}"
-    if redirect_context.child_question:
-        reply = _safe_child_question_reply(redirect_context.bridge_hint)
-        if reply.endswith("."):
-            reply = f"{reply[:-1]}!"
-        elif not reply.endswith("!"):
-            reply = f"{reply}!"
-        return (
-            f"{reply} 그 얘기도 재미있네. {question}"
+        return build_fallback_assistant_message(
+            child_answer=child_answer,
+            question=question,
+            emotion=emotion,
         )
-    return _join_bridge_and_question(
-        redirect_context.bridge_hint or "그 이야기도 재미있네.",
-        question,
+    return build_fallback_assistant_message(
+        child_answer=child_answer,
+        question=question,
+        bridge_hint=redirect_context.bridge_hint,
+        child_question=redirect_context.child_question,
+        emotion=emotion,
     )
 
 
@@ -952,13 +1467,21 @@ def _extract_final_question(message: str) -> str:
     )
 
 
+def _contains_banned_surface(message: str) -> bool:
+    normalized = "".join(message.strip().casefold().split())
+    return any(
+        "".join(expression.casefold().split()) in normalized
+        for expression in HARD_BANNED_QUESTION_EXPRESSIONS
+    )
+
+
 def _topic_fallback_question(
     topic: DialogueTopic,
     target: QuestionTarget,
     context: GameContext | DialogueTopicContext | None,
 ) -> str:
     if topic is not DialogueTopic.GAME:
-        return build_fallback_question(target).text
+        return fallback_question_for_target(target)
     if target is QuestionTarget.EVENT:
         game_name = _single_game_name(context)
         if game_name is not None:
@@ -968,7 +1491,7 @@ def _topic_fallback_question(
         return "게임할 때 어떤 기분이었어?"
     if target is QuestionTarget.EMOTION_REASON:
         return "어떤 점 때문에 그런 기분이 들었어?"
-    return "게임에서 어떤 순간이 제일 기억나?"
+    return optional_final_question()
 
 
 def _single_game_name(
@@ -1051,7 +1574,7 @@ def build_dialogue_opening(
 
 def _topic_opening_question(topic: DialogueTopic) -> str:
     if topic is DialogueTopic.DAILY:
-        return "이번에는 오늘 있었던 다른 일도 이야기해 줄래?"
+        return "오늘 무슨 일이 있었어?"
     return _GAME_OPENING_QUESTION
 
 
@@ -1059,21 +1582,29 @@ def _topic_transition_message(
     current_topic: DialogueTopic,
     next_topic: DialogueTopic,
     question: str,
+    *,
+    child_answer: str | None = None,
+    next_topic_slots: DiarySlots | None = None,
 ) -> str:
+    if next_topic_slots is not None and any(
+        (
+            next_topic_slots.event,
+            next_topic_slots.emotion,
+            next_topic_slots.emotion_reason,
+            next_topic_slots.memorable_moment,
+        )
+    ):
+        acknowledgement = acknowledge_child_answer(child_answer)
+        if (
+            current_topic is DialogueTopic.GAME
+            and next_topic is DialogueTopic.DAILY
+        ):
+            acknowledgement = transition_acknowledgement(child_answer)
+            return f"그래, 그럼 다른 얘기하자! {acknowledgement} {question}"
+        return f"그 이야기를 들을게. {acknowledgement} {question}"
     if (
         current_topic is DialogueTopic.GAME
         and next_topic is DialogueTopic.DAILY
     ):
-        return f"게임 이야기를 들려줘서 고마워! {question}"
+        return f"그래, 그럼 다른 얘기하자! {question}"
     return f"이야기를 들려줘서 고마워! {question}"
-
-
-def _safe_child_question_reply(bridge_hint: str | None) -> str:
-    if (
-        bridge_hint is not None
-        and bridge_hint.startswith("나는")
-        and "?" not in bridge_hint
-        and len(bridge_hint) <= 40
-    ):
-        return bridge_hint
-    return "나는 그 질문에는 딱 하나를 고르기 어려워!"

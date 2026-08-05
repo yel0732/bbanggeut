@@ -1,4 +1,4 @@
-"""Realtime dialogue manager tests (T11~T15).
+﻿"""Realtime dialogue manager tests (T11~T15).
 
 The dialogue pipeline itself is DIARY-1 code with its own test suite — here it
 is a scripted fake, and what is under test is exactly W03's own work: session
@@ -107,11 +107,36 @@ def _switch_response(question: str = "오늘 있었던 다른 일도 이야기�
     )
 
 
+def _switch_response_with_next_slots() -> DialogueTurnResponse:
+    return DialogueTurnResponse(
+        updated_slots=DiarySlots(event="game story", emotion="excited"),
+        next_topic_slots=DiarySlots(
+            event="playground swing missed",
+            emotion="upset",
+            emotionReason="because the swing was unavailable",
+        ),
+        decision=DialogueTurnDecision.SWITCH_TOPIC,
+        termination_reason=DialogueTerminationReason.CHILD_REQUESTED_TOPIC_SWITCH,
+        assistant_message=(
+            "I will listen to the playground story instead of the game story. "
+            "That must have felt upsetting. Can you tell me a little more?"
+        ),
+        assistant_question="Can you tell me a little more?",
+        assistant_target=QuestionTarget.MEMORABLE_MOMENT,
+        question_generation_status=QuestionGenerationStatus.TEMPLATE_USED,
+        question_generation_source=QuestionGenerationSource.RULE_BASED_TEMPLATE,
+    )
+
+
 def _terminate_response() -> DialogueTurnResponse:
     return DialogueTurnResponse(
         updated_slots=DiarySlots(event="과일 게임", emotion="신남"),
         decision=DialogueTurnDecision.TERMINATE_SESSION,
         termination_reason=DialogueTerminationReason.MAX_QUESTION_REACHED,
+        closing_message=(
+            "좋아! 내일 그네 타고 나서 또 만나자. "
+            "오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
+        ),
     )
 
 
@@ -314,6 +339,23 @@ class TestChildTurn:
         assert request.next_topic is None
 
     @pytest.mark.asyncio
+    async def test_switch_topic_applies_next_topic_slots(self) -> None:
+        pipeline = _FakeDialoguePipeline(
+            [_switch_response_with_next_slots(), _continue_response()]
+        )
+        manager, state, _, _, _, sequencer = _build_manager(pipeline)
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result())
+        assert state.current_topic.snapshot.type.value == "DAILY"
+        assert state.current_topic.slots.event == "playground swing missed"
+        assert state.current_topic.slots.emotion == "upset"
+
+        await manager.handle_child_turn(_child_turn(sequencer), _stt_result("more story"))
+        request = pipeline.requests[1]
+        assert request.current_slots.event == "playground swing missed"
+        assert request.current_slots.emotion == "upset"
+
+    @pytest.mark.asyncio
     async def test_terminate_says_goodbye_then_signals_and_blocks_further_turns(self) -> None:
         pipeline = _FakeDialoguePipeline([_terminate_response()])
         manager, state, channel, _, _, sequencer = _build_manager(pipeline)
@@ -328,7 +370,8 @@ class TestChildTurn:
             "session.completed",
         ]
         assert channel.sent[1]["payload"]["text"] == (
-            "오늘 이야기 들려줘서 고마워! 다음에 또 이야기하자."
+            "좋아! 내일 그네 타고 나서 또 만나자. "
+            "오늘 이야기해줘서 고마워. 오늘 이야기를 일기로 남겨볼래?"
         )
         # 자막 동기화를 위해 인사 텍스트와 오디오는 같은 responseId를 공유한다.
         assert channel.sent[0]["responseId"] == channel.sent[1]["responseId"]
@@ -530,7 +573,7 @@ class TestNoSpeechLadder:
             "assistant.text.final",
             "conversation.slots.updated",
         ]
-        assert "말해 줄래" in channel.sent[1]["payload"]["text"]
+        assert "어땠어" in channel.sent[1]["payload"]["text"]
         assert state.consecutive_no_responses == 1
 
     def test_second_no_speech_asks_to_repeat(self) -> None:

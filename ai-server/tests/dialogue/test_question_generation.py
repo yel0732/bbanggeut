@@ -247,7 +247,7 @@ async def test_exhausted_retryable_error_uses_registered_fallback() -> None:
     )
 
     assert result.status is QuestionGenerationStatus.FALLBACK_USED
-    assert result.question == "그때 마음이 어땠는지 말해 줄래?"
+    assert result.question == "그때 마음은 어땠어?"
     assert result.attempts == 2
     assert result.failure_code is (
         QuestionGenerationFailureCode.PROVIDER_TEMPORARY_FAILURE
@@ -404,7 +404,7 @@ async def test_outer_cancellation_cleans_validator_without_fallback() -> None:
 
 @pytest.mark.asyncio
 async def test_fallback_hard_rule_failure_returns_failed() -> None:
-    fallback_text = "그때 마음이 어땠는지 말해 줄래?"
+    fallback_text = "그때 마음은 어땠어?"
     provider = FakeProvider([RuntimeError("provider failed")])
 
     result = await generate_question_with_fallback(

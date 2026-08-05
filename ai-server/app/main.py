@@ -53,6 +53,15 @@ from app.speech.whisper_client import WhisperSpeechRecognizer
 from app.webrtc.peer_connection import AiortcPeerConnectionFactory
 
 
+REQUIRED_DIALOGUE_TARGETS = frozenset(
+    {
+        QuestionTarget.EVENT,
+        QuestionTarget.EMOTION,
+        QuestionTarget.EMOTION_REASON,
+    }
+)
+
+
 def create_app(
     settings: AppSettings | None = None,
     *,
@@ -101,7 +110,7 @@ def create_app(
                 max_attempts=resolved_settings.gms_max_attempts,
             ),
             termination_policy=DialogueTerminationPolicy(
-                required_targets=frozenset(QuestionTarget)
+                required_targets=REQUIRED_DIALOGUE_TARGETS
             ),
             logger=logging.getLogger("app.dialogue.pipeline"),
         )
@@ -247,7 +256,7 @@ def create_app(
                 default_snapshot=default_context_snapshot,
                 dialogue_pipeline=app.state.dialogue_pipeline,
                 termination_policy=DialogueTerminationPolicy(
-                    required_targets=frozenset(QuestionTarget)
+                    required_targets=REQUIRED_DIALOGUE_TARGETS
                 ),
                 is_epoch_current=lambda: session_epoch_registry.is_current(
                     conversation_id, publisher.session_epoch

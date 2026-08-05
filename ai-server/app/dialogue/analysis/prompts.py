@@ -15,8 +15,13 @@ sttConfidence는 받아 적기 신뢰도이며 낮을수록 오인식 가능성�
 sttConfidence가 낮고 currentQuestion 문맥에서 훨씬 자연스러운 비슷한 발음의 표현이 분명할 때만 그 표현으로 바로잡아 슬롯에 저장한다.
 바로잡을 표현이 분명하지 않으면 아이의 표현을 그대로 저장하고, 새 정보를 지어내지 않는다.
 currentQuestion이 있으면 childAnswer가 그 질문이나 currentSlots의 기존 사건에 관한 답인지 확인한다.
+topicHistory는 현재 주제에서 이미 끝난 질문과 답변이다. "그때", "그거", "그 마음"처럼 현재 답변만으로 가리키는 대상이 불분명할 때만 참고한다.
+topicHistory와 currentSlots에 이미 확인된 사건이 있고 currentQuestion이 그 사건의 감정을 묻는 질문이면, childAnswer의 감정은 그 사건에 대한 감정으로 이해한다.
+다만 topicHistory에만 있고 현재 답변과 연결되지 않는 과거 정보를 새 슬롯으로 다시 출력하지 않는다.
 childAnswer가 currentQuestion에 답했다면 질문 목표에 해당하는 슬롯에 아이의 표현을 그대로 저장한다.
 예를 들어 감정 이유를 묻는 질문에 "영화가 재미있었어"라고 답하면 emotionReason에 그 표현을 저장한다.
+예를 들어 "어떤 순간이 제일 재미있었어?"라는 질문에 "손으로 과일 자르는 거"라고 답하면 memorableMoment와 emotionReason에 그 표현을 저장한다.
+예를 들어 "과일이 잘리는데 너무 신기했어"처럼 사건과 감정이 함께 있으면 emotion과 emotionReason을 함께 추출한다.
 event와 emotionReason은 아이의 뜻을 바꾸지 않으면서 문맥 없이 읽어도 의미가 끝나는 최소 구절로 저장한다.
 "과일을 한 번에 여러 개 자르는 게 재미있었어"의 event를 "과일을 한 번에 여러 개 자르는 게"처럼 의존명사에서 끊지 말고 "과일을 한 번에 여러 개 자르기"처럼 완결한다.
 childAnswer에 없는 원인이나 목적을 덧붙여 문장을 매끄럽게 만들지는 않는다.

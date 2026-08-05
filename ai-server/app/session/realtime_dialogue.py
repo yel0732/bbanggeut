@@ -71,6 +71,8 @@ RequestIdFactory = Callable[[], str]
 EpochCurrentCheck = Callable[[], bool]
 # (turn_id, turn_seq, response_id, text) — 발행된 AI 질문을 음성으로 합성한다.
 SpeakCallback = Callable[[str, int, str, str], None]
+InterruptAudioCallback = Callable[[str], bool]
+InterruptionIdFactory = Callable[[], str]
 
 _RECENT_QUESTION_LIMIT = 5
 _LLM_ERROR_CODE = "LLM_TIMEOUT"  # §22의 LLM 계열 공개 코드(복구: Fallback)
@@ -79,6 +81,10 @@ _STT_LOW_CONFIDENCE_CODE = "STT_LOW_CONFIDENCE"  # §22 — 복구: 확인 질�
 
 def _default_request_id_factory() -> str:
     return f"req_{uuid.uuid4().hex}"
+
+
+def _default_interruption_id_factory() -> str:
+    return f"int_{uuid.uuid4().hex}"
 
 
 @dataclass(frozen=True)
@@ -220,6 +226,7 @@ class RealtimeDialogueManager:
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         low_confidence_threshold: float = 0.35,
         low_confidence_reask_limit: int = 1,
+        interruption_id_factory: InterruptionIdFactory = _default_interruption_id_factory,
     ) -> None:
         self._pipeline = dialogue_pipeline
         self._termination_policy = termination_policy
@@ -235,6 +242,9 @@ class RealtimeDialogueManager:
         self._clock = clock
         self._low_confidence_threshold = low_confidence_threshold
         self._low_confidence_reask_limit = low_confidence_reask_limit
+        self._interruption_id_factory = interruption_id_factory
+        self._interrupt_audio: InterruptAudioCallback | None = None
+        self._active_ai_turn: _AiTurnRef | None = None
 
     def set_speak(self, speak: SpeakCallback) -> None:
         """Wire the synthesis speak callback after construction.
@@ -245,6 +255,48 @@ class RealtimeDialogueManager:
         """
 
         self._speak = speak
+
+    def set_interrupt_audio(self, interrupt_audio: InterruptAudioCallback) -> None:
+        self._interrupt_audio = interrupt_audio
+
+    def interrupt_current_response(
+        self,
+        reason: str = "CHILD_BARGE_IN",
+        *,
+        expected_response_id: str | None = None,
+    ) -> bool:
+        """Cancel and persist the currently playing AI response exactly once."""
+
+        ref = self._active_ai_turn
+        if ref is None:
+            return False
+        if expected_response_id is not None and expected_response_id != ref.response_id:
+            return False
+        if not self._responses.cancel(ref.response_id):
+            return False
+
+        if self._interrupt_audio is not None:
+            self._interrupt_audio(ref.response_id)
+        interruption_id = self._interruption_id_factory()
+        interrupted_at = self._clock()
+        self._publisher.publish(
+            "assistant.audio.interrupted",
+            {"reason": reason, "interruptionId": interruption_id},
+            turn_id=ref.turn_id,
+            turn_seq=ref.turn_seq,
+            response_id=ref.response_id,
+        )
+        if self._stream is not None:
+            self._stream.publish_ai_turn_interrupted(
+                turn_id=ref.turn_id,
+                turn_seq=ref.turn_seq,
+                response_id=ref.response_id,
+                interrupted_at=interrupted_at,
+                reason=reason,
+                interruption_id=interruption_id,
+            )
+        self._active_ai_turn = None
+        return True
 
     # --- guard hooks (T13) -------------------------------------------------
 
@@ -573,10 +625,12 @@ class RealtimeDialogueManager:
             turn_seq=ai_turn.turn_seq,
             response_id=response_id,
         )
+        ref = _AiTurnRef(ai_turn.turn_id, ai_turn.turn_seq, response_id)
         if self._speak is not None:
             # 텍스트 발행 직후 음성 합성을 시작한다(W04). 미주입이면 텍스트 전용.
+            self._active_ai_turn = ref
             self._speak(ai_turn.turn_id, ai_turn.turn_seq, response_id, text)
-        return _AiTurnRef(ai_turn.turn_id, ai_turn.turn_seq, response_id)
+        return ref
 
     # --- Stream 발행 (W05) ---------------------------------------------------
 
@@ -675,6 +729,11 @@ class RealtimeDialogueManager:
     ) -> None:
         """synthesis의 on_completed 콜백이 호출한다(§11 호환 수정 5)."""
 
+        if self._responses.is_cancelled(response_id):
+            return
+        active = self._active_ai_turn
+        if active is not None and active.response_id == response_id:
+            self._active_ai_turn = None
         if self._stream is None:
             return
         self._stream.publish_ai_turn_completed(
@@ -718,6 +777,16 @@ class RealtimeDialogueSession:
 
     def is_known_turn(self, turn_id: str) -> bool:
         return self.manager.is_known_turn(turn_id)
+
+    def interrupt_current_response(
+        self,
+        reason: str = "CHILD_BARGE_IN",
+        *,
+        expected_response_id: str | None = None,
+    ) -> bool:
+        return self.manager.interrupt_current_response(
+            reason, expected_response_id=expected_response_id
+        )
 
     async def aclose(self) -> None:
         """Idempotent — the sink is also closed via the audio bridge path."""
@@ -811,6 +880,7 @@ async def create_realtime_dialogue_session(
             speaker, publisher, response_registry, manager.emit_ai_turn_completed
         )
         manager.set_speak(synthesis.speak)
+        manager.set_interrupt_audio(synthesis.interrupt_response)
 
     if stream_producer is not None:
         stream_producer.publish_session_started(datetime.now(timezone.utc))
@@ -824,12 +894,17 @@ async def create_realtime_dialogue_session(
         turn_sequencer=turn_sequencer,
         on_final=manager.handle_child_turn,
         on_no_speech=manager.handle_no_speech,
-        # AI가 말하는 동안 입력을 받지 않는다(ADR-020). 오디오 없는 연결은 합성이
-        # 없으므로 게이트도 없다 — 그때는 애초에 재생될 오디오가 없다.
+        # AI가 말하는 동안에는 더 긴 VAD 확인 창을 적용하고, 확인된 아이 음성은
+        # 현재 응답을 중단한다. 오디오 없는 연결에는 Barge-in 대상이 없다.
         # is_speaking은 프로퍼티다 — 여기서 평가하면 조립 시점의 bool이 박제된다.
-        # 프레임마다 현재 값을 읽도록 반드시 콜러블로 감싼다(실 스택에서 발견된 결함).
+        # 프레임마다 현재 값을 읽도록 반드시 콜러블로 감싼다.
         is_output_active=(
             None if synthesis is None else (lambda: synthesis.is_speaking)
+        ),
+        on_barge_in=(
+            None
+            if synthesis is None
+            else lambda: manager.interrupt_current_response("CHILD_BARGE_IN")
         ),
     )
     return RealtimeDialogueSession(

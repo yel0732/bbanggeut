@@ -165,6 +165,7 @@ def create_app(
         )
         turn_detection_config = TurnDetectionConfig(
             min_speech_ms=resolved_settings.stt_min_speech_ms,
+            barge_in_min_speech_ms=resolved_settings.stt_barge_in_min_speech_ms,
             trailing_silence_seconds=resolved_settings.stt_trailing_silence_seconds,
             no_speech_timeout_seconds=resolved_settings.stt_no_speech_timeout_seconds,
             preroll_ms=resolved_settings.stt_preroll_ms,
@@ -177,6 +178,7 @@ def create_app(
             on_final,
             on_no_speech,
             is_output_active=None,
+            on_barge_in=None,
         ):
             return SessionSttPipeline(
                 speech_recognizer,
@@ -194,6 +196,7 @@ def create_app(
                 on_final=on_final,
                 on_no_speech=on_no_speech,
                 is_output_active=is_output_active,
+                on_barge_in=on_barge_in,
             )
 
         context_snapshot_reader = RedisContextSnapshotReader(

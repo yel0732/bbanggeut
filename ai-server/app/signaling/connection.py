@@ -38,7 +38,11 @@ from typing import Any, Protocol
 from fastapi import WebSocketDisconnect
 from pydantic import ValidationError
 
-from app.events.envelope import ConversationEventEnvelope, ConversationEventGuard
+from app.events.envelope import (
+    ClientInterruptPayload,
+    ConversationEventEnvelope,
+    ConversationEventGuard,
+)
 from app.events.outbound import ConversationEventPublisher
 from app.session.realtime_dialogue import RealtimeDialogueSession
 from app.speech.speaker import SpeakerHandle
@@ -298,9 +302,17 @@ class SignalingConnection:
             )
             return
 
-        # 수신 이벤트(client.ready / client.interrupt)의 실제 처리는 아직 없다.
-        # W01은 송신 방향(stt.final·error)만 배선했고, client.interrupt 처리는
-        # Barge-in을 다루는 DIARY-4 범위다.
+        if envelope.type == "client.interrupt":
+            try:
+                payload = ClientInterruptPayload.model_validate(envelope.payload)
+            except ValidationError:
+                self._logger.warning("malformed client.interrupt payload dropped")
+                return
+            if self._dialogue_session is not None:
+                self._dialogue_session.interrupt_current_response(
+                    payload.reason,
+                    expected_response_id=payload.response_id,
+                )
 
     async def _on_peer_connection_state_change(self, state: PeerConnectionState) -> None:
         if self._state == ConnectionState.CLOSED:

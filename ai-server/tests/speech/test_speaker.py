@@ -149,6 +149,23 @@ class TestSpeakerTrack:
 
 class TestSpeakerHandle:
     @pytest.mark.asyncio
+    async def test_flush_cannot_leak_a_blocked_late_frame(self) -> None:
+        track = SpeakerAudioTrack()
+        queue = ResponseAudioQueue("resp_a", max_frames=1)
+        track.set_current(queue)
+        await queue.put(_frame())
+        blocked_put = asyncio.create_task(queue.put(_frame()))
+        await asyncio.sleep(0)
+        assert not blocked_put.done()
+
+        queue.flush()
+        await blocked_put
+        frame = await track.recv()
+
+        assert queue.is_flushed
+        assert not any(bytes(frame.planes[0]))
+
+    @pytest.mark.asyncio
     async def test_begin_response_flushes_the_previous_one(self) -> None:
         """Two responseId must not mix: starting B flushes A (barge-in path)."""
 

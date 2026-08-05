@@ -41,8 +41,10 @@ from app.speech.vad import VoiceActivityDetector
 
 FinalTurnCallback = Callable[[SttTurn, SttResult], Awaitable[None]]
 NoSpeechCallback = Callable[[], None]
-# AI 오디오가 나가는 중인지 묻는다. True인 동안 입력을 받지 않는다(ADR-020).
 OutputActiveCheck = Callable[[], bool]
+# AI가 말하는 중 확인된 사람 음성을 끼어들기로 처리한다. 실제 진행 중인 응답을
+# 취소했을 때만 True를 반환한다.
+BargeInCallback = Callable[[], bool]
 
 _STT_FAILED = "STT_FAILED"
 
@@ -65,6 +67,7 @@ class SessionSttPipeline:
         turn_detection: TurnDetectionConfig | None = None,
         on_no_speech: NoSpeechCallback | None = None,
         is_output_active: OutputActiveCheck | None = None,
+        on_barge_in: BargeInCallback | None = None,
     ) -> None:
         self._recognizer = recognizer
         self._publisher = publisher
@@ -79,7 +82,9 @@ class SessionSttPipeline:
         self._pending_finalize = False
         self._closed = False
         self._is_output_active = is_output_active
-        self._input_suspended = False
+        self._on_barge_in = on_barge_in
+        self._reject_confirmed_speech = False
+        self._output_was_active = False
         self._detector: TurnDetector | None = None
         if vad is not None:
             self._detector = TurnDetector(
@@ -88,9 +93,11 @@ class SessionSttPipeline:
                 audio_format=audio_format,
                 on_speech_start=self._handle_speech_start,
                 on_turn_end=self.request_finalize,
-                on_no_speech=on_no_speech or self._log_no_speech,
+                on_no_speech=self._handle_no_speech,
+                is_output_active=is_output_active,
                 logger=logger,
             )
+        self._on_no_speech = on_no_speech
 
     @property
     def current_turn(self) -> SttTurn | None:
@@ -107,12 +114,16 @@ class SessionSttPipeline:
 
         if self._closed:
             return
-        if self._is_output_active is not None and self._is_output_active():
-            if not self._input_suspended:
-                self._input_suspended = True
-                self._suspend_input()
-            return
-        self._input_suspended = False
+        output_active = self._is_output_active is not None and self._is_output_active()
+        if output_active and not self._output_was_active and self.has_audio:
+            # 아이가 AI의 LLM/TTS 준비 시간에 먼저 말을 시작한 뒤 출력이 켜지는
+            # 경합. 이미 확인된 아이 발화를 버리지 않고 즉시 현재 응답을 중단한다.
+            accepted = self._on_barge_in is not None and self._on_barge_in()
+            if not accepted:
+                self._discard_buffered_input()
+        self._output_was_active = (
+            self._is_output_active is not None and self._is_output_active()
+        )
         try:
             chunk = self._converter.convert(frame)
         except AudioConversionError:
@@ -121,8 +132,19 @@ class SessionSttPipeline:
         if self._detector is None:
             self._accept_audio(chunk)
             return
-        for audio in self._detector.feed(chunk):
+        detected = self._detector.feed(chunk)
+        if self._reject_confirmed_speech:
+            # 출력 중 확인된 음성이지만 취소할 활성 응답이 없었다. 오디오와 detector
+            # 상태를 함께 버려 다음 정상 발화와 이어붙지 않게 한다.
+            self._reject_confirmed_speech = False
+            self._detector.reset()
+            self._converter.reset()
+            return
+        for audio in detected:
             self._accept_audio(audio)
+        self._output_was_active = (
+            self._is_output_active is not None and self._is_output_active()
+        )
 
     def _accept_audio(self, chunk: PcmAudioChunk) -> None:
         self._ensure_turn()
@@ -246,20 +268,20 @@ class SessionSttPipeline:
 
     # --- internals -------------------------------------------------------
 
-    def _suspend_input(self) -> None:
-        """AI 오디오 구간 진입: 미완 발화를 버리고 입력 상태를 초기화한다.
+    def _handle_speech_start(self) -> None:
+        output_active = self._is_output_active is not None and self._is_output_active()
+        if not output_active:
+            self._logger.info("speech start confirmed")
+            return
 
-        AI 응답이 만들어지는 동안(whisper+LLM, 실측 3초 이상)에도 파이프라인은
-        듣고 있으므로, 재생이 시작되는 순간 아이가 말하던 중일 수 있다. 그 반쪽
-        발화를 남겨 두면 게이트가 열린 뒤 도착하는 뒷부분과 이어붙어 깨진 문장이
-        된다. AI 발화 중 아이 발화가 유실되는 것은 ADR-020이 받아들인 대가이며,
-        반쪽을 버리는 것이 그 결정과 일관된다.
+        accepted = self._on_barge_in is not None and self._on_barge_in()
+        if accepted:
+            self._logger.info("barge-in speech confirmed")
+            return
+        self._reject_confirmed_speech = True
+        self._logger.info("speech during assistant output ignored without an active response")
 
-        진행 중인 finalize 태스크는 건드리지 않는다 — 그 턴이 바로 지금 재생 중인
-        AI 응답을 만들어 낸 턴이다.
-        """
-
-        self._logger.info("inbound audio suspended while the assistant speaks")
+    def _discard_buffered_input(self) -> None:
         if self._detector is not None:
             self._detector.reset()
         self._converter.reset()
@@ -267,10 +289,15 @@ class SessionSttPipeline:
             self._buffer.reset()
         self._turn = None
 
-    def _handle_speech_start(self) -> None:
-        # 이 시점엔 새 턴이 아직 만들어지기 전이다(_accept_audio가 만든다) —
-        # 식별자 없이 사건만 기록한다.
-        self._logger.info("speech start confirmed")
+    def _handle_no_speech(self) -> None:
+        # AI가 말하는 시간은 아이의 무응답 시간이 아니다. 출력 중 silence window가
+        # 지나도 no-response 사다리를 올리지 않는다.
+        if self._is_output_active is not None and self._is_output_active():
+            return
+        if self._on_no_speech is not None:
+            self._on_no_speech()
+            return
+        self._log_no_speech()
 
     def _log_no_speech(self) -> None:
         # 신호만 기록한다 — NO_RESPONSE 턴 생성·복구 질문은 W03이 DIARY-1

@@ -204,6 +204,28 @@ class ConversationStreamProducer:
             response_id=response_id,
         )
 
+    def publish_ai_turn_interrupted(
+        self,
+        *,
+        turn_id: str,
+        turn_seq: int,
+        response_id: str,
+        interrupted_at: datetime,
+        reason: str,
+        interruption_id: str,
+    ) -> None:
+        self._enqueue(
+            StreamEventType.AI_TURN_INTERRUPTED,
+            {
+                "interruptedAt": _iso(interrupted_at),
+                "reason": reason,
+                "interruptionId": interruption_id,
+            },
+            turn_id=turn_id,
+            turn_seq=turn_seq,
+            response_id=response_id,
+        )
+
     def publish_session_completed(self, *, reason: str, completed_at: datetime) -> None:
         self._enqueue(
             StreamEventType.SESSION_COMPLETED,

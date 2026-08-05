@@ -37,6 +37,7 @@ from app.speech.audio_format import STT_INPUT_FORMAT, AudioFormat, PcmAudioChunk
 from app.speech.vad import VadFramer, VoiceActivityDetector
 
 TurnEventCallback = Callable[[], None]
+ActivityCheck = Callable[[], bool]
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,11 @@ class TurnDetectionConfig:
     """Tunables, all injected from AppSettings (jira/plan/DIARY-3-W02.md §5)."""
 
     min_speech_ms: int = 250
+    # AI 음성이 재생되는 동안에는 노트북 스피커의 잔여 echo를 아이의 끼어들기로
+    # 오인하지 않도록 평상시보다 긴 연속 발화를 요구한다. 브라우저 AEC가 1차로
+    # 제거하고 이 값이 2차 duration gate 역할을 한다. 이어폰에서는 같은 기준이
+    # 적용되어도 아이의 자연스러운 문장 시작을 놓치지 않는 범위다.
+    barge_in_min_speech_ms: int = 400
     trailing_silence_seconds: float = 1.0
     no_speech_timeout_seconds: float = 10.0
     preroll_ms: int = 300
@@ -64,7 +70,7 @@ class TurnDetectionConfig:
     # 따라서 6은 클릭과 40ms급 버스트까지만 흡수한다. 100ms 이상의 소리는 발화
     # 재개로 판정된다 — 아이의 짧은 대답("응")과 길이가 겹쳐 더 올릴 수 없다.
     # **지속적인 배경음(TV 등)은 연속 run이 길어 이 관용으로 막지 못한다** —
-    # 그건 입력 단 잡음 억제와 AI 발화 구간 게이팅의 몫이다(ADR-020).
+    # 그건 입력 단 잡음 억제와 AI 출력 중 별도 Barge-in 확인 창의 몫이다.
     max_speech_blip_frames: int = 6
     # 턴 종료 시 whisper에 남겨 보낼 말꼬리 뒤 여백. 종료 판정용 침묵 전체를
     # 보내면 입력이 발화의 150%를 넘고(실측) 무음 환각 위험도 커진다.
@@ -73,6 +79,8 @@ class TurnDetectionConfig:
     def __post_init__(self) -> None:
         if self.min_speech_ms <= 0:
             raise ValueError("min_speech_ms must be positive")
+        if self.barge_in_min_speech_ms < self.min_speech_ms:
+            raise ValueError("barge_in_min_speech_ms must be at least min_speech_ms")
         if self.trailing_silence_seconds <= 0:
             raise ValueError("trailing_silence_seconds must be positive")
         if self.no_speech_timeout_seconds <= 0:
@@ -116,6 +124,7 @@ class TurnDetector:
         on_speech_start: TurnEventCallback | None = None,
         on_turn_end: TurnEventCallback | None = None,
         on_no_speech: TurnEventCallback | None = None,
+        is_output_active: ActivityCheck | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self._vad = vad
@@ -126,6 +135,7 @@ class TurnDetector:
         self._on_speech_start = on_speech_start
         self._on_turn_end = on_turn_end
         self._on_no_speech = on_no_speech
+        self._is_output_active = is_output_active
         self._logger = logger or logging.getLogger(__name__)
 
         # The pre-roll ring must hold the configured pre-roll PLUS the whole
@@ -134,7 +144,7 @@ class TurnDetector:
         # min_speech_ms > preroll_ms.
         ring_ms = (
             self._config.preroll_ms
-            + self._config.min_speech_ms
+            + max(self._config.min_speech_ms, self._config.barge_in_min_speech_ms)
             + self._config.max_gap_frames * self._frame_ms
         )
         self._preroll: deque[bytes] = deque(maxlen=max(1, ring_ms // self._frame_ms))
@@ -208,12 +218,26 @@ class TurnDetector:
                 # policy (W03, ADR-018) re-prompts and waits again.
                 self._idle_silence_ms = 0
                 self._notify(self._on_no_speech, "no_speech")
-        if self._candidate_speech_ms >= self._config.min_speech_ms:
-            self._confirm_speech(out)
+        start_threshold_ms = (
+            self._config.barge_in_min_speech_ms
+            if self._is_output_active is not None and self._is_output_active()
+            else self._config.min_speech_ms
+        )
+        if self._candidate_speech_ms >= start_threshold_ms:
+            self._confirm_speech(out, start_threshold_ms)
 
-    def _confirm_speech(self, out: bytearray) -> None:
+    def _confirm_speech(self, out: bytearray, start_threshold_ms: int) -> None:
         self._phase = TurnPhase.SPEAKING
-        for buffered in self._preroll:  # pre-roll first: the first syllable
+        # The ring is sized for the larger Barge-in window, but a normal turn
+        # must not receive that extra leading silence. Emit only the window
+        # used by the mode that actually confirmed this start.
+        emit_ms = (
+            self._config.preroll_ms
+            + start_threshold_ms
+            + self._config.max_gap_frames * self._frame_ms
+        )
+        emit_frames = max(1, emit_ms // self._frame_ms)
+        for buffered in list(self._preroll)[-emit_frames:]:
             out += buffered
         self._preroll.clear()
         self._candidate_speech_ms = 0

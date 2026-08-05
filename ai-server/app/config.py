@@ -63,6 +63,9 @@ class AppSettings:
     # 잡음을 막으면서 실제 발화 수준은 유지했다. 0으로 설정하면 비활성화할 수 있다.
     stt_vad_min_frame_rms: int = 250
     stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
+    # 노트북 스피커 재생 시 잔여 echo가 연속 speech로 보이는 오탐을 줄이는 2차
+    # duration gate. 브라우저 echoCancellation과 함께 적용한다.
+    stt_barge_in_min_speech_ms: int = 400
     # 종료 판정 침묵. 발화가 끝나고 AI가 말하기까지의 체감 지연에서 이 값이 가장 큰
     # 비중을 차지한다(나머지: STT 호출 + 슬롯·관련성 LLM 병렬 + TTS TTFB 실측 1.89s).
     # 3.0s는 아이가 문장 중간에 오래 쉬는 경우까지 감안한 상단값이었지만, 매 턴
@@ -237,12 +240,17 @@ class AppSettings:
             raise ValueError("STT_VAD_MIN_FRAME_RMS must be a non-negative integer")
         for name, value in (
             ("STT_MIN_SPEECH_MS", self.stt_min_speech_ms),
+            ("STT_BARGE_IN_MIN_SPEECH_MS", self.stt_barge_in_min_speech_ms),
             ("STT_PREROLL_MS", self.stt_preroll_ms),
         ):
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative integer")
         if self.stt_min_speech_ms == 0:
             raise ValueError("STT_MIN_SPEECH_MS must be positive")
+        if self.stt_barge_in_min_speech_ms < self.stt_min_speech_ms:
+            raise ValueError(
+                "STT_BARGE_IN_MIN_SPEECH_MS must be at least STT_MIN_SPEECH_MS"
+            )
         for name, value in (
             ("STT_TRAILING_SILENCE_SECONDS", self.stt_trailing_silence_seconds),
             ("STT_NO_SPEECH_TIMEOUT_SECONDS", self.stt_no_speech_timeout_seconds),
@@ -397,6 +405,10 @@ class AppSettings:
             stt_min_speech_ms=_parse_int(
                 values.get("STT_MIN_SPEECH_MS", "250"),
                 "STT_MIN_SPEECH_MS",
+            ),
+            stt_barge_in_min_speech_ms=_parse_int(
+                values.get("STT_BARGE_IN_MIN_SPEECH_MS", "400"),
+                "STT_BARGE_IN_MIN_SPEECH_MS",
             ),
             stt_trailing_silence_seconds=_parse_float(
                 values.get("STT_TRAILING_SILENCE_SECONDS", "1.0"),

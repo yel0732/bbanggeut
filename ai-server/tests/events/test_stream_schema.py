@@ -75,6 +75,29 @@ class TestEnvelopeShape:
 
 class TestPayloads:
     @pytest.mark.asyncio
+    async def test_ai_turn_interrupted(self) -> None:
+        event = await _publish_and_collect(
+            lambda p: p.publish_ai_turn_interrupted(
+                turn_id="turn_003",
+                turn_seq=3,
+                response_id="resp_003",
+                interrupted_at=_FIXED,
+                reason="CHILD_BARGE_IN",
+                interruption_id="int_003",
+            )
+        )
+
+        assert event["eventType"] == "AI_TURN_INTERRUPTED"
+        assert event["turnId"] == "turn_003"
+        assert event["turnSeq"] == 3
+        assert event["responseId"] == "resp_003"
+        assert event["payload"] == {
+            "interruptedAt": "2026-07-22T10:00:30+00:00",
+            "reason": "CHILD_BARGE_IN",
+            "interruptionId": "int_003",
+        }
+
+    @pytest.mark.asyncio
     async def test_child_turn_finalized(self) -> None:
         event = await _publish_and_collect(
             lambda p: p.publish_child_turn_finalized(

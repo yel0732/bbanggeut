@@ -729,7 +729,8 @@ class TestConversationOpening:
         )
 
         def stt_pipeline_factory(
-            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+            publisher, *, turn_sequencer, on_final, on_no_speech,
+            is_output_active=None, on_barge_in=None
         ):
             class _SinkStub:
                 async def aclose(self) -> None: ...
@@ -776,13 +777,15 @@ class TestSessionAssembly:
         captured: dict = {}
 
         def stt_pipeline_factory(
-            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+            publisher, *, turn_sequencer, on_final, on_no_speech,
+            is_output_active=None, on_barge_in=None
         ):
             captured.update(
                 sequencer=turn_sequencer,
                 on_final=on_final,
                 on_no_speech=on_no_speech,
                 is_output_active=is_output_active,
+                on_barge_in=on_barge_in,
             )
 
             class _SinkStub:
@@ -810,8 +813,9 @@ class TestSessionAssembly:
         assert session.state.snapshot.conversation.current_topic.value == "DAILY"
         assert captured["on_final"] == session.manager.handle_child_turn
         assert captured["on_no_speech"] == session.manager.handle_no_speech
-        # 합성이 없는(오디오 없는) 연결에는 재생될 오디오가 없으므로 게이트도 없다.
+        # 합성이 없는(오디오 없는) 연결에는 재생될 오디오와 Barge-in도 없다.
         assert captured["is_output_active"] is None
+        assert captured["on_barge_in"] is None
         await session.aclose()
 
     @pytest.mark.asyncio
@@ -832,9 +836,11 @@ class TestSessionAssembly:
         captured: dict = {}
 
         def stt_pipeline_factory(
-            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+            publisher, *, turn_sequencer, on_final, on_no_speech,
+            is_output_active=None, on_barge_in=None
         ):
             captured["is_output_active"] = is_output_active
+            captured["on_barge_in"] = on_barge_in
 
             class _SinkStub:
                 async def aclose(self) -> None: ...
@@ -850,6 +856,10 @@ class TestSessionAssembly:
                 return self.speaking
 
             def speak(self, *args) -> None: ...
+
+            def interrupt_response(self, response_id: str) -> bool:
+                self.speaking = False
+                return True
 
             async def aclose(self) -> None: ...
 
@@ -879,6 +889,8 @@ class TestSessionAssembly:
         assert gate() is False
         synth.speaking = True
         assert gate() is True  # 박제된 bool이 아니라 현재 값을 읽는다
+        assert captured["on_barge_in"]() is True
+        assert gate() is False
         await session.aclose()
 
     @pytest.mark.asyncio
@@ -973,6 +985,11 @@ class _RecordingStreamProducer:
                                   audio_started_at, audio_completed_at) -> None:
         self.calls.append(("AI_TURN_COMPLETED", turn_id, response_id))
 
+    def publish_ai_turn_interrupted(self, *, turn_id, turn_seq, response_id,
+                                    interrupted_at, reason, interruption_id) -> None:
+        self.calls.append(("AI_TURN_INTERRUPTED", turn_id, turn_seq, response_id,
+                           interrupted_at, reason, interruption_id))
+
     def publish_session_completed(self, *, reason, completed_at) -> None:
         self.calls.append(("SESSION_COMPLETED", reason))
 
@@ -991,6 +1008,36 @@ def _build_manager_with_stream(pipeline=None, snapshot=_TWO_TOPIC_SNAPSHOT):
 
 
 class TestStreamPublishing:
+    def test_barge_in_cancels_audio_and_publishes_both_event_paths(self) -> None:
+        manager, _, channel, stream, _ = _build_manager_with_stream()
+        cancelled: list[str] = []
+        manager.set_speak(lambda *args: None)
+        manager.set_interrupt_audio(
+            lambda response_id: cancelled.append(response_id) is None or True
+        )
+        manager._interruption_id_factory = lambda: "int_fixed"  # noqa: SLF001
+        manager.open_conversation()
+        response_id = next(
+            event["responseId"]
+            for event in channel.sent
+            if event["type"] == "assistant.response.created"
+        )
+
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is False
+
+        assert cancelled == [response_id]
+        interrupted = channel.sent[-1]
+        assert interrupted["type"] == "assistant.audio.interrupted"
+        assert interrupted["responseId"] == response_id
+        assert interrupted["payload"] == {
+            "reason": "CHILD_BARGE_IN",
+            "interruptionId": "int_fixed",
+        }
+        stream_event = next(c for c in stream.calls if c[0] == "AI_TURN_INTERRUPTED")
+        assert stream_event[3] == response_id
+        assert stream_event[5:] == ("CHILD_BARGE_IN", "int_fixed")
+
     @pytest.mark.asyncio
     async def test_child_and_ai_turns_publish_in_order(self) -> None:
         manager, _, _, stream, sequencer = _build_manager_with_stream(

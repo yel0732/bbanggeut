@@ -50,6 +50,10 @@ class ResponseAudioQueue:
         if self._flushed:
             return  # cancelled — silently drop late audio
         await self._queue.put(frame)
+        # flush() can wake a producer that was blocked on a full queue. Re-check
+        # after the await so that frame cannot remain queued after cancellation.
+        if self._flushed:
+            self.flush()
 
     def get_nowait(self) -> AudioFrame | None:
         try:
@@ -124,7 +128,7 @@ class SpeakerAudioTrack(MediaStreamTrack):
             await asyncio.sleep(wait)
 
     def _next_frame(self) -> AudioFrame:
-        if self._current is not None:
+        if self._current is not None and not self._current.is_flushed:
             frame = self._current.get_nowait()
             if frame is not None:
                 return frame

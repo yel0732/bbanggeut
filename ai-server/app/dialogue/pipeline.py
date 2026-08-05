@@ -902,6 +902,7 @@ class DialogueTurnPipeline:
                 assistant_question,
                 redirect_context,
                 request.child_answer,
+                turn_understanding.emotion,
             )
             generation_status = QuestionGenerationStatus.FALLBACK_USED
             generation_source = QuestionGenerationSource.RULE_BASED_FALLBACK
@@ -914,6 +915,7 @@ class DialogueTurnPipeline:
                     fallback_question,
                     redirect_context,
                     request.child_answer,
+                    turn_understanding.emotion,
                 )
                 assistant_question = fallback_question
             generation_status = generated.status
@@ -925,6 +927,7 @@ class DialogueTurnPipeline:
                 assistant_question,
                 redirect_context,
                 request.child_answer,
+                turn_understanding.emotion,
             )
             generation_status = generated.status
             generation_source = generated.source
@@ -1431,17 +1434,20 @@ def _fallback_assistant_message(
     question: str,
     redirect_context: QuestionRedirectContext | None,
     child_answer: str | None,
+    emotion: str | None = None,
 ) -> str:
     if redirect_context is None:
         return build_fallback_assistant_message(
             child_answer=child_answer,
             question=question,
+            emotion=emotion,
         )
     return build_fallback_assistant_message(
         child_answer=child_answer,
         question=question,
         bridge_hint=redirect_context.bridge_hint,
         child_question=redirect_context.child_question,
+        emotion=emotion,
     )
 
 

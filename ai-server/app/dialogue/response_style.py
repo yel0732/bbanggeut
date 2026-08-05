@@ -37,9 +37,35 @@ _POSITIVE_CUES: tuple[str, ...] = (
     "좋아",
     "행복",
     "기뻤",
+    # 어간만 두면 "멋져", "예뻤어" 같은 활용형이 전부 빠진다.
     "멋지",
+    "멋진",
+    "멋져",
+    "멋졌",
+    "멋있",
     "예쁘",
+    "예쁜",
+    "예뻐",
+    "예뻤",
+    "이쁘",
+    "이쁜",
+    "이뻐",
+    "이뻤",
     "칭찬",
+)
+
+# 지나간 일에 대한 공감과, 지금도 그러한 것에 대한 동의는 시제가 달라야 한다.
+# "나 멋지지?"에 "멋졌겠다"로 답하면 어색하다. 과거형을 먼저 검사한다.
+_PAST_PRAISE_REPLIES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("신기했",), "정말 신기했겠다!"),
+    (("멋졌", "멋있었"), "정말 멋졌겠다!"),
+    (("예뻤", "이뻤"), "정말 예뻤겠다!"),
+)
+
+_PRESENT_PRAISE_REPLIES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("신기",), "정말 신기하다!"),
+    (("멋지", "멋진", "멋져", "멋있"), "정말 멋지다!"),
+    (("예쁘", "예쁜", "예뻐", "이쁘", "이쁜", "이뻐"), "정말 예쁘다!"),
 )
 
 _INVITATION_CUES: tuple[str, ...] = (
@@ -115,12 +141,51 @@ _FRUIT_ACTION_CUES: tuple[str, ...] = (
 )
 
 
+# 이 턴에서 확인된 감정에 대한 응답. turn_understanding이 내보내는 감정은 닫힌
+# 집합이라 전부 대응해 둔다 — 하나라도 빠지면 문장 전체 매칭으로 새어 원인 절의
+# 낱말이 감정을 이긴다.
+_EMOTION_REPLIES: tuple[tuple[str, str], ...] = (
+    ("속상", "많이 속상했겠다."),
+    ("슬펐", "많이 속상했겠다."),
+    ("화났", "정말 화가 났겠다."),
+    ("아쉬", "많이 아쉬웠겠다."),
+    ("무서", "많이 무서웠겠다."),
+    ("싫었", "그건 마음이 안 좋을 수 있어."),
+    ("신기", "정말 신기했겠다!"),
+    ("멋졌", "정말 멋졌겠다!"),
+    ("행복", "정말 행복했겠다!"),
+    ("기뻤", "정말 좋았겠다!"),
+    ("좋았", "정말 좋았겠다!"),
+    ("재미", "재미있었겠다!"),
+)
+
+
+def _emotion_reply(normalized_emotion: str) -> str | None:
+    for cue, reply in _EMOTION_REPLIES:
+        if cue in normalized_emotion:
+            return reply
+    return None
+
+
+def _praise_reply(normalized: str) -> str | None:
+    """Pick a praise reply, keeping the tense of what the child said."""
+
+    for cues, reply in _PAST_PRAISE_REPLIES:
+        if any(cue in normalized for cue in cues):
+            return reply
+    for cues, reply in _PRESENT_PRAISE_REPLIES:
+        if any(cue in normalized for cue in cues):
+            return reply
+    return None
+
+
 def build_fallback_assistant_message(
     *,
     child_answer: str | None,
     question: str,
     bridge_hint: str | None = None,
     child_question: bool = False,
+    emotion: str | None = None,
 ) -> str:
     """Join one acknowledgement and one question without generic echoing."""
 
@@ -132,12 +197,26 @@ def build_fallback_assistant_message(
         return f"{_exclaim(reply)} {_exclaim(bridge)} {question}"
     if bridge_hint:
         return f"{_exclaim(bridge_hint)} {question}"
-    return f"{acknowledge_child_answer(child_answer)} {question}"
+    return f"{acknowledge_child_answer(child_answer, emotion=emotion)} {question}"
 
 
-def acknowledge_child_answer(child_answer: str | None) -> str:
-    """Return a short acknowledgement grounded in the latest child answer."""
+def acknowledge_child_answer(
+    child_answer: str | None,
+    *,
+    emotion: str | None = None,
+) -> str:
+    """Return a short acknowledgement grounded in the latest child answer.
 
+    ``emotion``은 이 턴에서 확인된 아이의 감정이다. 주어지면 그 값으로 먼저 고른다 —
+    문장 전체를 훑으면 원인 절의 낱말이 감정 절을 이긴다. "모래성이 예쁘게
+    만들어져서 기분이 좋았어"에서 아이가 말한 감정은 "좋았어"인데, 전체 매칭은
+    원인 쪽 "예쁘"를 잡아 엉뚱한 호응을 돌려준다.
+    """
+
+    if emotion is not None:
+        reply = _emotion_reply(_normalize(emotion))
+        if reply is not None:
+            return reply
     normalized = _normalize(child_answer or "")
     if any(cue in normalized for cue in _NEGATIVE_CUES):
         if any(cue in normalized for cue in ("놀렸", "새치기")):
@@ -172,10 +251,13 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
             return "맛있어서 정말 좋았겠다!"
         if "칭찬" in normalized:
             return "칭찬을 받아서 정말 좋았겠다!"
-        if any(cue in normalized for cue in ("신기", "멋지", "예쁘")):
-            return "정말 신기했겠다!"
+        praise = _praise_reply(normalized)
+        if praise is not None:
+            return praise
         if "행복" in normalized:
             return "정말 행복했겠다!"
+        if any(cue in normalized for cue in ("좋았", "기뻤")):
+            return "정말 좋았겠다!"
         return "재미있었겠다!"
     if any(cue in normalized for cue in _BIRTHDAY_CUES):
         return "생일 이야기를 들으니 따뜻해."
@@ -371,6 +453,8 @@ def safe_child_question_reply(
             return "응, 정말 멋지다!"
         if "신기" in normalized:
             return "응, 정말 신기하다!"
+        if any(cue in normalized for cue in ("예쁘", "예뻐", "이쁘", "이뻐")):
+            return "응, 정말 예쁘다!"
         return "응, 정말 재미있겠다!"
     if "몇점" in normalized or "점받" in normalized or "점수" in normalized:
         return "나는 점수를 받지는 않지만, 네 점수 이야기는 궁금해."

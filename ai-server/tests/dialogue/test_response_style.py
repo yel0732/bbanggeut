@@ -6,6 +6,34 @@ from app.dialogue.response_style import (
 )
 
 
+def test_stated_emotion_wins_over_words_in_the_reason_clause() -> None:
+    """아이가 말한 감정이 원인 절의 낱말보다 앞선다.
+
+    "모래성이 예쁘게 만들어져서 기분이 좋았어"에서 아이의 감정은 "좋았어"인데,
+    문장 전체를 훑으면 원인 쪽 "예쁘"가 이겨 엉뚱한 호응이 나간다.
+    """
+
+    answer = "모래성이 엄청 예쁘게 만들어져서 기분이 엄청 좋았어요"
+
+    assert acknowledge_child_answer(answer, emotion="좋았어") == "정말 좋았겠다!"
+
+
+def test_praise_reply_keeps_the_tense_the_child_used() -> None:
+    """"나 멋지지?"에 "멋졌겠다"로 답하면 어색하다."""
+
+    assert acknowledge_child_answer("모래성이 멋져") == "정말 멋지다!"
+    assert acknowledge_child_answer("모래성이 멋졌어") == "정말 멋졌겠다!"
+    assert acknowledge_child_answer("모래성이 예뻐") == "정말 예쁘다!"
+    assert acknowledge_child_answer("모래성이 예뻤어") == "정말 예뻤겠다!"
+
+
+def test_pretty_is_not_answered_as_surprising() -> None:
+    """예쁘다·멋지다는 신기하다와 다른 감정이다."""
+
+    assert acknowledge_child_answer("모래성이 예쁘다") != "정말 신기했겠다!"
+    assert acknowledge_child_answer("신기해") == "정말 신기하다!"
+
+
 def test_negative_event_without_emotion_gets_empathy() -> None:
     assert acknowledge_child_answer(
         "놀이터에서 그네 타고 싶은데 언니가 안 나와서 못탔어"

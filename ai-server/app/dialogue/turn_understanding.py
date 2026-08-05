@@ -229,10 +229,10 @@ def understand_child_turn(
         satisfied.add(QuestionTarget.MEMORABLE_MOMENT)
 
     return TurnUnderstanding(
-        event=event,
+        event=_to_plain_statement(event),
         emotion=emotion,
         emotion_reason=_clean_phrase(reason),
-        memorable_moment=_clean_phrase(memorable),
+        memorable_moment=_to_plain_statement(_clean_phrase(memorable)),
         child_question=child_question,
         continue_request=continue_request,
         negative_event=negative_event,
@@ -356,6 +356,48 @@ def _clean_phrase(value: str | None) -> str | None:
         return None
     cleaned = value.strip(" ,.!?~")
     return cleaned or None
+
+
+_HANGUL_BASE = 0xAC00
+_HANGUL_LAST = 0xD7A3
+_JONGSEONG_COUNT = 28
+_JONGSEONG_SSANG_SIOT = 20  # 과거 시제를 나타내는 받침 ㅆ
+
+
+def _has_past_tense_batchim(syllable: str) -> bool:
+    code = ord(syllable)
+    if not _HANGUL_BASE <= code <= _HANGUL_LAST:
+        return False
+    return (code - _HANGUL_BASE) % _JONGSEONG_COUNT == _JONGSEONG_SSANG_SIOT
+
+
+def _to_plain_statement(value: str | None) -> str | None:
+    """Normalize a spoken sentence ending to the plain form slots are stored in.
+
+    슬롯은 계약상 평서형으로 저장한다(docs/CHILD_DIARY_AI_CONTRACT.md의 요청 예시).
+    LLM 슬롯 분석이 실패하거나 주제 전환으로 이 경로가 쓰이면 아이 발화가 그대로
+    슬롯에 담기는데, 일기·리포트가 슬롯을 문장으로 옮겨 적으므로 "학원에서
+    게임했어"처럼 말투가 섞인 줄이 그대로 나간다.
+
+    "했어/었어/았어"를 문자열로 나열하면 "갔어", "잘랐어"처럼 어간과 축약된 형태를
+    놓친다. 대신 종결 "어(요)" 앞 음절에 과거 시제 받침 ㅆ이 있는지 보고 "다"로
+    바꾼다 — 갔어→갔다, 잘랐어→잘랐다, 생일이었어→생일이었다가 모두 잡힌다.
+
+    조건에 맞지 않으면 원문을 그대로 둔다. 어설프게 고쳐 비문을 만드는 것보다
+    말투가 남는 편이 낫다.
+    """
+
+    if value is None:
+        return None
+    normalized = value.rstrip()
+    for ending in ("어요", "어"):
+        if not normalized.endswith(ending):
+            continue
+        stem = normalized[: -len(ending)]
+        if stem and _has_past_tense_batchim(stem[-1]):
+            return f"{stem}다"
+        return value
+    return value
 
 
 def _contains_any(value: str, cues: tuple[str, ...]) -> bool:

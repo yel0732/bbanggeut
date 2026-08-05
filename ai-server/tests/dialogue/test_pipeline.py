@@ -2009,7 +2009,7 @@ async def test_game_refusal_carries_daily_story_into_next_topic() -> None:
 
     assert result.decision is DialogueTurnDecision.SWITCH_TOPIC
     assert result.next_topic_slots is not None
-    assert result.next_topic_slots.event == "놀이터에서 그네 못 타서 속상했어"
+    assert result.next_topic_slots.event == "놀이터에서 그네 못 타서 속상했다"
     assert result.next_topic_slots.emotion == "속상했어"
     assert result.next_topic_slots.emotion_reason == "놀이터에서 그네 못 타서"
     assert "그래, 그럼 다른 얘기하자" in result.assistant_message
@@ -2049,7 +2049,7 @@ async def test_game_refusal_daily_cake_story_gets_clear_transition() -> None:
 
     assert result.decision is DialogueTurnDecision.SWITCH_TOPIC
     assert result.next_topic_slots is not None
-    assert result.next_topic_slots.event == "오늘 케이크 먹었어"
+    assert result.next_topic_slots.event == "오늘 케이크 먹었다"
     assert "그래, 그럼 다른 얘기하자" in result.assistant_message
     assert "케이크" in result.assistant_message
     assert "그 일이 기억에 남았구나" not in result.assistant_message
@@ -2158,7 +2158,7 @@ async def test_child_question_and_game_event_are_both_preserved() -> None:
     ).process(request)
 
     assert result.decision is DialogueTurnDecision.CONTINUE
-    assert result.updated_slots.event == "오늘 1000점 맞았어"
+    assert result.updated_slots.event == "오늘 1000점 맞았다"
     assert "직접 게임하진 못하지만" in result.assistant_message
     assert result.assistant_target is QuestionTarget.EMOTION
 

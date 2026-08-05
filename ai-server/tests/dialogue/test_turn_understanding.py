@@ -67,7 +67,7 @@ def test_child_question_does_not_block_diary_content() -> None:
     )
 
     assert understanding.child_question is True
-    assert understanding.event == "오늘 1000점 맞았어"
+    assert understanding.event == "오늘 1000점 맞았다"
     assert QuestionTarget.EVENT in understanding.satisfied_targets
 
 
@@ -80,8 +80,8 @@ def test_memorable_action_answer_is_kept_as_story_detail() -> None:
     )
 
     assert understanding.child_question is False
-    assert understanding.event == "나 수박도 잘랐어"
-    assert understanding.memorable_moment == "나 수박도 잘랐어"
+    assert understanding.event == "나 수박도 잘랐다"
+    assert understanding.memorable_moment == "나 수박도 잘랐다"
     assert QuestionTarget.MEMORABLE_MOMENT in understanding.satisfied_targets
 
 
@@ -108,7 +108,7 @@ def test_brag_question_tail_keeps_story_but_drops_tail() -> None:
 
     assert understanding.child_question is True
     assert understanding.diary_content == "내가 수박을 한 번에 여러 개 잘랐어"
-    assert understanding.memorable_moment == "내가 수박을 한 번에 여러 개 잘랐어"
+    assert understanding.memorable_moment == "내가 수박을 한 번에 여러 개 잘랐다"
 
 
 def test_topic_refusal_keeps_following_daily_story() -> None:
@@ -122,9 +122,39 @@ def test_topic_refusal_keeps_following_daily_story() -> None:
     )
 
     assert understanding.topic_refusal is True
-    assert understanding.event == "놀이터에서 그네 못 타서 속상했어"
+    assert understanding.event == "놀이터에서 그네 못 타서 속상했다"
     assert understanding.emotion == "속상했어"
     assert understanding.emotion_reason == "놀이터에서 그네 못 타서"
+
+
+def test_spoken_endings_are_stored_as_plain_statements() -> None:
+    """슬롯은 계약대로 평서형으로 담긴다.
+
+    아이 말투가 그대로 남으면 일기가 그 문장을 옮겨 적어 "학원에서 게임했어."처럼
+    한 편 안에서 문체가 섞인다.
+    """
+
+    understanding = understand_child_turn(
+        child_answer="놀이터에 갔어",
+        current_question="오늘 무슨 일이 있었어?",
+        asked_target=QuestionTarget.EVENT,
+        current_slots=DiarySlots(),
+    )
+
+    assert understanding.event == "놀이터에 갔다"
+
+
+def test_non_past_endings_are_left_untouched() -> None:
+    """과거형이 아니면 손대지 않는다. 어설픈 변환이 비문을 만드는 것보다 낫다."""
+
+    understanding = understand_child_turn(
+        child_answer="그네를 타고 싶어",
+        current_question="오늘 무슨 일이 있었어?",
+        asked_target=QuestionTarget.EVENT,
+        current_slots=DiarySlots(),
+    )
+
+    assert understanding.event == "그네를 타고 싶어"
 
 
 def test_topic_refusal_without_story_fills_no_slot() -> None:
@@ -164,7 +194,7 @@ def test_topic_refusal_ignores_finished_topic_question() -> None:
 
     assert understanding.topic_refusal is True
     # 동작 동사가 없어도 아이가 먼저 꺼낸 이야기는 사건으로 받는다.
-    assert understanding.event == "오늘 할머니 생일이었어"
+    assert understanding.event == "오늘 할머니 생일이었다"
     assert understanding.emotion is None
     assert understanding.emotion_reason is None
     assert understanding.memorable_moment is None

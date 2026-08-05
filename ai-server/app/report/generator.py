@@ -42,6 +42,50 @@ class ReportGenerationError(RuntimeError):
     """Sanitized error crossing the internal HTTP boundary."""
 
 
+class _NarrativeVoiceError(ValueError):
+    """Generated story broke a voice or sourcing rule.
+
+    스키마 오류와 달리 같은 입력으로 다시 시키면 고쳐지는 종류라 재시도 대상이다.
+    여기서 폴백으로 넘기면 결정론적 템플릿(`-다`체)이 나가 문체가 더 어긋난다.
+    """
+
+
+# 아이 답변을 다시 서술하지 않고 AI 발화를 그대로 옮겼는지 볼 때 쓰는 하한.
+# 짧은 조각은 우연히 겹칠 수 있어 문장 수준 길이부터 본다.
+_MIN_COPIED_TURN_LENGTH = 8
+
+
+def _assert_report_voice(
+    narrative: _GeneratedNarrative,
+    request: DailyReportSummaryRequest,
+) -> None:
+    """Reject a story that changed voice or leaned on the assistant's words."""
+
+    for sentence in _split_sentences(narrative.daily_story):
+        if not sentence.endswith("요"):
+            raise _NarrativeVoiceError("dailyStory must stay in the -요 voice")
+
+    story = narrative.daily_story
+    for turn in request.conversations:
+        if turn.speaker != "AI":
+            continue
+        spoken = turn.content.strip()
+        if len(spoken) >= _MIN_COPIED_TURN_LENGTH and spoken in story:
+            raise _NarrativeVoiceError("dailyStory must not copy an AI turn")
+
+
+def _split_sentences(story: str) -> tuple[str, ...]:
+    sentences: list[str] = []
+    current = story
+    for mark in (".", "!", "?", "。"):
+        current = current.replace(mark, "\n")
+    for chunk in current.split("\n"):
+        trimmed = chunk.strip().strip("\"'“”‘’)]")
+        if trimmed:
+            sentences.append(trimmed)
+    return tuple(sentences)
+
+
 @dataclass(frozen=True)
 class DailyReportGenerator:
     provider: ReportTextProvider
@@ -59,6 +103,7 @@ class DailyReportGenerator:
                     timeout=self.timeout_seconds,
                 )
                 narrative = _parse_narrative(raw)
+                _assert_report_voice(narrative, request)
                 return DailyReportSummaryResponse(
                     title=narrative.title.strip(),
                     dailyStory=narrative.daily_story.strip(),
@@ -73,6 +118,9 @@ class DailyReportGenerator:
                 retryable = True
             except QuestionProviderError as error:
                 retryable = error.retryable
+            # _NarrativeVoiceError는 ValueError 하위라 아래 분기보다 먼저 잡아야 한다.
+            except _NarrativeVoiceError:
+                retryable = True
             except (ValueError, ValidationError, json.JSONDecodeError):
                 retryable = False
             if not retryable or attempt + 1 >= self.max_attempts:

@@ -26,6 +26,13 @@ spring:
       max-request-size: 12MB
 
 report:
+  # conversation.ai·child-diary.ai와 같은 자리에 둔다. prod 문서에만 있으면 로컬에서
+  # 바인딩되지 않는데, enabled가 원시 boolean이라 false가 되어 에러도 로그도 없이
+  # 결정론적 요약으로만 흐른다.
+  ai:
+    enabled: ${REPORT_AI_ENABLED:true}
+    base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
+    timeout: ${REPORT_AI_TIMEOUT:PT12S}
   schedule:
     enabled: ${REPORT_SCHEDULE_ENABLED:false}
     cron: ${REPORT_DAILY_CRON:0 * * * * *}
@@ -258,10 +265,6 @@ management:
         include: health,metrics
 
 report:
-  ai:
-    enabled: ${REPORT_AI_ENABLED:true}
-    base-url: ${AI_SERVER_BASE_URL:http://127.0.0.1:8000}
-    timeout: ${REPORT_AI_TIMEOUT:PT12S}
   schedule:
     enabled: ${REPORT_SCHEDULE_ENABLED:true}
   recovery:

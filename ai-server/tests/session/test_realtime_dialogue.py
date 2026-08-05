@@ -1050,6 +1050,100 @@ def _build_manager_with_stream(pipeline=None, snapshot=_TWO_TOPIC_SNAPSHOT):
     return manager, state, channel, stream, sequencer
 
 
+class TestBargeInEchoGuard:
+    """CHILD_BARGE_IN 직후 첫 턴이 중단된 발화의 에코이면 대화에 넣지 않는다."""
+
+    def _interrupted_manager(self):
+        manager, state, channel, stream, sequencer = _build_manager_with_stream()
+        spoken: list[str] = []
+        manager.set_speak(
+            lambda turn_id, turn_seq, response_id, text: spoken.append(text)
+        )
+        manager.set_interrupt_audio(lambda response_id: True)
+        manager.open_conversation()
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+        return manager, state, stream, sequencer, spoken
+
+    @pytest.mark.asyncio
+    async def test_echo_is_discarded_and_the_question_respoken_once(self) -> None:
+        manager, _, stream, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        # 에코 턴은 확정하지 않는다 — MySQL 원문이 AI의 말로 오염되면 안 된다.
+        assert all(call[0] != "CHILD_TURN_FINALIZED" for call in stream.calls)
+        # 중단된 발화를 같은 내용의 새 AI 턴으로 다시 말한다.
+        assert spoken == [question, question]
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_echo_is_not_respoken_again(self) -> None:
+        """재발화도 에코로 끊기는 환경(AEC 고장)에서 자기-중단 루프를 만들지
+        않는다 — 두 번째부터는 폐기만 하고 무응답 사다리에 맡긴다."""
+
+        manager, _, _, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        assert spoken == [question, question]
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_barge_in_turn_reaches_the_dialogue(self) -> None:
+        manager, _, stream, sequencer, _ = self._interrupted_manager()
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result("블록 놀이 했어")
+        )
+
+        assert any(call[0] == "CHILD_TURN_FINALIZED" for call in stream.calls)
+
+    @pytest.mark.asyncio
+    async def test_the_guard_is_consumed_by_the_first_turn_only(self) -> None:
+        """진짜 발화가 지나가면 그 다음 턴은 에코 후보 없이 정상 처리된다."""
+
+        manager, _, stream, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result("블록 놀이 했어")
+        )
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        finalized = [c for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED"]
+        assert len(finalized) == 2
+
+    @pytest.mark.asyncio
+    async def test_user_requested_interrupt_does_not_arm_the_guard(self) -> None:
+        """버튼 중단의 다음 발화는 인과상 아이의 진짜 말이다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+        spoken: list[str] = []
+        manager.set_speak(
+            lambda turn_id, turn_seq, response_id, text: spoken.append(text)
+        )
+        manager.set_interrupt_audio(lambda response_id: True)
+        manager.open_conversation()
+        question = spoken[0]
+        assert manager.interrupt_current_response("USER_REQUESTED") is True
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        assert any(call[0] == "CHILD_TURN_FINALIZED" for call in stream.calls)
+
+
 class TestStreamPublishing:
     def test_barge_in_cancels_audio_and_publishes_both_event_paths(self) -> None:
         manager, _, channel, stream, _ = _build_manager_with_stream()

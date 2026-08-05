@@ -62,6 +62,24 @@ REQUIRED_DIALOGUE_TARGETS = frozenset(
 )
 
 
+def _configure_logging(level_name: str) -> None:
+    """앱 로거를 콘솔로 내보낸다 — uvicorn은 자기 로거만 구성한다.
+
+    root에 핸들러가 없으면 파이프라인 진단 로그(barge-in 판정, output-active
+    vad window, 에코 폐기)가 어디에도 출력되지 않는다(실측: 로그 부재로 barge-in
+    미확정 원인을 진단할 수 없었다). ``basicConfig``는 root에 핸들러가 이미
+    있으면(pytest, 임베딩 환경) 아무것도 바꾸지 않는다.
+    """
+
+    logging.basicConfig(
+        level=getattr(logging, level_name.upper()),
+        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+    )
+    # ICE 후보 검사는 연결마다 수십 줄을 쏟아내 대화 진단을 덮는다. 실패는
+    # WARNING 이상으로 여전히 보인다.
+    logging.getLogger("aioice").setLevel(logging.WARNING)
+
+
 def create_app(
     settings: AppSettings | None = None,
     *,
@@ -77,6 +95,7 @@ def create_app(
             if settings is None
             else settings
         )
+        _configure_logging(resolved_settings.log_level)
         http_client = httpx.AsyncClient(
             base_url=resolved_settings.gms_base_url,
             timeout=None,

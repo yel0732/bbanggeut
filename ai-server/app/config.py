@@ -87,8 +87,20 @@ class AppSettings:
     stream_publish_max_attempts: int = 3
     stream_publish_retry_seconds: float = 0.5
     stream_outbox_size: int = 256
+    # 앱 로거의 콘솔 출력 레벨. uvicorn은 자기 로거만 구성하므로 파이프라인
+    # 진단 로그(barge-in 판정, output-active vad window)는 앱이 직접 내보낸다.
+    log_level: str = "INFO"
+
+    _LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
     def __post_init__(self) -> None:
+        if (
+            not isinstance(self.log_level, str)
+            or self.log_level.upper() not in self._LOG_LEVELS
+        ):
+            raise ValueError(
+                "LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
             raise ValueError("GMS_KEY must contain non-whitespace text")
         parsed_url = urlparse(self.gms_base_url)
@@ -447,6 +459,7 @@ class AppSettings:
                 values.get("TTS_TIMEOUT_SECONDS", "10"),
                 "TTS_TIMEOUT_SECONDS",
             ),
+            log_level=str(values.get("LOG_LEVEL", "INFO")).strip().upper(),
             stream_publish_max_attempts=_parse_int(
                 values.get("STREAM_PUBLISH_MAX_ATTEMPTS", "3"),
                 "STREAM_PUBLISH_MAX_ATTEMPTS",

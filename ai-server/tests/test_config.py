@@ -224,6 +224,7 @@ def test_supports_legacy_model_for_analysis_only() -> None:
         {"GMS_KEY": "key", "STREAM_PUBLISH_MAX_ATTEMPTS": "0"},
         {"GMS_KEY": "key", "STREAM_OUTBOX_SIZE": "0"},
         {"GMS_KEY": "key", "STREAM_PUBLISH_RETRY_SECONDS": "0"},
+        {"GMS_KEY": "key", "LOG_LEVEL": "loud"},
     ],
 )
 def test_rejects_invalid_settings(environment: dict[str, str]) -> None:

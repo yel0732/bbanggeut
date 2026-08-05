@@ -1,6 +1,8 @@
 import type { RealtimeSessionResponse } from '@/api/conversations'
 import {
+  CLIENT_INTERRUPT_EVENT,
   CLIENT_READY_EVENT,
+  type ClientInterruptPayload,
   type ConversationEventEnvelope,
   type SignalingIncoming,
   type SignalingOutgoing,
@@ -29,8 +31,8 @@ const DATA_CHANNEL_LABEL = 'conversation-events'
 
 /*
   ADR-020 클라이언트 오디오 요구사항. 브라우저 기본값에 기대지 않고 명시한다.
-  echoCancellation은 AI 자기 음성이 다시 들어가는 것을 막고(서버 입력 게이트의
-  이중화), noiseSuppression은 서버 VAD의 턴 종료 판정을 배경음에서 보호하며,
+  echoCancellation은 AI 자기 음성이 다시 들어가 Barge-in으로 오인되는 것을 막고,
+  noiseSuppression은 서버 VAD의 턴 종료 판정을 배경음에서 보호하며,
   autoGainControl은 작게 말하는 아이의 발화를 끌어올린다.
 */
 const MICROPHONE_CONSTRAINTS: MediaTrackConstraints = {
@@ -135,6 +137,14 @@ export class RealtimeConversationClient {
     this.localStream?.getAudioTracks().forEach((track) => {
       track.enabled = enabled
     })
+  }
+
+  interruptAssistant(responseId?: string) {
+    const payload: ClientInterruptPayload = {
+      reason: 'USER_REQUESTED',
+      ...(responseId === undefined ? {} : { responseId }),
+    }
+    this.sendConversationEvent(CLIENT_INTERRUPT_EVENT, payload)
   }
 
   /** 여러 번 불러도 안전하다. */

@@ -292,23 +292,65 @@ public class ConversationReportAdapter
             parts.add(slots.event().trim());
         }
         if (hasText(slots.people())) {
-            parts.add(String.join(", ", slots.people()) + "와 함께했다");
+            String people = String.join(", ", slots.people());
+            parts.add(people + withBatchim(people, "과", "와") + " 함께했다");
         }
         if (hasText(slots.place())) {
-            parts.add("장소는 " + slots.place().trim() + "였다");
+            String place = slots.place().trim();
+            parts.add("장소는 " + place + withBatchim(place, "이었다", "였다"));
         }
         if (hasText(slots.emotion())) {
-            String emotion = "기분은 " + slots.emotion().trim() + "했다";
+            // 감정 슬롯에는 "즐거웠어"처럼 이미 서술형이 들어온다. 여기에 "했다"를
+            // 덧붙이면 "기분은 즐거웠어했다"가 된다.
+            String emotion = "기분은 " + toPlainStatement(slots.emotion().trim());
             if (hasText(slots.emotionReason())) {
                 emotion += ". " + slots.emotionReason().trim();
             }
             parts.add(emotion);
         }
         if (hasText(slots.memorableMoment())) {
+            String moment = slots.memorableMoment().trim();
             parts.add("기억에 남는 순간은 "
-                    + slots.memorableMoment().trim() + "였다");
+                    + moment + withBatchim(moment, "이었다", "였다"));
         }
         return parts.isEmpty() ? "" : String.join(". ", parts) + ".";
+    }
+
+    private static final char HANGUL_BASE = 0xAC00;
+    private static final char HANGUL_LAST = 0xD7A3;
+    private static final int JONGSEONG_COUNT = 28;
+
+    /** 받침이 있으면 {@code whenBatchim}, 없으면 {@code whenNone}을 고른다. */
+    private String withBatchim(String value, String whenBatchim, String whenNone) {
+        char last = value.charAt(value.length() - 1);
+        if (last < HANGUL_BASE || last > HANGUL_LAST) {
+            return whenNone;
+        }
+        return (last - HANGUL_BASE) % JONGSEONG_COUNT == 0 ? whenNone : whenBatchim;
+    }
+
+    /**
+     * 구어체 종결어미를 평서형으로 바꾼다. 슬롯에는 아이 표현이 그대로 담기므로
+     * 문장으로 이어 붙이기 전에 어미를 맞춘다. 바꿀 어미가 없으면 원문을 둔다.
+     */
+    private String toPlainStatement(String value) {
+        for (String ending : new String[] {"어요", "어"}) {
+            if (!value.endsWith(ending)) {
+                continue;
+            }
+            String stem = value.substring(0, value.length() - ending.length());
+            if (stem.isEmpty()) {
+                return value;
+            }
+            char last = stem.charAt(stem.length() - 1);
+            // 과거 시제 받침 ㅆ(종성 20)이면 "했어 → 했다"처럼 평서형으로 바꾼다.
+            if (last >= HANGUL_BASE && last <= HANGUL_LAST
+                    && (last - HANGUL_BASE) % JONGSEONG_COUNT == 20) {
+                return stem + "다";
+            }
+            return value;
+        }
+        return value;
     }
 
     private void addIfPresent(LinkedHashSet<String> target, String value) {

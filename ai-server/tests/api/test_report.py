@@ -65,7 +65,7 @@ async def test_generates_daily_report_summary() -> None:
             "questions": ["어떤 순간이 즐거웠어?"],
         },
         "modelVersion": "gpt-5-mini",
-        "promptVersion": "daily-report-v2",
+        "promptVersion": "daily-report-v3",
     }
 
 

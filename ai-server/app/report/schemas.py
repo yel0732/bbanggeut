@@ -3,6 +3,10 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+# 백엔드도 verifiedQuotes에서 같은 수만 남긴다. 두 곳이 어긋나지 않도록 여기서 정한다.
+MAX_NOTABLE_QUOTES = 3
+
+
 class ReportGameInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -74,7 +78,7 @@ class DailyReportSummaryResponse(BaseModel):
     )
     interests: tuple[str, ...] = Field(default_factory=tuple, max_length=10)
     notable_quotes: tuple[str, ...] = Field(
-        alias="notableQuotes", default_factory=tuple, max_length=3
+        alias="notableQuotes", default_factory=tuple, max_length=MAX_NOTABLE_QUOTES
     )
     conversation_guide: ReportConversationGuide = Field(alias="conversationGuide")
     model_version: str = Field(alias="modelVersion", min_length=1, max_length=100)

@@ -16,7 +16,8 @@ def test_past_story_with_together_is_not_invitation() -> None:
     answer = "철수랑 같이 시소도 타고 미끄럼틀도 탔어"
 
     assert not is_child_invitation(answer)
-    assert acknowledge_child_answer(answer) == "시소 타고 놀아서 재미있었겠다!"
+    # 아이가 감정을 말하지 않았으므로 재미있었다고 정해 주지 않는다.
+    assert acknowledge_child_answer(answer) == "시소 이야기 해줬구나!"
 
 
 def test_invitation_requires_inviting_ending() -> None:

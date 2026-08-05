@@ -103,13 +103,11 @@ _GAME_CUES: tuple[str, ...] = (
     "게임",
     "점",
     "맞았",
-    "로블록스",
     "과일",
 )
 
 _FRUIT_ACTION_CUES: tuple[str, ...] = (
     "과일",
-    "수박",
     "자르",
     "잘랐",
     "잘려",
@@ -167,7 +165,9 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
         return "쉽지 않은 일이었겠다."
     if any(cue in normalized for cue in _POSITIVE_CUES):
         if any(cue in normalized for cue in _BIRTHDAY_CUES):
-            return "생일 케이크라서 더 맛있었겠다!"
+            # 무엇을 먹었는지는 아이가 말해야 안다. 케이크로 단정하면 잡채를
+            # 말한 아이에게 케이크 이야기를 돌려주게 된다.
+            return "생일이라 더 특별했겠다!"
         if any(cue in normalized for cue in _FOOD_CUES):
             return "맛있어서 정말 좋았겠다!"
         if "칭찬" in normalized:
@@ -181,15 +181,18 @@ def acknowledge_child_answer(child_answer: str | None) -> str:
         return "생일 이야기를 들으니 따뜻해."
     if any(cue in normalized for cue in _FOOD_CUES):
         return "맛있는 걸 먹은 이야기를 해줬구나!"
+    # 여기까지 왔다는 것은 아이가 좋았다고도 속상했다고도 말하지 않았다는 뜻이다.
+    # 그런 답에 "재미있었겠다"를 붙이면 아이가 말하지 않은 감정을 정해 준다.
+    # 아이가 실제로 꺼낸 놀이 기구만 되짚어 구체성은 남긴다.
     if any(cue in normalized for cue in _PLAYGROUND_CUES):
         if any(cue in normalized for cue in _PLAYGROUND_ACTION_CUES):
             if "그네" in normalized:
-                return "그네 타고 놀아서 재미있었겠다!"
+                return "그네 이야기 해줬구나!"
             if "시소" in normalized:
-                return "시소 타고 놀아서 재미있었겠다!"
+                return "시소 이야기 해줬구나!"
             if "미끄럼틀" in normalized:
-                return "미끄럼틀도 재미있었겠다!"
-            return "놀이터에서 재미있게 놀았겠다!"
+                return "미끄럼틀 이야기 해줬구나!"
+            return "놀이터에서 놀았구나!"
         return "놀이터에서 있었던 일을 말해줬구나!"
     if any(cue in normalized for cue in _FRUIT_ACTION_CUES):
         return "과일 자른 이야기를 해줬구나!"
@@ -299,16 +302,20 @@ def transition_acknowledgement(child_answer: str | None) -> str:
     if "화" in normalized:
         return "정말 화가 났겠다."
     if any(cue in normalized for cue in _BIRTHDAY_CUES):
+        # 생일에 먹은 것이 케이크라는 보장은 없다. 아이가 케이크를 말했을 때만
+        # 케이크로 받는다(아래 분기).
         if any(cue in normalized for cue in _FOOD_CUES):
-            return "케이크 맛있었겠다!"
+            return "생일에 맛있는 것도 먹었구나!"
         return "생일 이야기를 들려줬구나!"
     if "케이크" in normalized:
         return "케이크 맛있었겠다!"
     if any(cue in normalized for cue in _FOOD_CUES):
         return "맛있는 걸 먹었구나!"
     if any(cue in normalized for cue in _PLAYGROUND_CUES):
+        # 무엇을 못 탔는지는 아이가 말한 기구를 따른다. 그네로 고정하면
+        # 미끄럼틀을 말한 아이에게 그네 이야기를 돌려주게 된다.
         if any(cue in normalized for cue in ("못타", "못탔", "새치기", "안비켜")):
-            return "그네를 못 타서 많이 아쉬웠겠다."
+            return "못 타서 많이 아쉬웠겠다."
         return "놀이터 이야기를 들려줬구나!"
     return acknowledge_child_answer(child_answer)
 
@@ -368,7 +375,9 @@ def safe_child_question_reply(
     if "몇점" in normalized or "점받" in normalized or "점수" in normalized:
         return "나는 점수를 받지는 않지만, 네 점수 이야기는 궁금해."
     if "어떻게" in normalized or "뭐라고" in normalized or "어떤말" in normalized:
-        return "그럴 땐 '나도 타고 싶어'라고 말해볼 수 있어."
+        # 무엇에 대한 물음인지 모르는 자리다. 순서를 기다리는 상황으로 단정해
+        # "나도 타고 싶어"를 알려주면 전혀 다른 질문에도 그 말이 나간다.
+        return "그럴 땐 네 마음을 그대로 말해도 괜찮아."
     if any(cue in normalized for cue in _PLAYGROUND_CUES) and (
         "타봤" in normalized
         or "타본" in normalized

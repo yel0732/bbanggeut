@@ -1608,7 +1608,7 @@ async def test_playground_contextual_followup_gets_warm_ack() -> None:
 
     assert result.decision is DialogueTurnDecision.CONTINUE
     assert result.assistant_question == "내일은 뭐하고 싶어?"
-    assert "시소 타고 놀아서 재미있었겠다" in result.assistant_message
+    assert "시소 이야기 해줬구나" in result.assistant_message
 
 
 @pytest.mark.asyncio
@@ -1646,7 +1646,7 @@ async def test_together_playground_story_is_not_invitation() -> None:
     assert result.decision is DialogueTurnDecision.CONTINUE
     assert result.assistant_question == "내일은 뭐하고 싶어?"
     assert "같이 하자고" not in result.assistant_message
-    assert "시소 타고 놀아서 재미있었겠다" in result.assistant_message
+    assert "시소 이야기 해줬구나" in result.assistant_message
 
 
 @pytest.mark.asyncio

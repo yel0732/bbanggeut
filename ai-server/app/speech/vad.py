@@ -37,8 +37,13 @@ class VoiceActivityDetector(Protocol):
         """The exact frame length this detector accepts."""
         ...
 
-    def is_speech(self, frame: bytes) -> bool:
-        """Judge one frame of ``frame_milliseconds`` mono s16 PCM."""
+    def is_speech(self, frame: bytes, *, min_frame_rms: int | None = None) -> bool:
+        """Judge one frame of ``frame_milliseconds`` mono s16 PCM.
+
+        ``min_frame_rms``가 주어지면 이 호출에 한해 구성된 에너지 플로어를
+        대체한다. AI 출력 중에는 브라우저 AEC의 double-talk 억제로 아이 음성이
+        감쇠되어 평상시 플로어에 걸리므로, barge-in 판정은 낮은 플로어를 쓴다.
+        """
         ...
 
 
@@ -76,15 +81,16 @@ class WebrtcVoiceActivityDetector:
     @property
     def frame_milliseconds(self) -> int:
         return VAD_FRAME_MILLISECONDS
-    def is_speech(self, frame: bytes) -> bool:
+    def is_speech(self, frame: bytes, *, min_frame_rms: int | None = None) -> bool:
         if len(frame) != self._frame_bytes:
             raise ValueError("frame length does not match the VAD frame size")
-        if self._min_frame_rms > 0 and _frame_rms(frame) < self._min_frame_rms:
+        floor = self._min_frame_rms if min_frame_rms is None else min_frame_rms
+        if floor > 0 and frame_rms(frame) < floor:
             return False
         return self._vad.is_speech(frame, self._sample_rate)
 
 
-def _frame_rms(frame: bytes) -> float:
+def frame_rms(frame: bytes) -> float:
     samples = array.array("h")
     samples.frombytes(frame)
     if not samples:
@@ -108,7 +114,7 @@ class FakeVoiceActivityDetector:
     def frame_milliseconds(self) -> int:
         return self._frame_milliseconds
 
-    def is_speech(self, frame: bytes) -> bool:
+    def is_speech(self, frame: bytes, *, min_frame_rms: int | None = None) -> bool:
         self.frames_judged += 1
         return any(frame)
 

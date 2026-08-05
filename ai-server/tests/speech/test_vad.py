@@ -80,6 +80,17 @@ class TestWebrtcVoiceActivityDetector:
     def test_zero_rms_floor_disables_the_gate(self) -> None:
         assert WebrtcVoiceActivityDetector(min_frame_rms=0).is_speech(_tone(amp=400)) is True
 
+    def test_per_call_floor_overrides_the_configured_one(self) -> None:
+        """AI 출력 중에는 AEC double-talk 억제로 감쇠된 아이 음성을 받아야 한다 —
+        같은 세션 안에서 barge-in 판정만 낮은 플로어로 묻는다."""
+
+        gated = WebrtcVoiceActivityDetector(min_frame_rms=300)
+        attenuated_voice = _tone(amp=400)  # RMS ≈ 283: 플로어(300) 미만
+        assert gated.is_speech(attenuated_voice) is False
+        assert gated.is_speech(attenuated_voice, min_frame_rms=120) is True
+        # 오버라이드는 그 호출에만 적용된다 — 구성값은 그대로다.
+        assert gated.is_speech(attenuated_voice) is False
+
     def test_rejects_negative_rms_floor(self) -> None:
         with pytest.raises(ValueError):
             WebrtcVoiceActivityDetector(min_frame_rms=-1)

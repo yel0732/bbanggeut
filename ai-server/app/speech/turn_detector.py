@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.speech.audio_format import STT_INPUT_FORMAT, AudioFormat, PcmAudioChunk
-from app.speech.vad import VadFramer, VoiceActivityDetector
+from app.speech.vad import VadFramer, VoiceActivityDetector, frame_rms
 
 TurnEventCallback = Callable[[], None]
 ActivityCheck = Callable[[], bool]
@@ -50,6 +50,13 @@ class TurnDetectionConfig:
     # 제거하고 이 값이 2차 duration gate 역할을 한다. 이어폰에서는 같은 기준이
     # 적용되어도 아이의 자연스러운 문장 시작을 놓치지 않는 범위다.
     barge_in_min_speech_ms: int = 400
+    # AI 출력 중에는 브라우저 AEC의 double-talk 억제가 아이 음성을 감쇠·단속적으로
+    # 만든다(실측 2026-08-05: TTS 위로 또렷하게 말해도 후보가 한 번도 확정되지
+    # 못함). 그래서 출력 중 후보에는 평상시(max_gap_frames=2, 40ms)보다 넓은 gap
+    # 관용과 낮은 에너지 플로어를 적용한다. 오탐 방어는 400ms duration gate와
+    # 에코 텍스트 판정이 맡는다.
+    barge_in_max_gap_frames: int = 10
+    barge_in_min_frame_rms: int = 120
     trailing_silence_seconds: float = 1.0
     no_speech_timeout_seconds: float = 10.0
     preroll_ms: int = 300
@@ -81,6 +88,10 @@ class TurnDetectionConfig:
             raise ValueError("min_speech_ms must be positive")
         if self.barge_in_min_speech_ms < self.min_speech_ms:
             raise ValueError("barge_in_min_speech_ms must be at least min_speech_ms")
+        if self.barge_in_max_gap_frames < 0:
+            raise ValueError("barge_in_max_gap_frames must not be negative")
+        if self.barge_in_min_frame_rms < 0:
+            raise ValueError("barge_in_min_frame_rms must not be negative")
         if self.trailing_silence_seconds <= 0:
             raise ValueError("trailing_silence_seconds must be positive")
         if self.no_speech_timeout_seconds <= 0:
@@ -141,11 +152,12 @@ class TurnDetector:
         # The pre-roll ring must hold the configured pre-roll PLUS the whole
         # confirmation window (candidate speech + tolerated gaps) — sizing it
         # to preroll_ms alone would clip the first syllable whenever
-        # min_speech_ms > preroll_ms.
-        ring_ms = (
-            self._config.preroll_ms
-            + max(self._config.min_speech_ms, self._config.barge_in_min_speech_ms)
-            + self._config.max_gap_frames * self._frame_ms
+        # min_speech_ms > preroll_ms. Barge-in 후보는 AEC 감쇠로 단속적이라
+        # 넓은 gap이 여러 번 낄 수 있어 gap 예산(_gap_budget_ms)을 함께 잡는다.
+        ring_ms = self._config.preroll_ms + max(
+            self._config.min_speech_ms + self._gap_budget_ms(output_active=False),
+            self._config.barge_in_min_speech_ms
+            + self._gap_budget_ms(output_active=True),
         )
         self._preroll: deque[bytes] = deque(maxlen=max(1, ring_ms // self._frame_ms))
         self._hangover_bytes = (
@@ -161,6 +173,13 @@ class TurnDetector:
         # 온전히 되살리고(중간 멈춤 손실 없음), 턴이 끝나면 hangover만 남긴다.
         self._pending = bytearray()
         self._speech_blip_run = 0
+        # AI 출력 중 마이크가 실제로 어떻게 보이는지의 집계(§운영 진단). 개별
+        # 프레임이나 오디오 내용은 남기지 않는다 — 에너지 통계뿐이다.
+        self._output_stats_frames = 0
+        self._output_stats_speech = 0
+        self._output_stats_rms_sum = 0.0
+        self._output_stats_rms_max = 0.0
+        self._output_stats_candidate_max = 0
 
     @property
     def phase(self) -> TurnPhase:
@@ -188,20 +207,87 @@ class TurnDetector:
         self._trailing_silence_ms = 0
         self._pending.clear()
         self._speech_blip_run = 0
+        self._output_stats_frames = 0
+        self._output_stats_speech = 0
+        self._output_stats_rms_sum = 0.0
+        self._output_stats_rms_max = 0.0
+        self._output_stats_candidate_max = 0
 
     # --- internals ---------------------------------------------------------
 
+    _OUTPUT_STATS_WINDOW_FRAMES = 150  # 3초마다 한 줄
+
+    def _record_output_stats(self, frame: bytes, speech: bool) -> None:
+        """AI 출력 중 마이크 신호의 집계 통계를 남긴다(내용 없이 에너지만).
+
+        barge-in이 왜 확정되지 않는지는 로그 부재로는 진단할 수 없었다(실측
+        2026-08-05: 9초간 발화에 후보 로그 0건). AEC 감쇠가 어느 층(RMS 플로어,
+        webrtcvad, gap)에서 후보를 죽이는지 이 줄이 보여 준다.
+        """
+
+        self._output_stats_frames += 1
+        if speech:
+            self._output_stats_speech += 1
+        rms = frame_rms(frame)
+        self._output_stats_rms_sum += rms
+        self._output_stats_rms_max = max(self._output_stats_rms_max, rms)
+        self._output_stats_candidate_max = max(
+            self._output_stats_candidate_max, self._candidate_speech_ms
+        )
+        if self._output_stats_frames < self._OUTPUT_STATS_WINDOW_FRAMES:
+            return
+        self._logger.info(
+            "output-active vad window: speech_frames=%d/%d max_candidate_ms=%d "
+            "avg_rms=%.0f max_rms=%.0f",
+            self._output_stats_speech,
+            self._output_stats_frames,
+            self._output_stats_candidate_max,
+            self._output_stats_rms_sum / self._output_stats_frames,
+            self._output_stats_rms_max,
+        )
+        self._output_stats_frames = 0
+        self._output_stats_speech = 0
+        self._output_stats_rms_sum = 0.0
+        self._output_stats_rms_max = 0.0
+        self._output_stats_candidate_max = 0
+
+    def _gap_budget_ms(self, *, output_active: bool) -> int:
+        """확정 창 안에서 gap이 차지할 수 있는 시간 예산.
+
+        평상시 gap은 호흡·무성 자음 한 번(연속 max_gap_frames)이지만, 출력 중
+        후보는 AEC 감쇠로 여러 번 끊긴다 — 넓은 gap 3회분을 잡는다. 링과 emit
+        창이 같은 예산을 쓰므로 확정 시점에 후보 전체가 링 안에 남아 있다.
+        """
+
+        if output_active:
+            return 3 * self._config.barge_in_max_gap_frames * self._frame_ms
+        return self._config.max_gap_frames * self._frame_ms
+
     def _process(self, frame: bytes, out: bytearray) -> None:
-        speech = self._vad.is_speech(frame)
+        output_active = (
+            self._is_output_active is not None and self._is_output_active()
+        )
+        speech = self._vad.is_speech(
+            frame,
+            min_frame_rms=(
+                self._config.barge_in_min_frame_rms if output_active else None
+            ),
+        )
+        if output_active:
+            self._record_output_stats(frame, speech)
         if self._phase is TurnPhase.IDLE:
-            self._process_idle(frame, speech, out)
+            self._process_idle(frame, speech, out, output_active)
         else:
             self._process_speaking(frame, speech, out)
 
-    def _process_idle(self, frame: bytes, speech: bool, out: bytearray) -> None:
+    def _process_idle(
+        self, frame: bytes, speech: bool, out: bytearray, output_active: bool
+    ) -> None:
         self._preroll.append(frame)
-        output_active = (
-            self._is_output_active is not None and self._is_output_active()
+        max_gap_frames = (
+            self._config.barge_in_max_gap_frames
+            if output_active
+            else self._config.max_gap_frames
         )
         if speech:
             self._candidate_speech_ms += self._frame_ms
@@ -209,7 +295,7 @@ class TurnDetector:
         else:
             if self._candidate_speech_ms > 0:
                 self._candidate_gap_run += 1
-                if self._candidate_gap_run > self._config.max_gap_frames:
+                if self._candidate_gap_run > max_gap_frames:
                     # A short burst that died out — a cough, a click. Never
                     # confirmed, so nothing of it reaches the buffer.
                     self._candidate_speech_ms = 0
@@ -234,9 +320,11 @@ class TurnDetector:
             else self._config.min_speech_ms
         )
         if self._candidate_speech_ms >= start_threshold_ms:
-            self._confirm_speech(out, start_threshold_ms)
+            self._confirm_speech(out, start_threshold_ms, output_active)
 
-    def _confirm_speech(self, out: bytearray, start_threshold_ms: int) -> None:
+    def _confirm_speech(
+        self, out: bytearray, start_threshold_ms: int, output_active: bool
+    ) -> None:
         self._phase = TurnPhase.SPEAKING
         # The ring is sized for the larger Barge-in window, but a normal turn
         # must not receive that extra leading silence. Emit only the window
@@ -244,7 +332,7 @@ class TurnDetector:
         emit_ms = (
             self._config.preroll_ms
             + start_threshold_ms
-            + self._config.max_gap_frames * self._frame_ms
+            + self._gap_budget_ms(output_active=output_active)
         )
         emit_frames = max(1, emit_ms // self._frame_ms)
         for buffered in list(self._preroll)[-emit_frames:]:

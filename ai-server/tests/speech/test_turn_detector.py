@@ -314,6 +314,32 @@ class TestBargeInWindow:
 
         assert events.speech_starts == 1
 
+    def test_chopped_speech_during_output_still_confirms(self) -> None:
+        """AEC double-talk 억제는 아이 음성을 단속적으로 만든다(실측: TTS 위로
+        말해도 후보 미확정). 출력 중에는 넓은 gap 관용으로 조각을 이어 붙인다."""
+
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: True)
+
+        for _ in range(4):
+            _feed_ms(detector, _speech(140))
+            _feed_ms(detector, _silence(160))  # 8프레임 gap ≤ barge_in 관용(10)
+
+        assert events.speech_starts == 1
+
+    def test_the_relaxed_gap_applies_only_during_output(self) -> None:
+        """평상시 같은 패턴은 기침·클릭 연쇄로 취급되어야 한다 — 관용을 평상시에도
+        넓히면 duration gate(250ms)가 잡담·생활 소음 연쇄에 뚫린다."""
+
+        events = _Events()
+        detector = _detector(events)
+
+        for _ in range(4):
+            _feed_ms(detector, _speech(140))
+            _feed_ms(detector, _silence(160))
+
+        assert events.speech_starts == 0
+
     def test_normal_confirmation_is_trimmed_to_the_normal_window(self) -> None:
         """링은 barge-in 창(400ms) 크기지만, 평상시 확정 턴에 그 여분의 선행
         침묵까지 내보내면 안 된다 — whisper 입력이 침묵으로 부풀고 무음 환각
@@ -400,6 +426,8 @@ class TestConfigValidation:
         "overrides",
         [
             {"min_speech_ms": 0},
+            {"barge_in_max_gap_frames": -1},
+            {"barge_in_min_frame_rms": -1},
             {"trailing_silence_seconds": 0},
             {"no_speech_timeout_seconds": 0},
             {"preroll_ms": -1},

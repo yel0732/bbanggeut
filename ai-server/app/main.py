@@ -175,6 +175,8 @@ def create_app(
         turn_detection_config = TurnDetectionConfig(
             min_speech_ms=resolved_settings.stt_min_speech_ms,
             barge_in_min_speech_ms=resolved_settings.stt_barge_in_min_speech_ms,
+            barge_in_max_gap_frames=resolved_settings.stt_barge_in_max_gap_frames,
+            barge_in_min_frame_rms=resolved_settings.stt_barge_in_min_frame_rms,
             trailing_silence_seconds=resolved_settings.stt_trailing_silence_seconds,
             no_speech_timeout_seconds=resolved_settings.stt_no_speech_timeout_seconds,
             preroll_ms=resolved_settings.stt_preroll_ms,

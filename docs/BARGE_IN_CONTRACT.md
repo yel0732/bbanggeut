@@ -9,6 +9,10 @@
 - FastAPI는 AI 오디오 출력 중에도 VAD를 계속 실행한다.
 - 평상시 발화 시작 기준은 `STT_MIN_SPEECH_MS`, AI 출력 중 기준은
   `STT_BARGE_IN_MIN_SPEECH_MS`다. 기본값은 각각 250ms, 400ms다.
+- AI 출력 중에는 브라우저 AEC의 double-talk 억제로 아이 음성이 감쇠·단속적이
+  된다. 출력 중 후보에만 넓은 gap 관용(`STT_BARGE_IN_MAX_GAP_FRAMES`)과 낮은
+  에너지 플로어(`STT_BARGE_IN_MIN_FRAME_RMS`)를 적용한다. 오탐 방어는 duration
+  gate와 에코 판정이 맡는다.
 - Barge-in으로 확정된 발화는 pre-roll을 포함해 버리지 않고 다음 아이 턴의 STT
   입력으로 사용한다.
 - AI 출력 중 침묵은 아이의 무응답 횟수로 계산하지 않는다. 무응답 timeout

@@ -312,6 +312,62 @@ class TestRejectedAudio:
         assert [event["type"] for event in channel.sent] == ["stt.final"]
 
 
+class TestTurnDiscardedCallback:
+    """발화가 턴이 되지 못한 모든 경로는 통지된다 — barge-in 재발화의 근거."""
+
+    @pytest.mark.asyncio
+    async def test_too_short_audio_notifies(self) -> None:
+        discards: list[bool] = []
+        pipeline, _, _ = _build(on_turn_discarded=lambda: discards.append(True))
+        _feed(pipeline, 0.2)
+
+        await pipeline.finalize_turn()
+
+        assert discards == [True]
+
+    @pytest.mark.asyncio
+    async def test_hallucination_rejection_notifies(self) -> None:
+        hallucination = SttResult(
+            text="you", audio_seconds=2.0, no_speech_prob=0.94, avg_logprob=-0.515
+        )
+        discards: list[bool] = []
+        pipeline, _, _ = _build(
+            FakeSpeechRecognizer([hallucination]),
+            on_turn_discarded=lambda: discards.append(True),
+        )
+        _feed(pipeline, 2.0)
+
+        await pipeline.finalize_turn()
+
+        assert discards == [True]
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_notifies(self) -> None:
+        recognizer = FakeSpeechRecognizer([SttError(SttFailureCode.PROVIDER_TIMEOUT)])
+        discards: list[bool] = []
+        pipeline, _, _ = _build(
+            recognizer, on_turn_discarded=lambda: discards.append(True)
+        )
+        _feed(pipeline, 2.0)
+
+        await pipeline.finalize_turn()
+
+        assert discards == [True]
+
+    @pytest.mark.asyncio
+    async def test_a_confirmed_turn_does_not_notify(self) -> None:
+        discards: list[bool] = []
+        pipeline, _, _ = _build(
+            FakeSpeechRecognizer([_good_result()]),
+            on_turn_discarded=lambda: discards.append(True),
+        )
+        _feed(pipeline, 2.0)
+
+        await pipeline.finalize_turn()
+
+        assert discards == []
+
+
 class TestProviderFailure:
     @pytest.mark.asyncio
     async def test_timeout_emits_a_recoverable_error_event(self) -> None:

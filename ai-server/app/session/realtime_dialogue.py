@@ -247,10 +247,11 @@ class RealtimeDialogueManager:
         self._interrupt_audio: InterruptAudioCallback | None = None
         self._active_ai_turn: _AiTurnRef | None = None
         self._active_ai_turn_text: str | None = None
-        # CHILD_BARGE_IN으로 중단된 발화 텍스트. 다음 아이 턴 한 번에만 에코
-        # 판정에 쓰고 소비한다.
+        # CHILD_BARGE_IN으로 중단된 발화 텍스트. barge-in 직후 첫 아이 턴의 에코
+        # 판정, 또는 그 발화가 턴이 되지 못하고 폐기됐을 때의 재발화에 한 번만
+        # 쓰고 소비한다.
         self._pending_echo_text: str | None = None
-        self._echo_respoken = False
+        self._interrupt_respoken = False
 
     def set_speak(self, speak: SpeakCallback) -> None:
         """Wire the synthesis speak callback after construction.
@@ -332,6 +333,8 @@ class RealtimeDialogueManager:
         if self._consume_probable_echo(turn, result):
             # AI 자신의 음성이다 — 아이 활동으로 세지 않고 대화에도 넣지 않는다.
             return
+        # 진짜 아이 턴이 확인됐다 — 다음 중단에서 재발화를 다시 허용한다.
+        self._interrupt_respoken = False
         state.consecutive_no_responses = 0
         state.known_turn_ids.add(turn.turn_id)
 
@@ -470,34 +473,63 @@ class RealtimeDialogueManager:
         if source_text is None:
             return False
         if not is_probable_echo(result.text, source_text):
-            self._echo_respoken = False
             return False
 
         self._logger.info(
             "barge-in turn discarded as probable echo",
             extra={"turn_id": turn.turn_id},
         )
-        if self._echo_respoken:
-            return True
-        self._echo_respoken = True
+        self._respeak_interrupted(source_text)
+        return True
+
+    def handle_discarded_utterance(self) -> None:
+        """``SessionSttPipeline.on_turn_discarded`` — 발화가 턴이 되지 못했다.
+
+        그 발화가 barge-in으로 응답을 중단시킨 장본인이면(잡음 오탐이 whisper
+        환각 가드에 뒤늦게 걸린 경우, 실측 22:43:12), 아이는 응답을 끊어 놓고
+        아무것도 듣지 못한 채 침묵에 남는다. 중단했던 발화를 다시 말해 대화를
+        살린다. barge-in과 무관한 일상 잡음 폐기는 여기서 그냥 통과한다.
+        """
+
+        source_text = self._pending_echo_text
+        self._pending_echo_text = None
+        if source_text is None or self._state.terminated:
+            return
+        self._logger.info(
+            "barge-in utterance discarded; respeaking the interrupted response"
+        )
+        self._respeak_interrupted(source_text)
+
+    def _respeak_interrupted(self, source_text: str) -> None:
+        """중단된 발화를 같은 내용의 새 AI 턴으로 한 번만 다시 말한다.
+
+        상한은 에코·폐기 경로가 공유한다: 재발화가 또 끊기고 또 버려지는 환경
+        (AEC 고장, 지속 잡음)에서는 말할수록 다시 끊기므로, 진짜 아이 턴이
+        확인될 때까지 두 번째 재발화는 하지 않고 무응답 사다리(ADR-018)에
+        맡긴다.
+        """
+
+        if self._interrupt_respoken:
+            return
+        self._interrupt_respoken = True
         state = self._state
         topic = state.current_topic
         ai_ref = self._publish_assistant_text(source_text)
-        if ai_ref is not None:
-            target = state.last_target or select_next_question_target(
-                topic.slots,
-                excluded_targets=topic.skipped_targets,
-            )
-            self._emit_ai_turn_generated(
-                ai_ref,
-                source_text,
-                state.last_question or source_text,
-                target,
-                topic,
-            )
-            # last_question·질문 수는 갱신하지 않는다 — 같은 질문의 재발화다
-            # (저신뢰 되묻기 §7-E와 동일).
-        return True
+        if ai_ref is None:
+            return
+        target = state.last_target or select_next_question_target(
+            topic.slots,
+            excluded_targets=topic.skipped_targets,
+        )
+        self._emit_ai_turn_generated(
+            ai_ref,
+            source_text,
+            state.last_question or source_text,
+            target,
+            topic,
+        )
+        # last_question·질문 수는 갱신하지 않는다 — 같은 질문의 재발화다
+        # (저신뢰 되묻기 §7-E와 동일).
 
     # --- 낮은 STT 신뢰도 되묻기 (§22 STT_LOW_CONFIDENCE) ----------------------
 
@@ -979,6 +1011,9 @@ async def create_realtime_dialogue_session(
             if synthesis is None
             else lambda: manager.interrupt_current_response("CHILD_BARGE_IN")
         ),
+        # barge-in을 일으킨 발화가 턴이 되지 못하고 버려지면 중단된 응답을
+        # 다시 말한다. 평상시 잡음 폐기에는 아무 일도 하지 않는다.
+        on_turn_discarded=manager.handle_discarded_utterance,
     )
     return RealtimeDialogueSession(
         audio_sink=audio_sink,

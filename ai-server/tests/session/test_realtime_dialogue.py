@@ -773,7 +773,7 @@ class TestConversationOpening:
 
         def stt_pipeline_factory(
             publisher, *, turn_sequencer, on_final, on_no_speech,
-            is_output_active=None, on_barge_in=None
+            is_output_active=None, on_barge_in=None, on_turn_discarded=None
         ):
             class _SinkStub:
                 async def aclose(self) -> None: ...
@@ -821,7 +821,7 @@ class TestSessionAssembly:
 
         def stt_pipeline_factory(
             publisher, *, turn_sequencer, on_final, on_no_speech,
-            is_output_active=None, on_barge_in=None
+            is_output_active=None, on_barge_in=None, on_turn_discarded=None
         ):
             captured.update(
                 sequencer=turn_sequencer,
@@ -880,7 +880,7 @@ class TestSessionAssembly:
 
         def stt_pipeline_factory(
             publisher, *, turn_sequencer, on_final, on_no_speech,
-            is_output_active=None, on_barge_in=None
+            is_output_active=None, on_barge_in=None, on_turn_discarded=None
         ):
             captured["is_output_active"] = is_output_active
             captured["on_barge_in"] = on_barge_in
@@ -1122,6 +1122,55 @@ class TestBargeInEchoGuard:
 
         finalized = [c for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED"]
         assert len(finalized) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_discarded_barge_in_utterance_respeaks_the_response(self) -> None:
+        """실측(22:43:12): barge-in 오탐이 whisper 환각 가드에 뒤늦게 걸리면
+        응답만 끊기고 침묵이 남았다. 중단된 발화를 다시 말해야 한다."""
+
+        manager, _, _, _, spoken = self._interrupted_manager()
+        question = spoken[0]
+
+        manager.handle_discarded_utterance()
+
+        assert spoken == [question, question]
+
+    def test_discards_unrelated_to_barge_in_do_nothing(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+        spoken: list[str] = []
+        manager.set_speak(
+            lambda turn_id, turn_seq, response_id, text: spoken.append(text)
+        )
+        manager.set_interrupt_audio(lambda response_id: True)
+        manager.open_conversation()
+
+        manager.handle_discarded_utterance()
+
+        assert len(spoken) == 1  # 평상시 잡음 폐기는 재발화를 만들지 않는다
+
+    @pytest.mark.asyncio
+    async def test_the_respeak_cap_is_shared_between_echo_and_discard(self) -> None:
+        manager, _, _, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+        manager.handle_discarded_utterance()  # 재발화 1회 소진
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+
+        manager.handle_discarded_utterance()
+
+        assert spoken == [question, question]
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_turn_rearms_the_respeak(self) -> None:
+        manager, _, _, sequencer, spoken = self._interrupted_manager()
+        manager.handle_discarded_utterance()  # 재발화 1회 소진
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result("블록 놀이 했어")
+        )
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+
+        manager.handle_discarded_utterance()
+
+        assert spoken[-1] == spoken[-2]  # 새 질문이 다시 한 번 재발화된다
 
     @pytest.mark.asyncio
     async def test_user_requested_interrupt_does_not_arm_the_guard(self) -> None:

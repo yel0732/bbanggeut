@@ -188,6 +188,7 @@ def create_app(
             on_no_speech,
             is_output_active=None,
             on_barge_in=None,
+            on_turn_discarded=None,
         ):
             return SessionSttPipeline(
                 speech_recognizer,
@@ -206,6 +207,7 @@ def create_app(
                 on_no_speech=on_no_speech,
                 is_output_active=is_output_active,
                 on_barge_in=on_barge_in,
+                on_turn_discarded=on_turn_discarded,
             )
 
         context_snapshot_reader = RedisContextSnapshotReader(

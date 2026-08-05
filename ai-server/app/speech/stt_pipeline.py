@@ -45,6 +45,9 @@ OutputActiveCheck = Callable[[], bool]
 # AI가 말하는 중 확인된 사람 음성을 끼어들기로 처리한다. 실제 진행 중인 응답을
 # 취소했을 때만 True를 반환한다.
 BargeInCallback = Callable[[], bool]
+# 수집된 발화가 확정 턴이 되지 못하고 버려졌다(너무 짧음·환각·STT 실패).
+# barge-in 직후라면 중단된 응답의 재발화 근거가 된다.
+TurnDiscardedCallback = Callable[[], None]
 
 _STT_FAILED = "STT_FAILED"
 
@@ -68,6 +71,7 @@ class SessionSttPipeline:
         on_no_speech: NoSpeechCallback | None = None,
         is_output_active: OutputActiveCheck | None = None,
         on_barge_in: BargeInCallback | None = None,
+        on_turn_discarded: TurnDiscardedCallback | None = None,
     ) -> None:
         self._recognizer = recognizer
         self._publisher = publisher
@@ -83,6 +87,7 @@ class SessionSttPipeline:
         self._closed = False
         self._is_output_active = is_output_active
         self._on_barge_in = on_barge_in
+        self._on_turn_discarded = on_turn_discarded
         self._reject_confirmed_speech = False
         self._output_was_active = False
         self._detector: TurnDetector | None = None
@@ -337,6 +342,8 @@ class SessionSttPipeline:
         turn.abandon()
         self._log_rejection(turn, reason, audio_seconds)
         self._start_new_utterance()
+        if self._on_turn_discarded is not None:
+            self._on_turn_discarded()
 
     def _reject_result(
         self,
@@ -349,6 +356,8 @@ class SessionSttPipeline:
 
         turn.abandon()
         self._log_rejection(turn, reason, audio_seconds)
+        if self._on_turn_discarded is not None:
+            self._on_turn_discarded()
 
     def _log_rejection(
         self,
@@ -381,3 +390,5 @@ class SessionSttPipeline:
             turn_id=turn.turn_id,
             turn_seq=turn.turn_seq,
         )
+        if self._on_turn_discarded is not None:
+            self._on_turn_discarded()

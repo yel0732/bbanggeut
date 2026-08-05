@@ -178,6 +178,27 @@ def test_topic_refusal_without_story_fills_no_slot() -> None:
     assert not understanding.satisfied_targets
 
 
+def test_refusal_without_story_ignores_a_fun_moment_question() -> None:
+    """이야기를 꺼내지 않은 거부에는 감정도 생기지 않는다.
+
+    끝난 주제의 "어떤 점이 재미있었어?"를 근거로 감정을 채우면 전환 인사가
+    "오늘 그런 일이 있었구나"로 나간다 — 아이는 아무 이야기도 하지 않았다.
+    """
+
+    understanding = understand_child_turn(
+        child_answer="게임 얘기 안 할래",
+        current_question="어떤 점이 재미있었어?",
+        asked_target=QuestionTarget.EMOTION_REASON,
+        current_slots=DiarySlots(event="과일 자르기 게임"),
+    )
+
+    assert understanding.topic_refusal is True
+    assert understanding.emotion is None
+    assert understanding.emotion_reason is None
+    assert understanding.memorable_moment is None
+    assert not understanding.satisfied_targets
+
+
 def test_topic_refusal_ignores_finished_topic_question() -> None:
     """끝난 주제의 질문이 새 주제 슬롯을 채우면 안 된다.
 

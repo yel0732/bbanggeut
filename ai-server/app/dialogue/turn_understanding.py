@@ -165,16 +165,16 @@ def understand_child_turn(
     )
     normalized_analysis = _normalize(analysis_text)
 
-    # 주제를 거부하면서 스스로 다른 이야기를 꺼낸 턴은 다음 주제의 첫 답변이다.
-    # 직전 질문과 그 목표는 끝난 주제의 것이므로 여기에 적용하면 아이가 하지 않은
-    # 말이 슬롯에 들어간다 — "게임에서 어떤 점이 재미있었어?"를 근거로 감정을
-    # 채우면 일상 주제가 시작하자마자 필수 목표가 다 찬 것으로 보여 마무리 질문이
-    # 나간다.
+    # 주제를 거부한 턴에서는 직전 질문과 그 목표를 쓰지 않는다. 끝난 주제의 것이라
+    # 여기에 적용하면 아이가 하지 않은 말이 슬롯에 들어간다 — "게임에서 어떤 점이
+    # 재미있었어?"를 근거로 감정을 채우면, 이야기를 꺼내지 않은 거부에도 감정이
+    # 생겨 전환 인사가 "오늘 그런 일이 있었구나"로 나가고, 일상 주제는 시작하자마자
+    # 필수 목표가 다 찬 것으로 보인다.
     volunteered_topic_change = topic_refusal and diary_content is not None
-    effective_target = None if volunteered_topic_change else asked_target
+    effective_target = None if topic_refusal else asked_target
 
     emotion = _find_emotion(normalized_analysis)
-    question_asks_fun_moment = not volunteered_topic_change and _contains_any(
+    question_asks_fun_moment = not topic_refusal and _contains_any(
         normalized_question,
         _FUN_MOMENT_QUESTION_CUES,
     )

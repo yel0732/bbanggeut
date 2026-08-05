@@ -67,7 +67,8 @@ class ConversationReportAdapterTest {
                 new ReportAiProperties(
                         false,
                         "http://127.0.0.1:8000",
-                        java.time.Duration.ofSeconds(1)));
+                        java.time.Duration.ofSeconds(1)),
+                new ConversationReportTextSanitizer());
 
         var summary = adapter.generateSummary(15L, STARTED_AT, ENDED_AT)
                 .orElseThrow();
@@ -122,7 +123,8 @@ class ConversationReportAdapterTest {
                 new ReportAiProperties(
                         true,
                         "http://127.0.0.1:8000",
-                        java.time.Duration.ofSeconds(1)));
+                        java.time.Duration.ofSeconds(1)),
+                new ConversationReportTextSanitizer());
 
         var summary = adapter.generateSummary(15L, STARTED_AT, ENDED_AT)
                 .orElseThrow();
@@ -132,5 +134,81 @@ class ConversationReportAdapterTest {
         assertThat(summary.promptVersion())
                 .isEqualTo("deterministic-report-v1");
         assertThat(summary.diaryContent()).contains("그림 그리기", "즐거웠다");
+    }
+
+    @Test
+    void protectsReportInputFromUnsafeAndPrivateConversationText() {
+        ConversationSessionRepository sessionRepository =
+                mock(ConversationSessionRepository.class);
+        ConversationTopicStateRepository topicRepository =
+                mock(ConversationTopicStateRepository.class);
+        ConversationTurnRepository turnRepository =
+                mock(ConversationTurnRepository.class);
+        ConversationSession session = mock(ConversationSession.class);
+        when(session.getConversationId()).thenReturn("conversation-1");
+        when(sessionRepository
+                .findAllByChildIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAsc(
+                        15L,
+                        ConversationStatus.COMPLETED,
+                        STARTED_AT,
+                        ENDED_AT))
+                .thenReturn(List.of(session));
+        ConversationTopicState topic = mock(ConversationTopicState.class);
+        when(topic.getConversationId()).thenReturn("conversation-1");
+        when(topic.getSlotsJson()).thenReturn("""
+                {"event":"블록 놀이","people":[],"place":null,
+                 "emotion":"슬펐다","emotionReason":"블록이 망가져서",
+                 "memorableMoment":null}
+                """);
+        when(topicRepository
+                .findAllByConversationIdInAndTopicTypeOrderByCompletedAtAsc(
+                        List.of("conversation-1"),
+                        ConversationTopic.DAILY))
+                .thenReturn(List.of(topic));
+        when(turnRepository
+                .findAllByConversationIdInAndTopicTypeAndStatusOrderByConversationIdAscTurnSeqAsc(
+                        List.of("conversation-1"),
+                        ConversationTopic.DAILY,
+                        com.A501.backend.domain.conversation.entity.TurnStatus.COMPLETED))
+                .thenReturn(List.of(
+                        com.A501.backend.domain.conversation.entity.ConversationTurn.createChildCompleted(
+                                "turn-1",
+                                "conversation-1",
+                                1,
+                                "죽고 싶어",
+                                null,
+                                STARTED_AT,
+                                STARTED_AT.plusSeconds(1)),
+                        com.A501.backend.domain.conversation.entity.ConversationTurn.createChildCompleted(
+                                "turn-2",
+                                "conversation-1",
+                                2,
+                                "우리 유치원 선생님 이야기야",
+                                null,
+                                STARTED_AT.plusSeconds(2),
+                                STARTED_AT.plusSeconds(3))));
+        ConversationReportAdapter adapter = new ConversationReportAdapter(
+                sessionRepository,
+                topicRepository,
+                turnRepository,
+                new ObjectMapper(),
+                mock(ReportAiSummaryPort.class),
+                mock(GameReportQueryPort.class),
+                new ReportAiProperties(
+                        false,
+                        "http://127.0.0.1:8000",
+                        java.time.Duration.ofSeconds(1)),
+                new ConversationReportTextSanitizer());
+
+        var summary = adapter.generateSummary(15L, STARTED_AT, ENDED_AT)
+                .orElseThrow();
+
+        assertThat(summary.notableQuotes()).isEmpty();
+        assertThat(summary.conversationGuide().description())
+                .contains("편안히 이야기해볼 필요");
+        assertThat(summary.conversationGuide().questions())
+                .anyMatch(question -> question.contains("마음이 많이 힘들었던 일"));
+        assertThat(summary.conversationGuide().questions())
+                .anyMatch(question -> question.contains("자세한 이야기"));
     }
 }

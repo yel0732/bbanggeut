@@ -266,6 +266,11 @@ public class ConversationTextTurnPersistenceService {
                     .orElseThrow(() -> new ConversationException(
                             ConversationErrorCode.DIALOGUE_STATE_INVALID));
             nextTopic.start(now);
+            // 아이가 전환하면서 새 주제 이야기를 이미 꺼냈다면 그 내용을 첫 슬롯으로
+            // 넣는다. 버리면 방금 말한 사건을 새 주제 첫 질문에서 다시 묻게 된다.
+            if (aiResponse.nextTopicSlots() != null) {
+                nextTopic.updateSlots(serializeSlots(aiResponse.nextTopicSlots()));
+            }
             session.switchTopic(prepared.nextTopic());
             assistantTurn = ConversationTurn.createAiGenerating(
                     generateId("turn_"),

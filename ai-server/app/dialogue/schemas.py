@@ -153,6 +153,11 @@ class DiaryAnswerAnalysisRequest(BaseModel):
         le=1.0,
     )
     current_slots: DiarySlots = Field(alias="currentSlots", repr=False)
+    topic_history: tuple[DialogueTopicHistoryItem, ...] = Field(
+        default_factory=tuple,
+        alias="topicHistory",
+        repr=False,
+    )
     game_context: GameContext | DialogueTopicContext | None = Field(
         default=None,
         alias="gameContext",

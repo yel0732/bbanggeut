@@ -26,6 +26,7 @@ from app.dialogue.question.provider import (
 from app.dialogue.question.validator import (
     QuestionRuleValidationRequest,
     QuestionValidationResult,
+    validate_question_against_turn,
     validate_question_rules,
 )
 from app.dialogue.question.candidate import (
@@ -210,6 +211,18 @@ async def _validate_candidate(
             child_answer=request.child_answer,
             bridge_required=request.redirect_context is not None,
         )
+        turn_result = validate_question_against_turn(
+            target=request.target,
+            question=parsed_candidate.message,
+            current_question=request.current_question,
+            child_answer=request.child_answer,
+        )
+        if not turn_result.is_valid:
+            return _CandidateValidationFailure(
+                QuestionGenerationFailureCode.GENERATED_QUESTION_REJECTED,
+                True,
+                tuple(issue.code.value for issue in turn_result.issues),
+            )
         async with asyncio.timeout(policy.timeout_seconds):
             result = await validator.validate_question(
                 request,

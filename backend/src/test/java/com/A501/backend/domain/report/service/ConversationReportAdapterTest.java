@@ -137,6 +137,61 @@ class ConversationReportAdapterTest {
     }
 
     @Test
+    void ruleBasedSummaryJoinsSlotsWithCorrectParticlesAndEndings() {
+        // 조각 검사로는 "기분은 즐거웠어했다" 같은 비문을 못 잡는다. 조립 결과 전체를 본다.
+        ConversationSessionRepository sessionRepository =
+                mock(ConversationSessionRepository.class);
+        ConversationTopicStateRepository topicRepository =
+                mock(ConversationTopicStateRepository.class);
+        ConversationSession session = mock(ConversationSession.class);
+        when(session.getConversationId()).thenReturn("conversation-1");
+        when(sessionRepository
+                .findAllByChildIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThanOrderByCompletedAtAsc(
+                        15L,
+                        ConversationStatus.COMPLETED,
+                        STARTED_AT,
+                        ENDED_AT))
+                .thenReturn(List.of(session));
+        ConversationTopicState topic = mock(ConversationTopicState.class);
+        when(topic.getConversationId()).thenReturn("conversation-1");
+        when(topic.getSlotsJson()).thenReturn("""
+                {"event":"블록 쌓기","people":["동생"],"place":"집",
+                 "emotion":"즐거웠어","emotionReason":null,
+                 "memorableMoment":"탑이 무너진 순간"}
+                """);
+        when(topicRepository
+                .findAllByConversationIdInAndTopicTypeOrderByCompletedAtAsc(
+                        List.of("conversation-1"),
+                        ConversationTopic.DAILY))
+                .thenReturn(List.of(topic));
+        ReportAiSummaryPort aiPort = mock(ReportAiSummaryPort.class);
+        when(aiPort.generate(any())).thenThrow(
+                new ReportAiUnavailableException("AI unavailable"));
+        GameReportQueryPort gamePort = mock(GameReportQueryPort.class);
+        when(gamePort.findCompletedGames(15L, STARTED_AT, ENDED_AT))
+                .thenReturn(List.of());
+        ConversationReportAdapter adapter = new ConversationReportAdapter(
+                sessionRepository,
+                topicRepository,
+                mock(ConversationTurnRepository.class),
+                new ObjectMapper(),
+                aiPort,
+                gamePort,
+                new ReportAiProperties(
+                        true,
+                        "http://127.0.0.1:8000",
+                        java.time.Duration.ofSeconds(1)),
+                new ConversationReportTextSanitizer());
+
+        var summary = adapter.generateSummary(15L, STARTED_AT, ENDED_AT)
+                .orElseThrow();
+
+        assertThat(summary.diaryContent()).isEqualTo(
+                "블록 쌓기. 동생과 함께했다. 장소는 집이었다. 기분은 즐거웠다."
+                        + " 기억에 남는 순간은 탑이 무너진 순간이었다.");
+    }
+
+    @Test
     void protectsReportInputFromUnsafeAndPrivateConversationText() {
         ConversationSessionRepository sessionRepository =
                 mock(ConversationSessionRepository.class);

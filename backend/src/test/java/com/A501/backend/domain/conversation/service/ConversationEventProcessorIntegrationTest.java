@@ -161,6 +161,206 @@ class ConversationEventProcessorIntegrationTest {
     }
 
     @Test
+    void appliesAiInterruptedAndTreatsSameLogicalInterruptionAsIdempotent() {
+        ConversationStreamDelivery generated = aiGenerated(
+                "2200-0",
+                "evt-ai-generated-interrupt",
+                "turn-ai-interrupt",
+                "resp-ai-interrupt");
+        ConversationStreamDelivery interrupted = aiInterrupted(
+                "2200-1",
+                "evt-ai-interrupted-1",
+                "turn-ai-interrupt",
+                "resp-ai-interrupt",
+                "interrupt-ai-1",
+                "CHILD_BARGE_IN");
+        ConversationStreamDelivery repeated = aiInterrupted(
+                "2200-2",
+                "evt-ai-interrupted-2",
+                "turn-ai-interrupt",
+                "resp-ai-interrupt",
+                "interrupt-ai-1",
+                "CHILD_BARGE_IN");
+
+        assertThat(eventProcessor.process(generated))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+        assertThat(eventProcessor.process(interrupted))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+        assertThat(eventProcessor.process(repeated))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+
+        ConversationTurn turn = turnRepository.findById("turn-ai-interrupt").orElseThrow();
+        assertThat(turn.getStatus()).isEqualTo(TurnStatus.INTERRUPTED);
+        assertThat(turn.getInterruptedAt()).isEqualTo("2026-07-28T01:00:06");
+        assertThat(turn.getInterruptionReason()).isEqualTo("CHILD_BARGE_IN");
+        assertThat(turn.getInterruptionId()).isEqualTo("interrupt-ai-1");
+        assertThat(turn.getCompletedAt()).isNull();
+    }
+
+    @Test
+    void rejectsConflictingLogicalInterruptionAndKeepsOriginalState() {
+        eventProcessor.process(aiGenerated(
+                "2300-0",
+                "evt-ai-generated-conflict",
+                "turn-ai-conflict",
+                "resp-ai-conflict"));
+        eventProcessor.process(aiInterrupted(
+                "2300-1",
+                "evt-ai-interrupted-original",
+                "turn-ai-conflict",
+                "resp-ai-conflict",
+                "interrupt-original",
+                "CHILD_BARGE_IN"));
+        ConversationStreamDelivery conflicting = aiInterrupted(
+                "2300-2",
+                "evt-ai-interrupted-conflict",
+                "turn-ai-conflict",
+                "resp-ai-conflict",
+                "interrupt-conflict",
+                "USER_REQUESTED");
+
+        assertThatThrownBy(() -> eventProcessor.process(conflicting))
+                .isInstanceOf(ConversationEventContractException.class)
+                .hasMessageContaining("conflicts");
+
+        ConversationTurn turn = turnRepository.findById("turn-ai-conflict").orElseThrow();
+        assertThat(turn.getStatus()).isEqualTo(TurnStatus.INTERRUPTED);
+        assertThat(turn.getInterruptionReason()).isEqualTo("CHILD_BARGE_IN");
+        assertThat(turn.getInterruptionId()).isEqualTo("interrupt-original");
+        assertThat(eventRepository.findById("evt-ai-interrupted-conflict")).isEmpty();
+    }
+
+    @Test
+    void completedFirstWinsCompletedAndInterruptedRace() {
+        eventProcessor.process(aiGenerated(
+                "2400-0",
+                "evt-ai-generated-completed-first",
+                "turn-ai-completed-first",
+                "resp-ai-completed-first"));
+        eventProcessor.process(delivery(
+                "2400-1",
+                "evt-ai-completed-first",
+                "AI_TURN_COMPLETED",
+                1,
+                "turn-ai-completed-first",
+                2,
+                "resp-ai-completed-first",
+                """
+                {
+                  "text": "How did that feel?",
+                  "audioStartedAt": "2026-07-28T01:00:05Z",
+                  "audioCompletedAt": "2026-07-28T01:00:07Z"
+                }
+                """));
+        eventProcessor.process(aiInterrupted(
+                "2400-2",
+                "evt-ai-interrupted-late",
+                "turn-ai-completed-first",
+                "resp-ai-completed-first",
+                "interrupt-late",
+                "CHILD_BARGE_IN"));
+
+        ConversationTurn completedFirst =
+                turnRepository.findById("turn-ai-completed-first").orElseThrow();
+        assertThat(completedFirst.getStatus()).isEqualTo(TurnStatus.COMPLETED);
+        assertThat(completedFirst.getCompletedAt()).isEqualTo("2026-07-28T01:00:07");
+        assertThat(completedFirst.getInterruptedAt()).isNull();
+    }
+
+    @Test
+    void interruptedFirstWinsInterruptedAndCompletedRace() {
+        eventProcessor.process(aiGenerated(
+                "2410-0",
+                "evt-ai-generated-interrupted-first",
+                "turn-ai-interrupted-first",
+                "resp-ai-interrupted-first"));
+        eventProcessor.process(aiInterrupted(
+                "2410-1",
+                "evt-ai-interrupted-first",
+                "turn-ai-interrupted-first",
+                "resp-ai-interrupted-first",
+                "interrupt-first",
+                "CHILD_BARGE_IN"));
+        eventProcessor.process(delivery(
+                "2410-2",
+                "evt-ai-completed-late",
+                "AI_TURN_COMPLETED",
+                1,
+                "turn-ai-interrupted-first",
+                2,
+                "resp-ai-interrupted-first",
+                """
+                {
+                  "text": "How did that feel?",
+                  "audioStartedAt": "2026-07-28T01:00:05Z",
+                  "audioCompletedAt": "2026-07-28T01:00:07Z"
+                }
+                """));
+
+        ConversationTurn interruptedFirst =
+                turnRepository.findById("turn-ai-interrupted-first").orElseThrow();
+        assertThat(interruptedFirst.getStatus()).isEqualTo(TurnStatus.INTERRUPTED);
+        assertThat(interruptedFirst.getInterruptionId()).isEqualTo("interrupt-first");
+        assertThat(interruptedFirst.getCompletedAt()).isNull();
+    }
+
+    @Test
+    void appliesConfirmedInterruptedTurnFromPriorEpoch() {
+        eventProcessor.process(aiGenerated(
+                "2420-0",
+                "evt-ai-generated-prior-epoch",
+                "turn-ai-prior-epoch",
+                "resp-ai-prior-epoch"));
+        ConversationSession session = sessionRepository.findById(CONVERSATION_ID).orElseThrow();
+        session.startRealtimeSession(LocalDateTime.parse("2026-07-28T01:00:10"));
+        sessionRepository.saveAndFlush(session);
+
+        assertThat(eventProcessor.process(aiInterrupted(
+                        "2420-1",
+                        "evt-ai-interrupted-prior-epoch",
+                        "turn-ai-prior-epoch",
+                        "resp-ai-prior-epoch",
+                        "interrupt-prior-epoch",
+                        "CHILD_BARGE_IN")))
+                .isEqualTo(ConversationEventProcessingOutcome.APPLIED);
+
+        ConversationTurn turn = turnRepository.findById("turn-ai-prior-epoch").orElseThrow();
+        assertThat(turn.getStatus()).isEqualTo(TurnStatus.INTERRUPTED);
+        assertThat(turn.getInterruptionId()).isEqualTo("interrupt-prior-epoch");
+    }
+
+    @Test
+    void rejectsAiInterruptedWithMissingReason() {
+        eventProcessor.process(aiGenerated(
+                "2430-0",
+                "evt-ai-generated-invalid-interrupt",
+                "turn-ai-invalid-interrupt",
+                "resp-ai-invalid-interrupt"));
+        ConversationStreamDelivery invalid = delivery(
+                "2430-1",
+                "evt-ai-interrupted-invalid",
+                "AI_TURN_INTERRUPTED",
+                1,
+                "turn-ai-invalid-interrupt",
+                2,
+                "resp-ai-invalid-interrupt",
+                """
+                {
+                  "interruptedAt": "2026-07-28T01:00:06Z",
+                  "reason": " ",
+                  "interruptionId": "interrupt-invalid"
+                }
+                """);
+
+        assertThatThrownBy(() -> eventProcessor.process(invalid))
+                .isInstanceOf(ConversationEventContractException.class)
+                .hasMessageContaining("payload.reason");
+        assertThat(turnRepository.findById("turn-ai-invalid-interrupt").orElseThrow().getStatus())
+                .isEqualTo(TurnStatus.GENERATING);
+        assertThat(eventRepository.findById("evt-ai-interrupted-invalid")).isEmpty();
+    }
+
+    @Test
     void recordsAndAcknowledgesConceptuallyStaleEpochWithoutApplyingPayload() {
         ConversationSession session = sessionRepository.findById(CONVERSATION_ID).orElseThrow();
         session.startRealtimeSession(LocalDateTime.parse("2026-07-28T01:00:03"));
@@ -673,5 +873,57 @@ class ConversationEventProcessorIntegrationTest {
 
     private static String jsonString(String value) {
         return value == null ? "null" : "\"" + value + "\"";
+    }
+
+    private static ConversationStreamDelivery aiGenerated(
+            String recordId,
+            String eventId,
+            String turnId,
+            String responseId) {
+        return delivery(
+                recordId,
+                eventId,
+                "AI_TURN_GENERATED",
+                1,
+                turnId,
+                2,
+                responseId,
+                """
+                {
+                  "text": "How did that feel?",
+                  "questionText": "How did that feel?",
+                  "targetSlot": "emotion",
+                  "topicType": "GAME",
+                  "slotsTopicType": "GAME",
+                  "topicSlots": { "event": "Played a game", "emotion": null },
+                  "topicQuestionCount": 1,
+                  "sessionQuestionCount": 1,
+                  "topicCompletionReason": null
+                }
+                """);
+    }
+
+    private static ConversationStreamDelivery aiInterrupted(
+            String recordId,
+            String eventId,
+            String turnId,
+            String responseId,
+            String interruptionId,
+            String reason) {
+        return delivery(
+                recordId,
+                eventId,
+                "AI_TURN_INTERRUPTED",
+                1,
+                turnId,
+                2,
+                responseId,
+                """
+                {
+                  "interruptedAt": "2026-07-28T01:00:06Z",
+                  "reason": "%s",
+                  "interruptionId": "%s"
+                }
+                """.formatted(reason, interruptionId));
     }
 }

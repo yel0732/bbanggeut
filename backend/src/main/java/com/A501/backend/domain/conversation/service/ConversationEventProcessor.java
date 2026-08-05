@@ -102,7 +102,8 @@ public class ConversationEventProcessor {
     private static boolean isConfirmedTurnEvent(ConversationStreamEventType eventType) {
         return eventType == ConversationStreamEventType.CHILD_TURN_FINALIZED
                 || eventType == ConversationStreamEventType.AI_TURN_GENERATED
-                || eventType == ConversationStreamEventType.AI_TURN_COMPLETED;
+                || eventType == ConversationStreamEventType.AI_TURN_COMPLETED
+                || eventType == ConversationStreamEventType.AI_TURN_INTERRUPTED;
     }
 
     public ConversationStreamEvent deserialize(String eventJson) {

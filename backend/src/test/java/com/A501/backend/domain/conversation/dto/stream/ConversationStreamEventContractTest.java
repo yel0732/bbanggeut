@@ -133,6 +133,38 @@ class ConversationStreamEventContractTest {
     }
 
     @Test
+    void deserializesAiTurnInterruptedPayload() {
+        String json = """
+                {
+                  "eventId": "evt_internal_005",
+                  "eventType": "AI_TURN_INTERRUPTED",
+                  "conversationId": "conv_01JZ123ABC",
+                  "realtimeSessionId": "rt_01JZ456DEF",
+                  "sessionEpoch": 1,
+                  "turnId": "turn_003",
+                  "turnSeq": 3,
+                  "responseId": "resp_003",
+                  "occurredAt": "2026-07-22T10:00:33+00:00",
+                  "payload": {
+                    "interruptedAt": "2026-07-22T10:00:33+00:00",
+                    "reason": "CHILD_BARGE_IN",
+                    "interruptionId": "interrupt_003"
+                  }
+                }
+                """;
+
+        ConversationStreamEvent event = objectMapper.readValue(json, ConversationStreamEvent.class);
+        AiTurnInterruptedPayload payload =
+                objectMapper.treeToValue(event.payload(), AiTurnInterruptedPayload.class);
+
+        assertThat(event.eventType()).isEqualTo(ConversationStreamEventType.AI_TURN_INTERRUPTED);
+        assertThat(payload.interruptedAt())
+                .isEqualTo(OffsetDateTime.parse("2026-07-22T10:00:33+00:00"));
+        assertThat(payload.reason()).isEqualTo("CHILD_BARGE_IN");
+        assertThat(payload.interruptionId()).isEqualTo("interrupt_003");
+    }
+
+    @Test
     void SESSION_이벤트는_턴_식별자_없이_역직렬화된다() {
         String started = """
                 {

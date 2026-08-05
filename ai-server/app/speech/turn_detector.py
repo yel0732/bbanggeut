@@ -200,6 +200,9 @@ class TurnDetector:
 
     def _process_idle(self, frame: bytes, speech: bool, out: bytearray) -> None:
         self._preroll.append(frame)
+        output_active = (
+            self._is_output_active is not None and self._is_output_active()
+        )
         if speech:
             self._candidate_speech_ms += self._frame_ms
             self._candidate_gap_run = 0
@@ -211,16 +214,23 @@ class TurnDetector:
                     # confirmed, so nothing of it reaches the buffer.
                     self._candidate_speech_ms = 0
                     self._candidate_gap_run = 0
-            self._idle_silence_ms += self._frame_ms
-            timeout_ms = self._config.no_speech_timeout_seconds * 1000
-            if self._idle_silence_ms >= timeout_ms:
-                # Fires once per full window, then re-arms: the recovery
-                # policy (W03, ADR-018) re-prompts and waits again.
+            if output_active:
+                # AI가 말하는 시간은 아이의 무응답 침묵이 아니다(Barge-in 계약).
+                # 발화 종료 시점까지 매 프레임 0으로 되돌려야 출력이 끝난 뒤에
+                # 온전한 timeout window가 새로 시작된다 — 여기서 누적을 허용하면
+                # AI가 길게 말한 직후 아이가 몇 초 만에 무응답으로 몰린다.
                 self._idle_silence_ms = 0
-                self._notify(self._on_no_speech, "no_speech")
+            else:
+                self._idle_silence_ms += self._frame_ms
+                timeout_ms = self._config.no_speech_timeout_seconds * 1000
+                if self._idle_silence_ms >= timeout_ms:
+                    # Fires once per full window, then re-arms: the recovery
+                    # policy (W03, ADR-018) re-prompts and waits again.
+                    self._idle_silence_ms = 0
+                    self._notify(self._on_no_speech, "no_speech")
         start_threshold_ms = (
             self._config.barge_in_min_speech_ms
-            if self._is_output_active is not None and self._is_output_active()
+            if output_active
             else self._config.min_speech_ms
         )
         if self._candidate_speech_ms >= start_threshold_ms:

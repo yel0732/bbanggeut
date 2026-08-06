@@ -94,9 +94,6 @@ public class ConversationReportAdapter
         boolean hasSafetySignal = turns.stream()
                 .map(ConversationTurn::getContent)
                 .anyMatch(textSanitizer::containsSafetySignal);
-        boolean hasPrivateDetail = turns.stream()
-                .map(ConversationTurn::getContent)
-                .anyMatch(textSanitizer::containsPrivateDetail);
         List<ReportAiConversationTurn> conversations = turns.stream()
                 .limit(60)
                 .map(turn -> new SanitizedTurn(
@@ -163,10 +160,7 @@ public class ConversationReportAdapter
                 List.of(),
                 List.of(),
                 childQuotes,
-                protectedGuide(
-                        ReportConversationGuide.empty(),
-                        hasSafetySignal,
-                        hasPrivateDetail),
+                protectedGuide(ReportConversationGuide.empty(), hasSafetySignal),
                 MODEL_VERSION,
                 PROMPT_VERSION);
         if (!reportAiProperties.enabled()) {
@@ -195,10 +189,7 @@ public class ConversationReportAdapter
                     ai.interests(),
                     ai.emotionDetails(),
                     verifiedQuotes(ai.notableQuotes(), childUtterances),
-                    protectedGuide(
-                            ai.conversationGuide(),
-                            hasSafetySignal,
-                            hasPrivateDetail),
+                    protectedGuide(ai.conversationGuide(), hasSafetySignal),
                     ai.modelVersion(),
                     ai.promptVersion()));
         } catch (ReportAiUnavailableException exception) {
@@ -367,25 +358,22 @@ public class ConversationReportAdapter
         return values != null && values.stream().anyMatch(this::hasText);
     }
 
+    /**
+     * 아이가 힘든 마음을 드러낸 대화에는 부모가 먼저 살펴볼 수 있도록 안내를 얹는다.
+     * 안전 신호가 없으면 AI가 만든 안내를 그대로 둔다.
+     */
     private ReportConversationGuide protectedGuide(
             ReportConversationGuide original,
-            boolean hasSafetySignal,
-            boolean hasPrivateDetail
+            boolean hasSafetySignal
     ) {
-        if (!hasSafetySignal && !hasPrivateDetail) {
+        if (!hasSafetySignal) {
             return original;
         }
         List<String> questions = new ArrayList<>(original.questions());
-        if (hasSafetySignal) {
-            questions.add("오늘 마음이 많이 힘들었던 일이 있었는지 편안히 물어봐 주세요.");
-        }
-        if (hasPrivateDetail) {
-            questions.add("아이에게 다른 사람의 자세한 이야기는 조심해서 나누자고 부드럽게 알려 주세요.");
-        }
-        String description = hasSafetySignal
-                ? "대화 중 아이와 편안히 이야기해볼 필요가 있는 표현이 있었습니다."
-                : original.description();
-        return new ReportConversationGuide(description, questions);
+        questions.add("오늘 마음이 많이 힘들었던 일이 있었는지 편안히 물어봐 주세요.");
+        return new ReportConversationGuide(
+                "대화 중 아이와 편안히 이야기해볼 필요가 있는 표현이 있었습니다.",
+                questions);
     }
 
     private void validatePeriod(

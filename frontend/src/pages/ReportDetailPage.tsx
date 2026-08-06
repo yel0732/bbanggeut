@@ -298,18 +298,19 @@ export function ReportPaperContent({
               {childName}와 캐릭터의 대화 요약
             </h3>
             {/*
-              칸을 넉넉히 잡아 두었다. 안에서 따로 스크롤하지 않고 종이째 내려
-              본다.
+              요약이 길어지면 이 칸 안에서만 스크롤한다. 칸의 높이는 종이 그림에
+              그려진 테두리에 맞춰 고정돼 있어 늘릴 수 없다 — overflow를 열어
+              두지 않으면 본문이 테두리를 넘어 종이 위로 흘러 나온다.
 
               바탕색이 종이에 그려진 테두리 안에 정확히 들어앉도록 값을 잡았다.
               종이 그림에서 이 칸의 테두리 안쪽은 세로 6948~11639px,
               가로 446~5158px(전체 5625×12222)이고, 여기에 6px씩 물려 둔다.
             */}
-            <div className="absolute top-[9.09%] right-[0.49%] bottom-[0.94%] left-0 flex flex-col rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
+            <div className="absolute top-[9.09%] right-[0.49%] bottom-[0.94%] left-0 [scrollbar-width:thin] [scrollbar-color:#cdbb92_transparent] overflow-y-auto rounded-[18px] bg-[rgba(248,242,222,.58)] px-7 py-6">
               {conversation ? (
                 <ConversationSummaryView compact view={conversation} />
               ) : (
-                <div className="flex flex-1 items-center justify-center text-[25px] text-[#85744f]">
+                <div className="flex h-full items-center justify-center text-[25px] text-[#85744f]">
                   오늘은 대화를 나누지 않았어요.
                 </div>
               )}

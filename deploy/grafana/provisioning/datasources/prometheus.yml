@@ -1,0 +1,11 @@
+# Grafana 기동 시 자동 등록되는 데이터소스 — 클릭 설정 없이 재현 가능해야 한다.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

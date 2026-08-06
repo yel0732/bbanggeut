@@ -1,0 +1,11 @@
+# 이 디렉터리의 대시보드 JSON을 기동 시 자동 로드한다.
+apiVersion: 1
+
+providers:
+  - name: a501
+    folder: A501
+    type: file
+    disableDeletion: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

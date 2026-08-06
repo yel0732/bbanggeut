@@ -214,6 +214,66 @@ services:
       retries: 5
     logging: *default-logging
 
+  # --- 모니터링 (선택 스택) -------------------------------------------------
+  # `docker compose --profile monitoring up -d`로만 뜬다. 기본 스택 기동에는
+  # 영향이 없고, 어떤 메트릭 포트도 외부에 publish하지 않는다 — 외부 접근은
+  # nginx 뒤의 Grafana(/grafana/) 하나뿐이다. 상세: docs/MONITORING.md.
+
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    # ai-server가 host 네트워크라 서비스명 DNS에 없다 — nginx와 같은 방식으로
+    # 게이트웨이 별칭을 써서 스크레이프한다.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      - edge
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    profiles: [monitoring]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      # 기본값은 로컬 개발용이다. 배포 .env에서 반드시 덮어쓴다(MONITORING.md).
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # nginx가 /grafana/ 경로로 프록시하므로 서브패스 서빙이 필요하다.
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - edge
+    logging: *default-logging
+
+  # 호스트 CPU/RAM/디스크. 리눅스 호스트 전용이라 별도 profile로 분리한다 —
+  # Windows/macOS 로컬에서는 monitoring만 켜고 이건 켜지 않는다(마운트 불가).
+  # EC2: docker compose --profile monitoring --profile host-metrics up -d
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    profiles: [host-metrics]
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - edge
+    logging: *default-logging
+
 networks:
   edge:
   data:
@@ -222,3 +282,5 @@ networks:
 volumes:
   mysql_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

@@ -161,6 +161,20 @@ app:
     max-image-size: 2MB
     presigned-url-ttl: 5m
 
+# 모니터링은 환경과 무관하다 — prod 문서에 두면 로컬·테스트에서 exposure가
+# 기본값(health)으로 떨어져 /actuator/prometheus가 존재하지 않는다.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    distribution:
+      # p95/p99를 Grafana에서 계산하려면 히스토그램 버킷이 필요하다.
+      # 기본 summary(count/sum/max)만으로는 분위수를 만들 수 없다.
+      percentiles-histogram:
+        http.server.requests: true
+
 ---
 # 로컬 개발용: H2 인메모리 DB
 spring:
@@ -257,12 +271,6 @@ conversation:
     ticket:
       private-key-pem: ${REALTIME_TICKET_PRIVATE_KEY_PEM}
       public-key-pem: ${REALTIME_TICKET_PUBLIC_KEY_PEM}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,metrics
 
 report:
   schedule:

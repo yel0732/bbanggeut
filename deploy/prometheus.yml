@@ -1,0 +1,30 @@
+# Prometheus 스크레이프 구성. compose의 monitoring profile로만 뜬다.
+# 어떤 대상도 외부에 노출되지 않는다 — Prometheus 자신도 포트를 publish하지 않고,
+# 조회는 nginx 뒤의 Grafana만 한다(docs/MONITORING.md).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:8080"]
+
+  - job_name: ai-server
+    metrics_path: /metrics
+    static_configs:
+      # ai-server는 host 네트워크(WebRTC UDP 인바운드 요구)라 서비스명 DNS에 없다.
+      # compose가 extra_hosts(host-gateway)로 이 별칭을 게이트웨이 IP에 매핑한다.
+      - targets: ["host.docker.internal:8000"]
+
+  # host-metrics profile을 함께 켠 배포(EC2)에서만 살아난다. 꺼져 있으면 이
+  # 대상만 down으로 남고 나머지 수집에는 영향이 없다.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

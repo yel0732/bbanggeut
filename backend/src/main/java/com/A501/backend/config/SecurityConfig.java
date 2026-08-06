@@ -58,6 +58,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/game-sessions")
                         .authenticated()
                         .requestMatchers("/actuator/metrics/**").authenticated()
+                        // Prometheus 스크레이프 경로. nginx가 라우팅하지 않아 외부에서 도달할 수
+                        // 없고, edge 네트워크의 Prometheus 컨테이너만 접근한다(스크레이퍼는 인증
+                        // 헤더가 없다). 아래 anyRequest().permitAll()에 묻혀 있던 것을 명시한다.
+                        .requestMatchers("/actuator/prometheus").permitAll()
                         // /api/children/**는 report 도메인의 /api/children/{childId}/reports/**와 경로가
                         // 겹치므로 와일드카드 대신 이 도메인이 실제로 쓰는 경로만 정확히 지정한다.
                         .requestMatchers("/api/profile/**").authenticated()

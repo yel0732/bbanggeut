@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from app.api.health import router as health_router
 from app.api.dialogue import router as dialogue_router
 from app.api.child_diary import router as child_diary_router
+from app.api.metrics import router as metrics_router
 from app.api.report import router as report_router
 from app.config import AppSettings
 from app.child_diary.generator import ChildDiaryGenerator
@@ -293,6 +294,7 @@ def create_app(
     app.include_router(report_router)
     app.include_router(signaling_router)
     app.include_router(health_router)
+    app.include_router(metrics_router)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

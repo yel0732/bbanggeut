@@ -17,6 +17,12 @@ install -m 0644 "$source_root/compose.yml" "$deploy_root/compose.yml"
 install -m 0644 "$source_root/deploy/nginx.conf" "$deploy_root/deploy/nginx.conf"
 install -m 0644 "$source_root/deploy/nginx-http.conf" "$deploy_root/deploy/nginx-http.conf"
 install -m 0755 "$source_root"/deploy/scripts/*.sh "$script_dir/"
+# 모니터링 설정도 함께 배포한다 — compose가 이 경로들을 컨테이너에 마운트하므로
+# 빠뜨리면 prometheus·grafana 기동이 깨진다(docker가 빈 디렉터리를 만들어 버린다).
+install -m 0644 "$source_root/deploy/prometheus.yml" "$deploy_root/deploy/prometheus.yml"
+rm -rf "$deploy_root/deploy/grafana"
+mkdir -p "$deploy_root/deploy/grafana"
+cp -R "$source_root/deploy/grafana/provisioning" "$deploy_root/deploy/grafana/"
 
 mkdir -p "$state_dir"
 ai_previous=$(docker inspect --format '{{.Config.Image}}' a501-ai-server-1)
@@ -49,6 +55,10 @@ docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps
 "$script_dir/wait-for-healthy.sh" a501-backend-1 180
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps nginx
 "$script_dir/wait-for-healthy.sh" a501-nginx-1 60
+# 모니터링 스택. 서비스를 명시하면 compose가 해당 profile을 자동 활성화한다.
+# 앱 이미지와 달리 버전이 고정되어 있어 설정이 바뀐 배포에서만 재기동된다.
+docker compose -p a501 -f "$compose_file" --env-file "$env_file" \
+    up -d --no-deps prometheus grafana node-exporter
 "$script_dir/smoke-test.sh"
 
 trap - INT TERM HUP EXIT

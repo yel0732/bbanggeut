@@ -9,14 +9,24 @@ Prometheus가 backend·ai-server의 메트릭을 15초마다 수집하고, Grafa
 ```bash
 # 로컬 (Windows/macOS — node-exporter 제외)
 docker compose --profile monitoring up -d
-
-# 배포 (EC2 — 호스트 CPU/RAM/디스크 수집 포함)
-docker compose --profile monitoring --profile host-metrics up -d
 ```
 
-접속: `https://i15a501.p.ssafy.io/grafana/` (로컬은 `http://localhost/grafana/`).
-계정은 `.env`의 `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`.
-**배포 `.env`에는 반드시 기본값이 아닌 비밀번호를 설정한다.**
+**배포(EC2)는 deploy.sh가 담당한다** — 모니터링 설정 파일을 런타임 디렉터리로
+복사하고 prometheus·grafana·node-exporter를 함께 올린다. 별도 명령이 필요 없다.
+
+첫 배포 전에 한 번만 EC2의 `/srv/a501-secrets/.env`에 추가한다:
+
+```
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=강한-비밀번호
+GRAFANA_ROOT_URL=https://i15a501.p.ssafy.io/grafana/
+```
+
+접속: `https://i15a501.p.ssafy.io/grafana/` (로컬은 `http://localhost:3000/grafana/`
+또는 nginx를 띄웠다면 `http://localhost/grafana/`).
+`GRAFANA_ADMIN_PASSWORD`는 **grafana_data 볼륨이 처음 만들어질 때만 적용**된다 —
+이후 변경은 Grafana UI 또는
+`docker compose exec grafana grafana cli admin reset-admin-password <pw>`.
 
 ## 노출 원칙
 

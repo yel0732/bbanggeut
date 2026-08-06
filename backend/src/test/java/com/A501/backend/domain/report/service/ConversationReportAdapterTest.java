@@ -192,7 +192,7 @@ class ConversationReportAdapterTest {
     }
 
     @Test
-    void protectsReportInputFromUnsafeAndPrivateConversationText() {
+    void keepsUnsafeConversationTextOutOfTheReportAndGuidesTheParent() {
         ConversationSessionRepository sessionRepository =
                 mock(ConversationSessionRepository.class);
         ConversationTopicStateRepository topicRepository =
@@ -238,7 +238,7 @@ class ConversationReportAdapterTest {
                                 "turn-2",
                                 "conversation-1",
                                 2,
-                                "우리 유치원 선생님 이야기야",
+                                "우리 유치원 선생님이랑 블록 놀이 했어",
                                 null,
                                 STARTED_AT.plusSeconds(2),
                                 STARTED_AT.plusSeconds(3))));
@@ -258,12 +258,12 @@ class ConversationReportAdapterTest {
         var summary = adapter.generateSummary(15L, STARTED_AT, ENDED_AT)
                 .orElseThrow();
 
-        assertThat(summary.notableQuotes()).isEmpty();
+        // 안전 신호가 담긴 발화만 빠지고, 유치원·선생님이 나오는 일상 발화는 그대로 쓴다.
+        assertThat(summary.notableQuotes())
+                .containsExactly("우리 유치원 선생님이랑 블록 놀이 했어");
         assertThat(summary.conversationGuide().description())
                 .contains("편안히 이야기해볼 필요");
         assertThat(summary.conversationGuide().questions())
                 .anyMatch(question -> question.contains("마음이 많이 힘들었던 일"));
-        assertThat(summary.conversationGuide().questions())
-                .anyMatch(question -> question.contains("자세한 이야기"));
     }
 }

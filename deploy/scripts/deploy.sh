@@ -57,8 +57,11 @@ docker compose -p a501 -f "$compose_file" --env-file "$env_file" up -d --no-deps
 "$script_dir/wait-for-healthy.sh" a501-nginx-1 60
 # 모니터링 스택. 서비스를 명시하면 compose가 해당 profile을 자동 활성화한다.
 # 앱 이미지와 달리 버전이 고정되어 있어 설정이 바뀐 배포에서만 재기동된다.
+# 모니터링은 앱 배포의 게이트가 아니다 — 이미지 pull 실패 등으로 여기가 죽어도
+# 앱 배포는 계속되고(롤백 금지), 실패는 로그로만 남긴다.
 docker compose -p a501 -f "$compose_file" --env-file "$env_file" \
-    up -d --no-deps prometheus grafana node-exporter
+    up -d --no-deps prometheus grafana node-exporter \
+    || echo 'monitoring stack failed to start; app deployment continues' >&2
 "$script_dir/smoke-test.sh"
 
 trap - INT TERM HUP EXIT

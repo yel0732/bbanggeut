@@ -17,7 +17,7 @@ STT·LLM·TTS 파이프라인과 규칙 기반 Dialogue 정책을 담당합니�
 - 확정된 대화 이벤트를 **Redis Stream**(`conversation-events`)에 발행하면 Spring이 저장합니다.
 - 아이 일기 요약, 일간 리포트 요약 등 **내부 REST API**도 제공합니다.
 
-## 🚧 서비스 경계 (가장 중요)
+## 🚧 서비스 경계
 
 - FastAPI는 **MySQL에 직접 접근하지 않습니다.** DB 소유는 Spring입니다.
 - 사용자 Access Token은 FastAPI로 오지 않습니다. Realtime 접속은 Spring이 발급한 **일회용 Ticket(JWT)** 을 **JWKS**(`GET .../internal/v1/realtime/jwks`)로 검증합니다.

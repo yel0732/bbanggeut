@@ -123,9 +123,9 @@ export const FRUIT_GAME_CONFIG = {
   /**
    * 총 진행 시간(초) — 일시정지 제외 실제 플레이 시간 (MGAME-17).
    *
-   * 팔을 계속 휘두르는 게임이라 길면 아이가 지친다. 1분으로 짧게 끊는다.
+   * 팔을 계속 휘두르는 게임이라 길면 아이가 지친다. 35초로 짧게 끊는다.
    */
-  durationSec: 60,
+  durationSec: 35,
   /** 플레이 손 인식 후 카운트다운(초) (MGAME-04) */
   countdownSec: 3,
   /** 과일 생성 간격(ms) (MGAME-13) */

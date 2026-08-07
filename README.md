@@ -24,37 +24,37 @@
 
 웹캠으로 손과 팔의 움직임을 인식해 조작합니다. 
 
-|                                                    | |
-|:--------------------------------------------------:| :---: |
-|  <img src="assets/gif/fruit.webp" width="400" />   | <img src="assets/gif/dobble.webp" width="400" /> |
-|       **과일 자르기**<br/>날아오는 과일 위로 손을 휘저어 자릅니다        | **그림 맞추기**<br/>두 카드에 공통으로 있는 그림을 양손으로 짚습니다 |
-| <img src="assets/gif/wordmatch.webp" width="400" /> | <img src="assets/gif/recycle.webp" width="400" /> |
-|    **낱말 맞추기**<br/>그림을 보고 알맞은 글자 카드를 집어 빈칸에 넣습니다    | **숲 속 청소하기**<br/>떨어진 쓰레기를 집어 알맞은 분리수거 통에 담습니다 |
+|                                                     | |
+|:---------------------------------------------------:| :---: |
+|  <img src="assets/demo/fruit.webp" width="400" />   | <img src="assets/demo/dobble.webp" width="400" /> |
+|        **과일 자르기**<br/>날아오는 과일 위로 손을 휘저어 자릅니다        | **그림 맞추기**<br/>두 카드에 공통으로 있는 그림을 양손으로 짚습니다 |
+| <img src="assets/demo/wordmatch.webp" width="400" /> | <img src="assets/demo/recycle.webp" width="400" /> |
+|    **낱말 맞추기**<br/>그림을 보고 알맞은 글자 카드를 집어 빈칸에 넣습니다     | **숲 속 청소하기**<br/>떨어진 쓰레기를 집어 알맞은 분리수거 통에 담습니다 |
 
 ### 캐릭터와의 하루 대화
 
 놀이가 끝나면 캐릭터가 아이에게 오늘을 물어봅니다. 아이는 말로 대답하고, 캐릭터는 이어서 되묻습니다.
 
-![아이 대화](assets/gif/conversation.webp)
+![아이 대화](assets/demo/conversation.webp)
 
 ### 아이 일기
 
 대화 내용을 아이가 읽을 수 있는 문장의 일기로 정리해 남깁니다. 지난 일기는 언제든 다시 볼 수 있습니다.
 
-![아이 일기](assets/gif/child-diary.webp)
+![아이 일기](assets/demo/child-diary.webp)
 
 ### 부모 리포트
 
 놀이 기록과 대화에서 드러난 감정·관심사를 모아 하루 단위 리포트로 전달합니다.
 
-![부모 리포트](assets/gif/parent-report.webp)
+![부모 리포트](assets/demo/parent-report.webp)
 
 ### 프로필
 
 한 계정에 여러 아이를 등록하고, 아이 모드와 부모 모드를 나눠 사용합니다.
 
 <!-- TODO: 프로필 선택 화면 GIF -->
-![자녀 프로필](assets/gif/profile.webp)
+![자녀 프로필](assets/demo/profile.webp)
 
 ## 기술 스택
 

@@ -12,7 +12,7 @@
 동시에 부모는 아이의 하루를 알기 어렵습니다. "오늘 뭐 했어?"라는 질문에 아이는 아직 하루를 정리해 말하지 못하고,
 부모는 아이가 무엇에 즐거워했는지 짐작만 하게 됩니다.
 
-빵긋은 이 두 가지를 하나로 잇습니다.
+빵긋은 이 세 가지를 하나로 잇습니다.
 
 - **몸을 쓰는 놀이로 바꿉니다.** 별도 기기 없이 웹캠만으로 손과 팔을 인식해, 아이가 직접 움직여야 놀이가 진행됩니다.
 - **아이의 말을 하루로 남깁니다.** 놀이가 끝나면 캐릭터가 오늘 있었던 일을 물어보고, 그 대화를 아이 눈높이의 일기로 정리합니다.
@@ -24,12 +24,24 @@
 
 웹캠으로 손과 팔의 움직임을 인식해 조작합니다. 
 
-|                                                     | |
-|:---------------------------------------------------:| :---: |
-|  <img src="assets/demo/fruit.webp" width="400" />   | <img src="assets/demo/dobble.webp" width="400" /> |
-|        **과일 자르기**<br/>날아오는 과일 위로 손을 휘저어 자릅니다        | **그림 맞추기**<br/>두 카드에 공통으로 있는 그림을 양손으로 짚습니다 |
-| <img src="assets/demo/wordmatch.webp" width="400" /> | <img src="assets/demo/recycle.webp" width="400" /> |
-|    **낱말 맞추기**<br/>그림을 보고 알맞은 글자 카드를 집어 빈칸에 넣습니다     | **숲 속 청소하기**<br/>떨어진 쓰레기를 집어 알맞은 분리수거 통에 담습니다 |
+<table>
+  <tr>
+    <td align="center"><img src="assets/demo/fruit.webp" width="400" /></td>
+    <td align="center"><img src="assets/demo/dobble.webp" width="400" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>과일 자르기</b><br/>날아오는 과일 위로 손을 휘저어 자릅니다</td>
+    <td align="center"><b>그림 맞추기</b><br/>두 카드에 공통으로 있는 그림을 양손으로 짚습니다</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/demo/wordmatch.webp" width="400" /></td>
+    <td align="center"><img src="assets/demo/recycle.webp" width="400" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>낱말 맞추기</b><br/>그림을 보고 알맞은 글자 카드를 집어 빈칸에 넣습니다</td>
+    <td align="center"><b>숲 속 청소하기</b><br/>떨어진 쓰레기를 집어 알맞은 분리수거 통에 담습니다</td>
+  </tr>
+</table>
 
 ### 캐릭터와의 하루 대화
 

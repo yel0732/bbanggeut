@@ -160,6 +160,87 @@ Windows PowerShell 기준입니다(`gradlew.bat`, macOS/Linux는 `./gradlew`).
 - Swagger UI: <http://localhost:8080/swagger-ui/index.html>
 - H2 Console: <http://localhost:8080/h2-console> (JDBC URL `jdbc:h2:mem:a501;MODE=MySQL`, user `sa`)
 
+## 🔌 API 요약 (도메인별)
+
+전체 스펙은 Swagger UI를 기준으로 하며, 아래는 컨트롤러 매핑 요약입니다.
+
+### auth — 인증 · 프로필 · PIN
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/api/auth/email/check` | 이메일 중복 확인 |
+| POST | `/api/auth/signup` | 회원가입 |
+| POST | `/api/auth/login` | 로컬 로그인 |
+| POST | `/api/auth/token/refresh` | Access Token 재발급 |
+| POST | `/api/auth/logout` | 로그아웃 |
+| DELETE | `/api/auth/me` | 회원 탈퇴 |
+| POST | `/api/auth/google` | 구글 로그인 |
+| POST | `/api/auth/google/complete` | 구글 신규 가입 완료 |
+| POST | `/api/auth/google/link` | 기존 계정에 구글 연동 |
+| PATCH | `/api/auth/password` | 비밀번호 변경 |
+| GET | `/api/profile` | 내 프로필 조회 |
+| PATCH | `/api/profile/image` | 프로필 이미지(프리셋) 변경 |
+| POST | `/api/profile/image/upload` | 프로필 이미지 업로드 |
+| POST | `/api/profile/pin` | PIN 설정 |
+| POST | `/api/profile/pin/verify` | PIN 검증 |
+| PATCH | `/api/profile/pin` | PIN 변경 |
+
+### child — 자녀 프로필
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/api/children/name/check` | 자녀 이름 중복 확인 |
+| POST | `/api/children` | 자녀 등록 |
+| GET | `/api/children` | 자녀 목록 조회 |
+| PATCH | `/api/children/{childId}` | 자녀 정보 수정 |
+| POST | `/api/children/{childId}/image` | 자녀 프로필 이미지 업로드 |
+| DELETE | `/api/children/{childId}` | 자녀 삭제 (PIN 검증) |
+
+### conversation — 대화 세션 · Realtime
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| POST | `/api/v1/children/{childId}/conversations` | 대화 세션 생성 |
+| GET | `/api/v1/conversations/{conversationId}` | 대화 세션 조회 |
+| GET | `/api/v1/conversations/{conversationId}/turns` | 대화 턴 목록 조회 |
+| POST | `/api/v1/conversations/{conversationId}/complete` | 대화 종료 |
+| POST | `/api/v1/conversations/{conversationId}/text-turns` | 텍스트 턴 추가 |
+| POST | `/api/v1/conversations/{conversationId}/realtime-session` | Realtime 세션 Ticket 발급 |
+| GET | `/internal/v1/realtime/jwks` | Realtime Ticket 검증용 JWKS (내부, AI 서버용) |
+
+### childdiary — 아이 일기 (base `/api/v1/children/{childId}`)
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| POST | `.../conversations/{conversationId}/child-diary/preview` | 일기 미리보기 생성 |
+| POST | `.../child-diaries` | 일기 저장 (attach) |
+| GET | `.../child-diaries` | 일기 목록 조회 |
+| GET | `.../child-diaries/{diaryId}` | 일기 상세 조회 |
+
+### game — 게임 세션
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| POST | `/api/game-sessions` | 게임 세션 결과 등록 |
+
+### report — 리포트 · 알림
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/api/children/{childId}/reports` | 리포트 목록 조회 (기간·상태·페이지) |
+| GET | `/api/children/{childId}/reports/{reportDate}` | 특정 날짜 리포트 상세 조회 |
+| POST | `/api/children/{childId}/reports/{reportDate}/regenerate` | 실패 리포트 재생성 (Idempotency-Key) |
+| POST | `/api/children/{childId}/reports/{reportDate}/generate` | 리포트 즉시 생성 |
+| POST | `/api/admin/children/{childId}/reports/{reportDate}/generate` | (관리자) 과거 리포트 생성 |
+| GET | `/api/notifications/unread` | 안 읽은 알림 조회 |
+| PATCH | `/api/notifications/{notificationId}/read` | 알림 읽음 처리 |
+| PATCH | `/api/notifications/reports/{reportId}/read` | 리포트 기준 알림 읽음 처리 |
+| GET | `/api/notifications/preferences` | 알림 설정 조회 |
+| PUT | `/api/notifications/preferences` | 알림 설정 변경 |
+| GET | `/api/notifications/stream` | 알림 SSE 스트림 |
+
+> `GET /harness`, `GET /realtime-harness` 등은 로컬 개발/디버깅용 도구 페이지입니다.
+
 ## 🔍 주요 기능
 
 - ✅ JWT + Google OAuth2 기반 로그인 / 회원가입, Refresh Token rotation, 회원 탈퇴(soft delete + hard delete 스케줄러)
@@ -184,6 +265,196 @@ CONVERSATION_STREAM_RECOVERY_ENABLED=true
 세부 poll · pending 복구 설정은 `application.yml` 의 `conversation.stream` 항목을 기준으로 합니다.
 발행 성공이 곧 MySQL 저장 완료를 의미하지는 않습니다(멱등 처리 + pending 복구로 보장).
 
+## 🗺️ ERD (데이터 모델)
+
+**실선(`──`)** 은 DB에 실제로 존재하는 FK 제약, **점선(`··`)** 은 도메인 경계를 넘는 논리적 참조(FK 없음, 애플리케이션이 무결성 책임)입니다. 전체 컬럼은 [`SCHEMA`](SCHEMA)를 참고하세요.
+
+```mermaid
+erDiagram
+    %% ── AUTH ──
+    parent {
+        bigint parent_id PK
+        varchar email UK
+        varchar provider "LOCAL|GOOGLE"
+        varchar role "PARENT|ADMIN"
+    }
+    refresh_token {
+        bigint id PK
+        bigint parent_id FK
+        varchar token_hash UK
+    }
+
+    %% ── CHILD ──
+    child {
+        bigint child_id PK
+        bigint parent_id "ref parent"
+        varchar name
+        datetime deleted_at
+    }
+
+    %% ── CONVERSATION ──
+    conversation_session {
+        varchar conversation_id PK
+        bigint child_id "ref child"
+        varchar status
+        varchar current_topic
+    }
+    conversation_topic_state {
+        varchar conversation_topic_id PK
+        varchar conversation_id "ref session"
+        varchar topic_type "GAME|DAILY"
+    }
+    conversation_turn {
+        varchar turn_id PK
+        varchar conversation_id "ref session"
+        varchar speaker "AI|CHILD"
+    }
+    conversation_game_session {
+        varchar conversation_game_session_id PK
+        varchar conversation_id "ref session"
+        binary game_session_id "ref game_session"
+    }
+    conversation_event {
+        varchar event_id PK
+        varchar conversation_id "ref session"
+        varchar event_type
+    }
+
+    %% ── GAME ──
+    game {
+        bigint game_id PK
+        varchar game_code UK
+    }
+    game_session {
+        binary game_session_id PK
+        bigint child_id "ref child"
+        bigint game_id FK
+        int score
+    }
+    card_round {
+        binary card_round_id PK
+        binary game_session_id FK
+        int round_no
+    }
+    fruit_ninja_result {
+        binary game_session_id PK
+    }
+    fruit_ninja_fruit_result {
+        binary fruit_result_id PK
+        binary game_session_id "ref game_session"
+    }
+    recycling_game_result {
+        binary game_session_id PK,FK
+    }
+    word_match_result {
+        binary game_session_id PK,FK
+    }
+    word_match_problem_result {
+        bigint word_match_problem_result_id PK
+        binary game_session_id FK
+    }
+    game_rule_version {
+        bigint rule_version_id PK
+        varchar version_code UK
+    }
+    fruit_type {
+        bigint fruit_type_id PK
+        varchar fruit_code UK
+    }
+    fruit_score_config {
+        bigint rule_version_id PK,FK
+        bigint fruit_type_id PK,FK
+    }
+
+    %% ── REPORT ──
+    daily_report {
+        bigint report_id PK
+        bigint child_id "ref child"
+        date report_date
+        varchar generation_status
+    }
+    report_game_result {
+        bigint report_game_result_id PK
+        bigint report_id "ref daily_report"
+        binary game_session_id "ref game_session"
+    }
+    report_conversation_summary {
+        bigint report_conversation_summary_id PK
+        bigint report_id UK "ref daily_report"
+    }
+    report_generation_attempt {
+        bigint attempt_id PK
+        bigint report_id "ref daily_report"
+    }
+    report_manual_regeneration {
+        bigint regeneration_id PK
+        bigint report_id "ref daily_report"
+        bigint parent_id "ref parent"
+    }
+    report_notification {
+        bigint notification_id PK
+        bigint parent_id "ref parent"
+        bigint report_id "ref daily_report"
+    }
+    report_notification_preference {
+        bigint preference_id PK
+        bigint parent_id UK "ref parent"
+    }
+    report_notification_failure {
+        bigint notification_failure_id PK
+        bigint report_id "ref daily_report"
+    }
+    admin_report_generation_audit {
+        bigint audit_id PK
+        bigint admin_parent_id "ref parent"
+        bigint report_id "ref daily_report"
+    }
+
+    %% ── CHILD DIARY ──
+    child_diary {
+        bigint child_diary_id PK
+        bigint child_id "ref child"
+        varchar conversation_id UK "ref session"
+    }
+
+    %% ── DB FK (실선) ──
+    parent ||--o{ refresh_token : issues
+    game ||--o{ game_session : played_as
+    game_session ||--o{ card_round : rounds
+    game_session ||--o| recycling_game_result : result
+    game_session ||--o| word_match_result : result
+    game_session ||--o{ word_match_problem_result : problems
+    game_rule_version ||--o{ fruit_score_config : scores
+    fruit_type ||--o{ fruit_score_config : scores
+
+    %% ── 논리적 참조 (점선, 도메인 경계) ──
+    parent ||..o{ child : owns
+    child ||..o{ conversation_session : has
+    child ||..o{ game_session : plays
+    child ||..o{ daily_report : has
+    child ||..o{ child_diary : has
+    conversation_session ||..o{ conversation_topic_state : topics
+    conversation_session ||..o{ conversation_turn : turns
+    conversation_session ||..o{ conversation_game_session : links
+    conversation_session ||..o{ conversation_event : events
+    conversation_session ||..o| child_diary : produces
+    game_session ||..o| fruit_ninja_result : result
+    game_session ||..o{ fruit_ninja_fruit_result : fruits
+    game_session ||..o{ conversation_game_session : linked
+    game_session ||..o{ report_game_result : snapshot
+    daily_report ||..o{ report_game_result : includes
+    daily_report ||..o| report_conversation_summary : summary
+    daily_report ||..o{ report_generation_attempt : attempts
+    daily_report ||..o{ report_manual_regeneration : regen
+    daily_report ||..o{ report_notification : notifies
+    daily_report ||..o{ report_notification_failure : failures
+    parent ||..o{ report_notification : receives
+    parent ||..o| report_notification_preference : pref
+    parent ||..o{ report_manual_regeneration : requests
+    parent ||..o{ admin_report_generation_audit : audited
+    daily_report ||..o{ admin_report_generation_audit : audited
+```
+
 ## 🗄️ DB 스키마 / 마이그레이션
 
 - 운영 스키마 변경은 **Flyway 마이그레이션**(`src/main/resources/db/migration/`)으로만 적용합니다.
@@ -199,7 +470,6 @@ CONVERSATION_STREAM_RECOVERY_ENABLED=true
   [`CHILD_DIARY_AI_CONTRACT`](../docs/CHILD_DIARY_AI_CONTRACT.md),
   [`REPORT_AI_CONTRACT`](../docs/REPORT_AI_CONTRACT.md)
 - [`../docs/MONITORING.md`](../docs/MONITORING.md), [`../docs/OPERATIONS_RUNBOOK.md`](../docs/OPERATIONS_RUNBOOK.md) — 모니터링·운영 절차
-- 서비스 경계와 전체 규칙은 루트 [`../CLAUDE.md`](../CLAUDE.md) 를 따릅니다.
 
 ## 📌 기타
 

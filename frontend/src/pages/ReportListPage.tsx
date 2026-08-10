@@ -22,11 +22,11 @@ import closeButtonUrl from '@/assets/images/start/close-btn.webp'
 import musicOnUrl from '@/assets/images/start/music-btn.webp'
 import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { BirthDatePicker } from '@/components/ui/BirthDatePicker'
+import { ReportPaperContent } from '@/features/reports/ReportPaperContent'
 import { useFitScale } from '@/hooks/useFitScale'
 import { useParentBgm } from '@/hooks/useParentBgm'
 import { loadChildProfiles } from '@/lib/childProfiles'
 import { removeReadReportArrival } from '@/lib/reportArrivals'
-import { ReportPaperContent } from '@/pages/ReportDetailPage'
 
 const PAGE_SIZE = 4
 const jua = { fontFamily: "'Jua', sans-serif" } as const

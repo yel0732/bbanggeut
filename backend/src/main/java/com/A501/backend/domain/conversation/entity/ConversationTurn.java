@@ -2,6 +2,7 @@ package com.A501.backend.domain.conversation.entity;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 import org.springframework.data.domain.Persistable;
 
@@ -287,6 +288,7 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
             throw new IllegalArgumentException("중단된 턴은 responseId를 가진 AI 턴만 가능합니다.");
         }
         validateTerminalTime(startedAt, interruptedAt, "중단");
+        validateInterruptionMetadata(interruptionReason, interruptionId);
         return ConversationTurn.builder()
                 .turnId(turnId)
                 .conversationId(conversationId)
@@ -316,8 +318,14 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
             LocalDateTime interruptedAt,
             String interruptionReason,
             String interruptionId) {
+        validateInterruptionMetadata(interruptionReason, interruptionId);
         if (status == TurnStatus.INTERRUPTED) {
-            return;
+            if (Objects.equals(this.interruptedAt, interruptedAt)
+                    && Objects.equals(this.interruptionReason, interruptionReason)
+                    && Objects.equals(this.interruptionId, interruptionId)) {
+                return;
+            }
+            throw new IllegalStateException("이미 다른 중단 정보로 확정된 AI 턴입니다.");
         }
         if (speaker != Speaker.AI || responseId == null) {
             throw new IllegalStateException("responseId를 가진 AI 턴만 중단할 수 있습니다.");
@@ -328,6 +336,21 @@ public class ConversationTurn extends BaseTimeEntity implements Persistable<Stri
         this.interruptedAt = interruptedAt;
         this.interruptionReason = interruptionReason;
         this.interruptionId = interruptionId;
+    }
+
+    private static void validateInterruptionMetadata(
+            String interruptionReason,
+            String interruptionId) {
+        if (interruptionReason == null
+                || interruptionReason.isBlank()
+                || interruptionReason.length() > 40) {
+            throw new IllegalArgumentException("올바른 중단 사유가 필요합니다.");
+        }
+        if (interruptionId == null
+                || interruptionId.isBlank()
+                || interruptionId.length() > 40) {
+            throw new IllegalArgumentException("올바른 중단 ID가 필요합니다.");
+        }
     }
 
     public void fail(LocalDateTime completedAt) {

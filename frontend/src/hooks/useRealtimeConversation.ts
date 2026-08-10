@@ -14,6 +14,7 @@ import {
   CONVERSATION_EVENT,
   type ConversationEventEnvelope,
   STT_LOW_CONFIDENCE_CODE,
+  readAssistantAudioInterrupted,
   readAssistantText,
   readConversationError,
   readSessionCompleted,
@@ -54,6 +55,8 @@ export type RealtimeConversationState = {
   notice: string | null
   localStream: MediaStream | null
   remoteStream: MediaStream | null
+  /** 중단된 RTP 오디오가 브라우저 버퍼에서 늦게 재생되지 않도록 잠시 음소거한다. */
+  remoteAudioMuted: boolean
   micEnabled: boolean
   /** 방금 대화의 식별자. 종료 후 일기 생성(preview) 호출에 쓴다. */
   conversationId: string | null
@@ -72,6 +75,7 @@ const INITIAL_STATE: RealtimeConversationState = {
   notice: null,
   phase: 'idle',
   progress: null,
+  remoteAudioMuted: false,
   remoteStream: null,
   voice: 'waiting',
 }
@@ -117,6 +121,10 @@ export function useRealtimeConversation() {
   const phaseRef = useRef<ConversationPhase>('idle')
   /** 마지막으로 만들어진 AI 응답. 종료 인사의 오디오를 짚어내는 데 쓴다. */
   const lastResponseIdRef = useRef<string | null>(null)
+  /** 현재 화면과 오디오 상태를 변경할 수 있는 가장 최근 AI 응답. */
+  const activeResponseIdRef = useRef<string | null>(null)
+  /** 중단 뒤 늦게 도착한 started/completed 이벤트를 무시하기 위한 응답 목록. */
+  const interruptedResponseIdsRef = useRef(new Set<string>())
   const closingResponseIdRef = useRef<string | null>(null)
   const closingTimerRef = useRef<number | null>(null)
   const noticeTimerRef = useRef<number | null>(null)
@@ -244,10 +252,21 @@ export function useRealtimeConversation() {
       switch (envelope.type) {
         case CONVERSATION_EVENT.ASSISTANT_RESPONSE_CREATED:
           lastResponseIdRef.current = envelope.responseId
+          activeResponseIdRef.current = envelope.responseId
+          if (envelope.responseId !== null) {
+            interruptedResponseIdsRef.current.delete(envelope.responseId)
+          }
           setState((current) => ({ ...current, voice: 'thinking' }))
           break
 
         case CONVERSATION_EVENT.ASSISTANT_TEXT_FINAL:
+          if (
+            envelope.responseId === null ||
+            envelope.responseId !== activeResponseIdRef.current ||
+            interruptedResponseIdsRef.current.has(envelope.responseId)
+          ) {
+            break
+          }
           setState((current) => ({
             ...current,
             assistantText: readAssistantText(envelope.payload),
@@ -255,12 +274,56 @@ export function useRealtimeConversation() {
           break
 
         case CONVERSATION_EVENT.ASSISTANT_AUDIO_STARTED:
-          setState((current) => ({ ...current, voice: 'speaking' }))
+          if (
+            envelope.responseId === null ||
+            envelope.responseId !== activeResponseIdRef.current ||
+            interruptedResponseIdsRef.current.has(envelope.responseId)
+          ) {
+            break
+          }
+          setState((current) => ({
+            ...current,
+            remoteAudioMuted: false,
+            voice: 'speaking',
+          }))
           break
+
+        case CONVERSATION_EVENT.ASSISTANT_AUDIO_INTERRUPTED: {
+          const payload = readAssistantAudioInterrupted(envelope.payload)
+          const responseId = envelope.responseId
+          if (payload === null || responseId === null) break
+
+          interruptedResponseIdsRef.current.add(responseId)
+          const isClosing = phaseRef.current === 'closing'
+          if (isClosing && responseId === closingResponseIdRef.current) {
+            finalizeCompletion()
+            break
+          }
+          if (
+            phaseRef.current !== 'active' ||
+            responseId !== activeResponseIdRef.current
+          ) {
+            break
+          }
+
+          setState((current) => ({
+            ...current,
+            remoteAudioMuted: true,
+            voice: 'listening',
+          }))
+          break
+        }
 
         case CONVERSATION_EVENT.ASSISTANT_AUDIO_COMPLETED:
         case CONVERSATION_EVENT.ASSISTANT_AUDIO_FAILED: {
-          // AI 발화가 끝나야 서버가 아이의 입력을 다시 받는다(ADR-020).
+          if (
+            envelope.responseId === null ||
+            envelope.responseId !== activeResponseIdRef.current ||
+            interruptedResponseIdsRef.current.has(envelope.responseId)
+          ) {
+            break
+          }
+          // 정상 재생 종료 시 UI를 다시 듣기 상태로 전환한다.
           const isClosing = phaseRef.current === 'closing'
 
           /*
@@ -366,6 +429,8 @@ export function useRealtimeConversation() {
 
     clearTimers()
     lastResponseIdRef.current = null
+    activeResponseIdRef.current = null
+    interruptedResponseIdsRef.current.clear()
     closingResponseIdRef.current = null
     micEnabledRef.current = true
     setState({ ...INITIAL_STATE, phase: 'preparing' })

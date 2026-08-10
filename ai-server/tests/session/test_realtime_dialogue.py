@@ -772,7 +772,8 @@ class TestConversationOpening:
         )
 
         def stt_pipeline_factory(
-            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+            publisher, *, turn_sequencer, on_final, on_no_speech,
+            is_output_active=None, on_barge_in=None, on_turn_discarded=None
         ):
             class _SinkStub:
                 async def aclose(self) -> None: ...
@@ -819,13 +820,15 @@ class TestSessionAssembly:
         captured: dict = {}
 
         def stt_pipeline_factory(
-            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+            publisher, *, turn_sequencer, on_final, on_no_speech,
+            is_output_active=None, on_barge_in=None, on_turn_discarded=None
         ):
             captured.update(
                 sequencer=turn_sequencer,
                 on_final=on_final,
                 on_no_speech=on_no_speech,
                 is_output_active=is_output_active,
+                on_barge_in=on_barge_in,
             )
 
             class _SinkStub:
@@ -853,8 +856,9 @@ class TestSessionAssembly:
         assert session.state.snapshot.conversation.current_topic.value == "DAILY"
         assert captured["on_final"] == session.manager.handle_child_turn
         assert captured["on_no_speech"] == session.manager.handle_no_speech
-        # 합성이 없는(오디오 없는) 연결에는 재생될 오디오가 없으므로 게이트도 없다.
+        # 합성이 없는(오디오 없는) 연결에는 재생될 오디오와 Barge-in도 없다.
         assert captured["is_output_active"] is None
+        assert captured["on_barge_in"] is None
         await session.aclose()
 
     @pytest.mark.asyncio
@@ -875,9 +879,11 @@ class TestSessionAssembly:
         captured: dict = {}
 
         def stt_pipeline_factory(
-            publisher, *, turn_sequencer, on_final, on_no_speech, is_output_active=None
+            publisher, *, turn_sequencer, on_final, on_no_speech,
+            is_output_active=None, on_barge_in=None, on_turn_discarded=None
         ):
             captured["is_output_active"] = is_output_active
+            captured["on_barge_in"] = on_barge_in
 
             class _SinkStub:
                 async def aclose(self) -> None: ...
@@ -893,6 +899,10 @@ class TestSessionAssembly:
                 return self.speaking
 
             def speak(self, *args) -> None: ...
+
+            def interrupt_response(self, response_id: str) -> bool:
+                self.speaking = False
+                return True
 
             async def aclose(self) -> None: ...
 
@@ -922,6 +932,8 @@ class TestSessionAssembly:
         assert gate() is False
         synth.speaking = True
         assert gate() is True  # 박제된 bool이 아니라 현재 값을 읽는다
+        assert captured["on_barge_in"]() is True
+        assert gate() is False
         await session.aclose()
 
     @pytest.mark.asyncio
@@ -1016,6 +1028,11 @@ class _RecordingStreamProducer:
                                   audio_started_at, audio_completed_at) -> None:
         self.calls.append(("AI_TURN_COMPLETED", turn_id, response_id))
 
+    def publish_ai_turn_interrupted(self, *, turn_id, turn_seq, response_id,
+                                    interrupted_at, reason, interruption_id) -> None:
+        self.calls.append(("AI_TURN_INTERRUPTED", turn_id, turn_seq, response_id,
+                           interrupted_at, reason, interruption_id))
+
     def publish_session_completed(self, *, reason, completed_at) -> None:
         self.calls.append(("SESSION_COMPLETED", reason))
 
@@ -1033,7 +1050,180 @@ def _build_manager_with_stream(pipeline=None, snapshot=_TWO_TOPIC_SNAPSHOT):
     return manager, state, channel, stream, sequencer
 
 
+class TestBargeInEchoGuard:
+    """CHILD_BARGE_IN 직후 첫 턴이 중단된 발화의 에코이면 대화에 넣지 않는다."""
+
+    def _interrupted_manager(self):
+        manager, state, channel, stream, sequencer = _build_manager_with_stream()
+        spoken: list[str] = []
+        manager.set_speak(
+            lambda turn_id, turn_seq, response_id, text: spoken.append(text)
+        )
+        manager.set_interrupt_audio(lambda response_id: True)
+        manager.open_conversation()
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+        return manager, state, stream, sequencer, spoken
+
+    @pytest.mark.asyncio
+    async def test_echo_is_discarded_and_the_question_respoken_once(self) -> None:
+        manager, _, stream, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        # 에코 턴은 확정하지 않는다 — MySQL 원문이 AI의 말로 오염되면 안 된다.
+        assert all(call[0] != "CHILD_TURN_FINALIZED" for call in stream.calls)
+        # 중단된 발화를 같은 내용의 새 AI 턴으로 다시 말한다.
+        assert spoken == [question, question]
+
+    @pytest.mark.asyncio
+    async def test_a_repeated_echo_is_not_respoken_again(self) -> None:
+        """재발화도 에코로 끊기는 환경(AEC 고장)에서 자기-중단 루프를 만들지
+        않는다 — 두 번째부터는 폐기만 하고 무응답 사다리에 맡긴다."""
+
+        manager, _, _, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        assert spoken == [question, question]
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_barge_in_turn_reaches_the_dialogue(self) -> None:
+        manager, _, stream, sequencer, _ = self._interrupted_manager()
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result("블록 놀이 했어")
+        )
+
+        assert any(call[0] == "CHILD_TURN_FINALIZED" for call in stream.calls)
+
+    @pytest.mark.asyncio
+    async def test_the_guard_is_consumed_by_the_first_turn_only(self) -> None:
+        """진짜 발화가 지나가면 그 다음 턴은 에코 후보 없이 정상 처리된다."""
+
+        manager, _, stream, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result("블록 놀이 했어")
+        )
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        finalized = [c for c in stream.calls if c[0] == "CHILD_TURN_FINALIZED"]
+        assert len(finalized) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_discarded_barge_in_utterance_respeaks_the_response(self) -> None:
+        """실측(22:43:12): barge-in 오탐이 whisper 환각 가드에 뒤늦게 걸리면
+        응답만 끊기고 침묵이 남았다. 중단된 발화를 다시 말해야 한다."""
+
+        manager, _, _, _, spoken = self._interrupted_manager()
+        question = spoken[0]
+
+        manager.handle_discarded_utterance()
+
+        assert spoken == [question, question]
+
+    def test_discards_unrelated_to_barge_in_do_nothing(self) -> None:
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+        spoken: list[str] = []
+        manager.set_speak(
+            lambda turn_id, turn_seq, response_id, text: spoken.append(text)
+        )
+        manager.set_interrupt_audio(lambda response_id: True)
+        manager.open_conversation()
+
+        manager.handle_discarded_utterance()
+
+        assert len(spoken) == 1  # 평상시 잡음 폐기는 재발화를 만들지 않는다
+
+    @pytest.mark.asyncio
+    async def test_the_respeak_cap_is_shared_between_echo_and_discard(self) -> None:
+        manager, _, _, sequencer, spoken = self._interrupted_manager()
+        question = spoken[0]
+        manager.handle_discarded_utterance()  # 재발화 1회 소진
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+
+        manager.handle_discarded_utterance()
+
+        assert spoken == [question, question]
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_turn_rearms_the_respeak(self) -> None:
+        manager, _, _, sequencer, spoken = self._interrupted_manager()
+        manager.handle_discarded_utterance()  # 재발화 1회 소진
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result("블록 놀이 했어")
+        )
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+
+        manager.handle_discarded_utterance()
+
+        assert spoken[-1] == spoken[-2]  # 새 질문이 다시 한 번 재발화된다
+
+    @pytest.mark.asyncio
+    async def test_user_requested_interrupt_does_not_arm_the_guard(self) -> None:
+        """버튼 중단의 다음 발화는 인과상 아이의 진짜 말이다."""
+
+        manager, _, _, stream, sequencer = _build_manager_with_stream()
+        spoken: list[str] = []
+        manager.set_speak(
+            lambda turn_id, turn_seq, response_id, text: spoken.append(text)
+        )
+        manager.set_interrupt_audio(lambda response_id: True)
+        manager.open_conversation()
+        question = spoken[0]
+        assert manager.interrupt_current_response("USER_REQUESTED") is True
+
+        await manager.handle_child_turn(
+            _child_turn(sequencer), _stt_result(question[:8])
+        )
+
+        assert any(call[0] == "CHILD_TURN_FINALIZED" for call in stream.calls)
+
+
 class TestStreamPublishing:
+    def test_barge_in_cancels_audio_and_publishes_both_event_paths(self) -> None:
+        manager, _, channel, stream, _ = _build_manager_with_stream()
+        cancelled: list[str] = []
+        manager.set_speak(lambda *args: None)
+        manager.set_interrupt_audio(
+            lambda response_id: cancelled.append(response_id) is None or True
+        )
+        manager._interruption_id_factory = lambda: "int_fixed"  # noqa: SLF001
+        manager.open_conversation()
+        response_id = next(
+            event["responseId"]
+            for event in channel.sent
+            if event["type"] == "assistant.response.created"
+        )
+
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is True
+        assert manager.interrupt_current_response("CHILD_BARGE_IN") is False
+
+        assert cancelled == [response_id]
+        interrupted = channel.sent[-1]
+        assert interrupted["type"] == "assistant.audio.interrupted"
+        assert interrupted["responseId"] == response_id
+        assert interrupted["payload"] == {
+            "reason": "CHILD_BARGE_IN",
+            "interruptionId": "int_fixed",
+        }
+        stream_event = next(c for c in stream.calls if c[0] == "AI_TURN_INTERRUPTED")
+        assert stream_event[3] == response_id
+        assert stream_event[5:] == ("CHILD_BARGE_IN", "int_fixed")
+
     @pytest.mark.asyncio
     async def test_child_and_ai_turns_publish_in_order(self) -> None:
         manager, _, _, stream, sequencer = _build_manager_with_stream(

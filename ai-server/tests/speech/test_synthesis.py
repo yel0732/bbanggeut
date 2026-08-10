@@ -220,6 +220,54 @@ class TestFailure:
 
 class TestCancellation:
     @pytest.mark.asyncio
+    async def test_interrupt_before_first_provider_byte_is_immediate(self) -> None:
+        synth = FakeSpeechSynthesizer([_CHUNK])
+        service, channel, registry, speaker = _build(synth)
+
+        registry.issue()
+        service.speak("turn_2", 2, "resp_x", "질문")
+        queue = speaker._current  # noqa: SLF001
+
+        registry.cancel("resp_x")
+        assert service.interrupt_response("resp_x") is True
+        assert service.is_speaking is False
+        assert queue.is_flushed
+
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        assert channel.sent == []
+        assert service._task is not None and service._task.done()  # noqa: SLF001
+
+    @pytest.mark.asyncio
+    async def test_interrupt_during_provider_wait_cancels_without_next_chunk(self) -> None:
+        synth = FakeSpeechSynthesizer([_CHUNK, _CHUNK])
+        synth.release = asyncio.Event()
+        service, channel, registry, speaker = _build(synth)
+
+        registry.issue()
+        service.speak("turn_2", 2, "resp_x", "긴 질문")
+        await synth.started.wait()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        queue = speaker._current  # noqa: SLF001
+        assert any(e["type"] == "assistant.audio.started" for e in channel.sent)
+
+        assert service.interrupt_response("another_response") is False
+        assert service.is_speaking is True
+
+        registry.cancel("resp_x")
+        assert service.interrupt_response("resp_x") is True
+        assert service.is_speaking is False
+        assert queue.is_flushed
+
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        assert service._task is not None and service._task.done()  # noqa: SLF001
+        assert not any(e["type"] == "assistant.audio.completed" for e in channel.sent)
+
+    @pytest.mark.asyncio
     async def test_cancel_mid_stream_flushes_and_skips_completed(self) -> None:
         """Barge-in during synthesis: the loop must detect the cancel itself,
         flush, and return — WITHOUT relying on aclose to stop it."""

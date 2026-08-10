@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -45,6 +45,15 @@ class ConversationEventEnvelope(BaseModel):
         if value.tzinfo is None:
             raise ValueError("occurredAt must be timezone-aware")
         return value
+
+
+class ClientInterruptPayload(BaseModel):
+    """Explicit stop request sent by the child UI over the DataChannel."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    reason: Literal["USER_REQUESTED"]
+    response_id: str | None = Field(default=None, alias="responseId")
 
 
 class EventDiscardReason(StrEnum):

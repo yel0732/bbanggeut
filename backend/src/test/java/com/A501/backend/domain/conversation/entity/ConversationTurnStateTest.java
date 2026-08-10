@@ -109,13 +109,49 @@ class ConversationTurnStateTest {
         LocalDateTime firstInterruptedAt = LocalDateTime.of(2026, 7, 23, 11, 0);
         interrupted.interrupt(firstInterruptedAt, "FIRST_REASON", "int_state_005");
         interrupted.interrupt(
-                LocalDateTime.of(2026, 7, 23, 12, 0), "SECOND_REASON", "int_state_006");
+                firstInterruptedAt, "FIRST_REASON", "int_state_005");
 
         assertThat(completed.getStatus()).isEqualTo(TurnStatus.COMPLETED);
         assertThat(completed.getCompletedAt()).isEqualTo(firstCompletedAt);
         assertThat(interrupted.getInterruptedAt()).isEqualTo(firstInterruptedAt);
         assertThat(interrupted.getInterruptionReason()).isEqualTo("FIRST_REASON");
         assertThat(interrupted.getInterruptionId()).isEqualTo("int_state_005");
+    }
+
+    @Test
+    void conflictingInterruptionMetadataIsRejected() {
+        ConversationTurn interrupted = createGeneratingAiTurn("turn_state_011");
+        LocalDateTime firstInterruptedAt = LocalDateTime.of(2026, 7, 23, 11, 0);
+        interrupted.interrupt(firstInterruptedAt, "CHILD_BARGE_IN", "int_state_007");
+
+        assertThatThrownBy(() -> interrupted.interrupt(
+                        firstInterruptedAt.plusSeconds(1),
+                        "USER_REQUESTED",
+                        "int_state_008"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("다른 중단 정보");
+
+        assertThat(interrupted.getInterruptedAt()).isEqualTo(firstInterruptedAt);
+        assertThat(interrupted.getInterruptionReason()).isEqualTo("CHILD_BARGE_IN");
+        assertThat(interrupted.getInterruptionId()).isEqualTo("int_state_007");
+    }
+
+    @Test
+    void interruptionMetadataIsRequired() {
+        ConversationTurn turn = createGeneratingAiTurn("turn_state_012");
+        LocalDateTime interruptedAt = turn.getStartedAt().plusSeconds(1);
+
+        assertThatThrownBy(() -> turn.interrupt(
+                        interruptedAt,
+                        " ",
+                        "int_state_009"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> turn.interrupt(
+                        interruptedAt,
+                        "CHILD_BARGE_IN",
+                        null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(turn.getStatus()).isEqualTo(TurnStatus.GENERATING);
     }
 
     private ConversationTurn createGeneratingAiTurn(String turnId) {

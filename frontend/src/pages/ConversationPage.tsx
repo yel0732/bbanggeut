@@ -274,7 +274,12 @@ export function ConversationPage() {
         className="relative h-[720px] w-[1280px] overflow-hidden"
         ref={canvasRef}
       >
-        <audio aria-label="빵긋이 목소리" autoPlay ref={remoteAudioRef} />
+        <audio
+          aria-label="빵긋이 목소리"
+          autoPlay
+          muted={state.remoteAudioMuted}
+          ref={remoteAudioRef}
+        />
         <img
           alt=""
           className="absolute inset-0 size-full object-cover"

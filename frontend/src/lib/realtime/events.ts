@@ -81,6 +81,7 @@ export const CONVERSATION_EVENT = {
   ASSISTANT_TEXT_FINAL: 'assistant.text.final',
   ASSISTANT_AUDIO_STARTED: 'assistant.audio.started',
   ASSISTANT_AUDIO_COMPLETED: 'assistant.audio.completed',
+  ASSISTANT_AUDIO_INTERRUPTED: 'assistant.audio.interrupted',
   ASSISTANT_AUDIO_FAILED: 'assistant.audio.failed',
   SLOTS_UPDATED: 'conversation.slots.updated',
   SESSION_COMPLETED: 'session.completed',
@@ -89,6 +90,9 @@ export const CONVERSATION_EVENT = {
 
 /** 프론트가 보내는 준비 완료 통지. */
 export const CLIENT_READY_EVENT = 'client.ready'
+
+/** 사용자가 명시적으로 현재 AI 발화를 멈출 때 보내는 이벤트. */
+export const CLIENT_INTERRUPT_EVENT = 'client.interrupt'
 
 /** 되묻기를 유발한 낮은 STT 신뢰도. 서버가 확인 질문을 이어서 보낸다. */
 export const STT_LOW_CONFIDENCE_CODE = 'STT_LOW_CONFIDENCE'
@@ -106,6 +110,16 @@ export type AssistantAudioFailedPayload = {
   code: string
   message: string
   recoverable: boolean
+}
+
+export type AssistantAudioInterruptedPayload = {
+  reason: 'CHILD_BARGE_IN' | 'USER_REQUESTED'
+  interruptionId: string
+}
+
+export type ClientInterruptPayload = {
+  responseId?: string
+  reason: 'USER_REQUESTED'
 }
 
 export type ConversationSlotsUpdatedPayload = {
@@ -147,6 +161,21 @@ export function readSttFinal(
 
 export function readAssistantText(payload: Record<string, unknown>) {
   return readString(payload, 'text') ?? ''
+}
+
+export function readAssistantAudioInterrupted(
+  payload: Record<string, unknown>,
+): AssistantAudioInterruptedPayload | null {
+  const reason = readString(payload, 'reason')
+  const interruptionId = readString(payload, 'interruptionId')
+  if (
+    (reason !== 'CHILD_BARGE_IN' && reason !== 'USER_REQUESTED') ||
+    interruptionId === null
+  ) {
+    return null
+  }
+
+  return { interruptionId, reason }
 }
 
 export function readSlotsUpdated(

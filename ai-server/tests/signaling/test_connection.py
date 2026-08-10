@@ -544,6 +544,7 @@ class _FakeDialogueSession:
     def __init__(self) -> None:
         self.closed = 0
         self.cancelled_checks: list[str] = []
+        self.interruptions: list[tuple[str, str | None]] = []
 
         class _SinkStub:
             async def aclose(self) -> None: ...
@@ -557,8 +558,72 @@ class _FakeDialogueSession:
     def is_known_turn(self, turn_id: str) -> bool:
         return turn_id != "turn_ghost"
 
+    def interrupt_current_response(
+        self, reason: str, *, expected_response_id: str | None = None
+    ) -> bool:
+        self.interruptions.append((reason, expected_response_id))
+        return True
+
     async def aclose(self) -> None:
         self.closed += 1
+
+
+@pytest.mark.asyncio
+async def test_client_interrupt_is_dispatched_to_the_dialogue_session() -> None:
+    session = _FakeDialogueSession()
+
+    async def factory(publisher, conversation_id, speaker):
+        return session
+
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+        realtime_session_factory=factory,
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await peer_factory.created[0].simulate_data_channel_received(channel)
+
+    await channel.simulate_message(
+        _data_channel_envelope(
+            type="client.interrupt",
+            payload={"reason": "USER_REQUESTED", "responseId": "resp_1"},
+        )
+    )
+
+    assert session.interruptions == [("USER_REQUESTED", "resp_1")]
+
+
+@pytest.mark.asyncio
+async def test_malformed_client_interrupt_is_dropped(caplog) -> None:
+    session = _FakeDialogueSession()
+
+    async def factory(publisher, conversation_id, speaker):
+        return session
+
+    websocket = FakeWebSocket()
+    connection, _, peer_factory, _, _ = _build_connection(
+        websocket=websocket,
+        ticket_result=TicketVerificationResult.success("conv_1", "rt_1", 1),
+        realtime_session_factory=factory,
+    )
+    await connection._handle_raw(_authenticate_message())
+    await connection._handle_raw(_offer_message())
+    channel = FakeDataChannel()
+    await peer_factory.created[0].simulate_data_channel_received(channel)
+
+    with caplog.at_level(logging.WARNING, logger=_LOGGER.name):
+        await channel.simulate_message(
+            _data_channel_envelope(
+                type="client.interrupt",
+                payload={"reason": "CHILD_BARGE_IN"},
+            )
+        )
+
+    assert session.interruptions == []
+    assert any("malformed client.interrupt" in record.message for record in caplog.records)
 
 
 @pytest.mark.asyncio

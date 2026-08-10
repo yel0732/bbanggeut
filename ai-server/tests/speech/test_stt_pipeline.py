@@ -312,6 +312,62 @@ class TestRejectedAudio:
         assert [event["type"] for event in channel.sent] == ["stt.final"]
 
 
+class TestTurnDiscardedCallback:
+    """발화가 턴이 되지 못한 모든 경로는 통지된다 — barge-in 재발화의 근거."""
+
+    @pytest.mark.asyncio
+    async def test_too_short_audio_notifies(self) -> None:
+        discards: list[bool] = []
+        pipeline, _, _ = _build(on_turn_discarded=lambda: discards.append(True))
+        _feed(pipeline, 0.2)
+
+        await pipeline.finalize_turn()
+
+        assert discards == [True]
+
+    @pytest.mark.asyncio
+    async def test_hallucination_rejection_notifies(self) -> None:
+        hallucination = SttResult(
+            text="you", audio_seconds=2.0, no_speech_prob=0.94, avg_logprob=-0.515
+        )
+        discards: list[bool] = []
+        pipeline, _, _ = _build(
+            FakeSpeechRecognizer([hallucination]),
+            on_turn_discarded=lambda: discards.append(True),
+        )
+        _feed(pipeline, 2.0)
+
+        await pipeline.finalize_turn()
+
+        assert discards == [True]
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_notifies(self) -> None:
+        recognizer = FakeSpeechRecognizer([SttError(SttFailureCode.PROVIDER_TIMEOUT)])
+        discards: list[bool] = []
+        pipeline, _, _ = _build(
+            recognizer, on_turn_discarded=lambda: discards.append(True)
+        )
+        _feed(pipeline, 2.0)
+
+        await pipeline.finalize_turn()
+
+        assert discards == [True]
+
+    @pytest.mark.asyncio
+    async def test_a_confirmed_turn_does_not_notify(self) -> None:
+        discards: list[bool] = []
+        pipeline, _, _ = _build(
+            FakeSpeechRecognizer([_good_result()]),
+            on_turn_discarded=lambda: discards.append(True),
+        )
+        _feed(pipeline, 2.0)
+
+        await pipeline.finalize_turn()
+
+        assert discards == []
+
+
 class TestProviderFailure:
     @pytest.mark.asyncio
     async def test_timeout_emits_a_recoverable_error_event(self) -> None:
@@ -465,67 +521,94 @@ class TestIsolation:
         assert channel.sent == []
 
 
-class TestOutputGate:
-    """ADR-020: AI가 말하는 동안 입력을 받지 않는다 — Echo 방어를 서버가 보장한다."""
+class TestBargeIn:
+    """AI 출력 중에도 확인된 아이 발화를 보존하고 현재 응답을 중단한다."""
 
-    def _build_gated(self, speaking: list[bool], recognizer=None, **kwargs):
+    def _build_barge_in(self, speaking: list[bool], recognizer=None, **kwargs):
+        interruptions: list[str] = []
+
+        def interrupt() -> bool:
+            interruptions.append("CHILD_BARGE_IN")
+            speaking[0] = False
+            return True
+
         kwargs.setdefault("vad", FakeVoiceActivityDetector())
         kwargs["is_output_active"] = lambda: speaking[0]
-        return _build(recognizer, **kwargs)
+        kwargs.setdefault("on_barge_in", interrupt)
+        pipeline, channel, recognizer = _build(recognizer, **kwargs)
+        return pipeline, channel, recognizer, interruptions
 
     @pytest.mark.asyncio
-    async def test_audio_during_assistant_speech_is_not_buffered(self) -> None:
-        """AI 음성이 마이크로 되돌아와도 아이 발화로 전사되지 않는다."""
-
+    async def test_sustained_speech_interrupts_and_becomes_one_final_turn(self) -> None:
         speaking = [True]
-        pipeline, channel, recognizer = self._build_gated(speaking)
-
-        _feed(pipeline, 2.0, tone_hz=440)  # Echo로 되돌아온 AI 음성
-
-        assert not pipeline.has_audio
-        assert recognizer.calls == []
-        assert channel.sent == []
-
-    @pytest.mark.asyncio
-    async def test_input_resumes_after_the_assistant_stops(self) -> None:
         recognizer = FakeSpeechRecognizer([_good_result()])
-        speaking = [True]
-        pipeline, channel, _ = self._build_gated(speaking, recognizer)
+        pipeline, channel, _, interruptions = self._build_barge_in(
+            speaking, recognizer
+        )
 
-        _feed(pipeline, 1.0, tone_hz=440)   # 게이트 닫힘 — 무시
-        speaking[0] = False
-        _feed(pipeline, 1.0, tone_hz=440)   # 아이 발화
-        _feed(pipeline, 1.2)                # 종료 판정 침묵
+        _feed(pipeline, 0.6, tone_hz=440)
+        _feed(pipeline, 1.2)
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
+        assert interruptions == ["CHILD_BARGE_IN"]
         assert [event["type"] for event in channel.sent] == ["stt.final"]
 
-    @pytest.mark.asyncio
-    async def test_a_half_spoken_utterance_is_discarded_when_the_gate_closes(self) -> None:
-        """게이트가 닫힐 때 반쪽 발화를 버린다.
+    def test_subthreshold_burst_does_not_interrupt(self) -> None:
+        speaking = [True]
+        pipeline, _, recognizer, interruptions = self._build_barge_in(speaking)
 
-        AI 응답 생성(whisper+LLM, 실측 3초 이상) 중에도 듣고 있으므로 재생 시작
-        시점에 아이가 말하던 중일 수 있다. 남겨 두면 게이트가 열린 뒤 도착하는
-        뒷부분과 이어붙어 깨진 문장이 된다(ADR-020이 받아들인 유실).
-        """
+        _feed(pipeline, 0.3, tone_hz=440)
+        _feed(pipeline, 0.2)
 
-        speaking = [False]
-        pipeline, _, recognizer = self._build_gated(speaking)
-        _feed(pipeline, 0.6, tone_hz=440)
-        assert pipeline.has_audio  # 발화가 버퍼에 쌓였다
-
-        speaking[0] = True
-        _feed(pipeline, 0.1, tone_hz=440)  # 게이트 닫힘을 감지하는 첫 프레임
-
+        assert interruptions == []
         assert not pipeline.has_audio
-        assert pipeline.current_turn is None
         assert recognizer.calls == []
 
     @pytest.mark.asyncio
-    async def test_no_gate_keeps_the_previous_behaviour(self) -> None:
-        """게이트 미주입(오디오 없는 연결)은 기존대로 전부 받는다."""
+    async def test_child_already_speaking_when_output_starts_is_preserved(self) -> None:
+        speaking = [False]
+        recognizer = FakeSpeechRecognizer([_good_result()])
+        pipeline, channel, _, interruptions = self._build_barge_in(
+            speaking, recognizer
+        )
+        _feed(pipeline, 0.6, tone_hz=440)
+        assert pipeline.has_audio
 
+        speaking[0] = True
+        _feed(pipeline, 0.2, tone_hz=440)
+        _feed(pipeline, 1.2)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        assert interruptions == ["CHILD_BARGE_IN"]
+        assert [event["type"] for event in channel.sent] == ["stt.final"]
+
+    def test_no_speech_timeout_is_suppressed_during_output(self) -> None:
+        speaking = [True]
+        no_speech: list[bool] = []
+        pipeline, _, _, interruptions = self._build_barge_in(
+            speaking, on_no_speech=lambda: no_speech.append(True)
+        )
+
+        _feed(pipeline, 10.2)
+
+        assert no_speech == []
+        assert interruptions == []
+
+    def test_output_without_an_interrupt_target_drops_confirmed_audio(self) -> None:
+        speaking = [True]
+        pipeline, _, recognizer = _build(
+            vad=FakeVoiceActivityDetector(),
+            is_output_active=lambda: speaking[0],
+        )
+
+        _feed(pipeline, 0.6, tone_hz=440)
+
+        assert not pipeline.has_audio
+        assert recognizer.calls == []
+
+    def test_no_output_check_keeps_normal_turn_detection(self) -> None:
         pipeline, _, _ = _build(vad=FakeVoiceActivityDetector())
 
         _feed(pipeline, 1.0, tone_hz=440)

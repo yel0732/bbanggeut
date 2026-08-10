@@ -58,22 +58,22 @@ class SpeechSynthesisService:
         self._logger = logger
         self._on_completed = on_completed
         self._clock = clock
+        self._tasks: dict[str, asyncio.Task] = {}
+        # Latest task compatibility handle; ownership is the response-keyed map.
         self._task: asyncio.Task | None = None
         self._closed = False
-        self._speaking = False
+        self._current_response_id: str | None = None
 
     @property
     def is_speaking(self) -> bool:
         """Whether this connection is producing AI audio right now.
 
-        Spans synthesis *and* playback, not just playback: the STT input gate
-        reads this to suspend inbound audio for the whole non-listening period
-        (ADR-020). Splitting it would reopen a listening window during the
-        ~1.9s time-to-first-byte, and any utterance started there would be
-        discarded the moment playback began.
+        Spans synthesis *and* playback, not just playback. The STT pipeline
+        reads it to apply the stricter Barge-in confirmation window even during
+        the provider's time-to-first-byte period.
         """
 
-        return self._speaking
+        return self._current_response_id is not None
 
     def speak(self, turn_id: str, turn_seq: int, response_id: str, text: str) -> None:
         """Start synthesizing one AI turn's text. Non-blocking."""
@@ -83,18 +83,44 @@ class SpeechSynthesisService:
         # A previous turn's playback is superseded by this one; begin_response
         # flushes it. Only one AI turn speaks at a time.
         queue = self._speaker.begin_response(response_id)
-        self._speaking = True
-        self._task = asyncio.create_task(
+        self._current_response_id = response_id
+        task = asyncio.create_task(
             self._run(turn_id, turn_seq, response_id, text, queue)
         )
+        self._tasks[response_id] = task
+        self._task = task
+
+    def interrupt_response(self, response_id: str) -> bool:
+        """Stop one response immediately while its provider task winds down safely.
+
+        The ResponseRegistry is marked cancelled by the caller before this method.
+        Flushing is synchronous so the outbound track becomes silent on the next
+        20 ms frame; the provider task observes cancellation/flush on its next
+        chunk and remains tracked until then.
+        """
+
+        if self._current_response_id != response_id:
+            return False
+        self._speaker.cancel_response(response_id)
+        self._current_response_id = None
+        task = self._tasks.get(response_id)
+        if task is not None and not task.done():
+            # Media callbacks are synchronous, so cancellation is requested here;
+            # _run owns final cleanup and aclose still awaits any remaining task.
+            task.cancel()
+        return True
 
     async def aclose(self) -> None:
         """Cancel in-flight synthesis and await the task. Idempotent."""
 
         self._closed = True
-        task, self._task = self._task, None
-        if task is not None:
+        tasks = list(self._tasks.values())
+        self._tasks.clear()
+        self._task = None
+        self._current_response_id = None
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
@@ -109,9 +135,10 @@ class SpeechSynthesisService:
         try:
             await self._synthesize(turn_id, turn_seq, response_id, text, queue)
         finally:
-            # 성공·실패·취소 어느 경로로 끝나도 입력 게이트는 반드시 다시 열려야
-            # 한다. 여기서 새면 아이 말을 영구히 못 듣는다(ADR-020).
-            self._speaking = False
+            # 성공·실패·취소 어느 경로로 끝나도 출력 활성 상태는 반드시 해제한다.
+            self._tasks.pop(response_id, None)
+            if self._current_response_id == response_id:
+                self._current_response_id = None
 
     async def _synthesize(
         self,

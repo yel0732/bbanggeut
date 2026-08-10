@@ -32,6 +32,7 @@ class _Events:
 
 def _detector(
     events: _Events,
+    is_output_active=None,
     **config_overrides,
 ) -> TurnDetector:
     return TurnDetector(
@@ -40,6 +41,7 @@ def _detector(
         on_speech_start=lambda: setattr(events, "speech_starts", events.speech_starts + 1),
         on_turn_end=lambda: setattr(events, "turn_ends", events.turn_ends + 1),
         on_no_speech=lambda: setattr(events, "no_speech", events.no_speech + 1),
+        is_output_active=is_output_active,
     )
 
 
@@ -275,6 +277,112 @@ class TestNoSpeech:
         assert events.no_speech == 1
 
 
+class TestBargeInWindow:
+    """AI 출력 중에는 더 긴 확인 창(barge_in_min_speech_ms=400)이 적용된다."""
+
+    def test_normal_threshold_is_not_enough_during_output(self) -> None:
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: True)
+
+        _feed_ms(detector, _speech(300))  # 평상시(250ms)라면 이미 확정됐다
+
+        assert events.speech_starts == 0
+        assert detector.phase is TurnPhase.IDLE
+
+    def test_sustained_speech_confirms_a_barge_in(self) -> None:
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: True)
+
+        returned = _feed_ms(detector, _speech(420))
+
+        assert events.speech_starts == 1
+        assert detector.phase is TurnPhase.SPEAKING
+        # 확정 발화는 pre-roll을 포함해 버리지 않는다(계약).
+        assert returned >= STT_INPUT_FORMAT.bytes_per_second * 400 // 1000
+
+    def test_threshold_returns_to_normal_when_output_stops(self) -> None:
+        active = {"on": True}
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: active["on"])
+
+        _feed_ms(detector, _speech(300))
+        assert events.speech_starts == 0
+        _feed_ms(detector, _silence(200))  # 후보가 죽고 다시 IDLE 침묵
+
+        active["on"] = False
+        _feed_ms(detector, _speech(260))
+
+        assert events.speech_starts == 1
+
+    def test_chopped_speech_during_output_still_confirms(self) -> None:
+        """AEC double-talk 억제는 아이 음성을 단속적으로 만든다(실측: TTS 위로
+        말해도 후보 미확정). 출력 중에는 넓은 gap 관용으로 조각을 이어 붙인다."""
+
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: True)
+
+        for _ in range(4):
+            _feed_ms(detector, _speech(140))
+            _feed_ms(detector, _silence(160))  # 8프레임 gap ≤ barge_in 관용(10)
+
+        assert events.speech_starts == 1
+
+    def test_the_relaxed_gap_applies_only_during_output(self) -> None:
+        """평상시 같은 패턴은 기침·클릭 연쇄로 취급되어야 한다 — 관용을 평상시에도
+        넓히면 duration gate(250ms)가 잡담·생활 소음 연쇄에 뚫린다."""
+
+        events = _Events()
+        detector = _detector(events)
+
+        for _ in range(4):
+            _feed_ms(detector, _speech(140))
+            _feed_ms(detector, _silence(160))
+
+        assert events.speech_starts == 0
+
+    def test_normal_confirmation_is_trimmed_to_the_normal_window(self) -> None:
+        """링은 barge-in 창(400ms) 크기지만, 평상시 확정 턴에 그 여분의 선행
+        침묵까지 내보내면 안 된다 — whisper 입력이 침묵으로 부풀고 무음 환각
+        위험이 커진다."""
+
+        events = _Events()
+        detector = _detector(events)
+        _feed_ms(detector, _silence(2000))
+
+        returned = _feed_ms(detector, _speech(260))
+
+        emit_cap = STT_INPUT_FORMAT.bytes_per_second * (300 + 250 + 40) // 1000
+        assert returned <= emit_cap
+
+
+class TestNoSpeechDuringOutput:
+    """AI 출력 중 침묵은 아이의 무응답 시간이 아니다(Barge-in 계약)."""
+
+    def test_never_fires_while_output_is_active(self) -> None:
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: True)
+
+        _feed_ms(detector, _silence(25_000))
+
+        assert events.no_speech == 0
+
+    def test_window_restarts_in_full_after_output_ends(self) -> None:
+        """회귀 방지: 출력 중 누적된 침묵이 남으면 AI가 길게 말한 직후 아이가
+        몇 초 만에 무응답으로 몰린다. window는 출력 종료 후 처음부터 센다."""
+
+        active = {"on": True}
+        events = _Events()
+        detector = _detector(events, is_output_active=lambda: active["on"])
+
+        _feed_ms(detector, _silence(9_000))  # AI 발화 중 침묵 — 세지 않는다
+        active["on"] = False
+
+        _feed_ms(detector, _silence(9_000))
+        assert events.no_speech == 0  # 아직 온전한 10초가 지나지 않았다
+        _feed_ms(detector, _silence(1_000))
+        assert events.no_speech == 1
+
+
 class TestLifecycle:
     def test_reset_clears_state_and_preroll(self) -> None:
         events = _Events()
@@ -318,6 +426,8 @@ class TestConfigValidation:
         "overrides",
         [
             {"min_speech_ms": 0},
+            {"barge_in_max_gap_frames": -1},
+            {"barge_in_min_frame_rms": -1},
             {"trailing_silence_seconds": 0},
             {"no_speech_timeout_seconds": 0},
             {"preroll_ms": -1},

@@ -63,6 +63,14 @@ class AppSettings:
     # 잡음을 막으면서 실제 발화 수준은 유지했다. 0으로 설정하면 비활성화할 수 있다.
     stt_vad_min_frame_rms: int = 250
     stt_min_speech_ms: int = 250  # 미만 burst(기침·클릭)는 발화 시작으로 확정하지 않음
+    # 노트북 스피커 재생 시 잔여 echo가 연속 speech로 보이는 오탐을 줄이는 2차
+    # duration gate. 브라우저 echoCancellation과 함께 적용한다.
+    stt_barge_in_min_speech_ms: int = 400
+    # AI 출력 중에는 브라우저 AEC의 double-talk 억제로 아이 음성이 감쇠·단속적이
+    # 된다(실측: TTS 위로 말해도 후보 미확정). 출력 중 후보에만 적용하는 넓은
+    # gap 관용과 낮은 에너지 플로어. 오탐은 duration gate와 에코 판정이 막는다.
+    stt_barge_in_max_gap_frames: int = 10
+    stt_barge_in_min_frame_rms: int = 120
     # 종료 판정 침묵. 발화가 끝나고 AI가 말하기까지의 체감 지연에서 이 값이 가장 큰
     # 비중을 차지한다(나머지: STT 호출 + 슬롯·관련성 LLM 병렬 + TTS TTFB 실측 1.89s).
     # 3.0s는 아이가 문장 중간에 오래 쉬는 경우까지 감안한 상단값이었지만, 매 턴
@@ -79,8 +87,20 @@ class AppSettings:
     stream_publish_max_attempts: int = 3
     stream_publish_retry_seconds: float = 0.5
     stream_outbox_size: int = 256
+    # 앱 로거의 콘솔 출력 레벨. uvicorn은 자기 로거만 구성하므로 파이프라인
+    # 진단 로그(barge-in 판정, output-active vad window)는 앱이 직접 내보낸다.
+    log_level: str = "INFO"
+
+    _LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
     def __post_init__(self) -> None:
+        if (
+            not isinstance(self.log_level, str)
+            or self.log_level.upper() not in self._LOG_LEVELS
+        ):
+            raise ValueError(
+                "LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )
         if not isinstance(self.gms_key, str) or not self.gms_key.strip():
             raise ValueError("GMS_KEY must contain non-whitespace text")
         parsed_url = urlparse(self.gms_base_url)
@@ -237,12 +257,19 @@ class AppSettings:
             raise ValueError("STT_VAD_MIN_FRAME_RMS must be a non-negative integer")
         for name, value in (
             ("STT_MIN_SPEECH_MS", self.stt_min_speech_ms),
+            ("STT_BARGE_IN_MIN_SPEECH_MS", self.stt_barge_in_min_speech_ms),
+            ("STT_BARGE_IN_MAX_GAP_FRAMES", self.stt_barge_in_max_gap_frames),
+            ("STT_BARGE_IN_MIN_FRAME_RMS", self.stt_barge_in_min_frame_rms),
             ("STT_PREROLL_MS", self.stt_preroll_ms),
         ):
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative integer")
         if self.stt_min_speech_ms == 0:
             raise ValueError("STT_MIN_SPEECH_MS must be positive")
+        if self.stt_barge_in_min_speech_ms < self.stt_min_speech_ms:
+            raise ValueError(
+                "STT_BARGE_IN_MIN_SPEECH_MS must be at least STT_MIN_SPEECH_MS"
+            )
         for name, value in (
             ("STT_TRAILING_SILENCE_SECONDS", self.stt_trailing_silence_seconds),
             ("STT_NO_SPEECH_TIMEOUT_SECONDS", self.stt_no_speech_timeout_seconds),
@@ -398,6 +425,18 @@ class AppSettings:
                 values.get("STT_MIN_SPEECH_MS", "250"),
                 "STT_MIN_SPEECH_MS",
             ),
+            stt_barge_in_min_speech_ms=_parse_int(
+                values.get("STT_BARGE_IN_MIN_SPEECH_MS", "400"),
+                "STT_BARGE_IN_MIN_SPEECH_MS",
+            ),
+            stt_barge_in_max_gap_frames=_parse_int(
+                values.get("STT_BARGE_IN_MAX_GAP_FRAMES", "10"),
+                "STT_BARGE_IN_MAX_GAP_FRAMES",
+            ),
+            stt_barge_in_min_frame_rms=_parse_int(
+                values.get("STT_BARGE_IN_MIN_FRAME_RMS", "120"),
+                "STT_BARGE_IN_MIN_FRAME_RMS",
+            ),
             stt_trailing_silence_seconds=_parse_float(
                 values.get("STT_TRAILING_SILENCE_SECONDS", "1.0"),
                 "STT_TRAILING_SILENCE_SECONDS",
@@ -420,6 +459,7 @@ class AppSettings:
                 values.get("TTS_TIMEOUT_SECONDS", "10"),
                 "TTS_TIMEOUT_SECONDS",
             ),
+            log_level=str(values.get("LOG_LEVEL", "INFO")).strip().upper(),
             stream_publish_max_attempts=_parse_int(
                 values.get("STREAM_PUBLISH_MAX_ATTEMPTS", "3"),
                 "STREAM_PUBLISH_MAX_ATTEMPTS",

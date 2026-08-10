@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.A501.backend.domain.conversation.dto.stream.AiTurnCompletedPayload;
 import com.A501.backend.domain.conversation.dto.stream.AiTurnGeneratedPayload;
+import com.A501.backend.domain.conversation.dto.stream.AiTurnInterruptedPayload;
 import com.A501.backend.domain.conversation.dto.stream.ConversationStreamEvent;
 import com.A501.backend.domain.conversation.dto.stream.ConversationStreamEventType;
 import com.A501.backend.domain.conversation.dto.internal.DialogueSlotsPayload;
@@ -39,7 +40,8 @@ public class AiTurnEventHandler implements ConversationEventHandler {
     public Set<ConversationStreamEventType> supportedTypes() {
         return Set.of(
                 ConversationStreamEventType.AI_TURN_GENERATED,
-                ConversationStreamEventType.AI_TURN_COMPLETED);
+                ConversationStreamEventType.AI_TURN_COMPLETED,
+                ConversationStreamEventType.AI_TURN_INTERRUPTED);
     }
 
     @Override
@@ -47,6 +49,7 @@ public class AiTurnEventHandler implements ConversationEventHandler {
         switch (event.eventType()) {
             case AI_TURN_GENERATED -> handleGenerated(event, session);
             case AI_TURN_COMPLETED -> handleCompleted(event);
+            case AI_TURN_INTERRUPTED -> handleInterrupted(event);
             default -> throw new ConversationEventContractException(
                     "Unsupported AI turn event type: " + event.eventType());
         }
@@ -150,6 +153,52 @@ public class AiTurnEventHandler implements ConversationEventHandler {
         if (turn.getStatus() == TurnStatus.GENERATING) {
             turn.complete(audioCompletedAt);
         }
+    }
+
+    private void handleInterrupted(ConversationStreamEvent event) {
+        String turnId = payloadReader.requireText(event.turnId(), "turnId");
+        int turnSeq = payloadReader.requireTurnSeq(event.turnSeq());
+        String responseId = payloadReader.requireText(event.responseId(), "responseId");
+        AiTurnInterruptedPayload payload =
+                payloadReader.read(event, AiTurnInterruptedPayload.class);
+        LocalDateTime interruptedAt = payloadReader.toUtc(
+                payload.interruptedAt(),
+                "payload.interruptedAt");
+        String reason = requireBoundedText(
+                payload.reason(),
+                "payload.reason",
+                40);
+        String interruptionId = requireBoundedText(
+                payload.interruptionId(),
+                "payload.interruptionId",
+                40);
+
+        ConversationTurn turn = turnRepository.findByIdForUpdate(turnId)
+                .orElseThrow(() -> new ConversationEventContractException(
+                        "AI_TURN_GENERATED must be processed before AI_TURN_INTERRUPTED."));
+        validateIdentity(
+                turn,
+                turnId,
+                event.conversationId(),
+                turnSeq,
+                responseId);
+        if (interruptedAt.isBefore(turn.getStartedAt())) {
+            throw new ConversationEventContractException(
+                    "payload.interruptedAt cannot precede the AI turn start.");
+        }
+
+        if (turn.getStatus() == TurnStatus.GENERATING
+                || turn.getStatus() == TurnStatus.INTERRUPTED) {
+            try {
+                turn.interrupt(interruptedAt, reason, interruptionId);
+            } catch (IllegalArgumentException | IllegalStateException exception) {
+                throw new ConversationEventContractException(
+                        "AI_TURN_INTERRUPTED conflicts with the existing AI turn.",
+                        exception);
+            }
+        }
+        // COMPLETED/FAILED와 INTERRUPTED가 경합하면 먼저 저장된 terminal 상태를 유지한다.
+        // 반대 방향도 handleCompleted가 GENERATING에서만 전환하므로 같은 규칙을 따른다.
     }
 
     private void synchronizeProgress(
@@ -282,12 +331,8 @@ public class AiTurnEventHandler implements ConversationEventHandler {
             String questionText,
             String questionTarget,
             ConversationTopic topic) {
-        if (!turn.getTurnId().equals(turnId)
-                || !turn.getConversationId().equals(conversationId)
-                || turn.getTurnSeq() != turnSeq
-                || turn.getSpeaker() != Speaker.AI
-                || !responseId.equals(turn.getResponseId())
-                || !text.equals(turn.getContent())
+        validateIdentity(turn, turnId, conversationId, turnSeq, responseId);
+        if (!text.equals(turn.getContent())
                 || !questionText.equals(turn.getQuestionText())
                 || !java.util.Objects.equals(
                         questionTarget,
@@ -296,5 +341,33 @@ public class AiTurnEventHandler implements ConversationEventHandler {
             throw new ConversationEventContractException(
                     "turnId is already bound to a different AI turn.");
         }
+    }
+
+    private static void validateIdentity(
+            ConversationTurn turn,
+            String turnId,
+            String conversationId,
+            int turnSeq,
+            String responseId) {
+        if (!turn.getTurnId().equals(turnId)
+                || !turn.getConversationId().equals(conversationId)
+                || turn.getTurnSeq() != turnSeq
+                || turn.getSpeaker() != Speaker.AI
+                || !responseId.equals(turn.getResponseId())) {
+            throw new ConversationEventContractException(
+                    "turnId is already bound to a different AI turn.");
+        }
+    }
+
+    private String requireBoundedText(
+            String value,
+            String fieldName,
+            int maxLength) {
+        String required = payloadReader.requireText(value, fieldName);
+        if (required.length() > maxLength) {
+            throw new ConversationEventContractException(
+                    fieldName + " must be at most " + maxLength + " characters.");
+        }
+        return required;
     }
 }

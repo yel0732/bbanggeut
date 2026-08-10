@@ -63,6 +63,24 @@ REQUIRED_DIALOGUE_TARGETS = frozenset(
 )
 
 
+def _configure_logging(level_name: str) -> None:
+    """앱 로거를 콘솔로 내보낸다 — uvicorn은 자기 로거만 구성한다.
+
+    root에 핸들러가 없으면 파이프라인 진단 로그(barge-in 판정, output-active
+    vad window, 에코 폐기)가 어디에도 출력되지 않는다(실측: 로그 부재로 barge-in
+    미확정 원인을 진단할 수 없었다). ``basicConfig``는 root에 핸들러가 이미
+    있으면(pytest, 임베딩 환경) 아무것도 바꾸지 않는다.
+    """
+
+    logging.basicConfig(
+        level=getattr(logging, level_name.upper()),
+        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+    )
+    # ICE 후보 검사는 연결마다 수십 줄을 쏟아내 대화 진단을 덮는다. 실패는
+    # WARNING 이상으로 여전히 보인다.
+    logging.getLogger("aioice").setLevel(logging.WARNING)
+
+
 def create_app(
     settings: AppSettings | None = None,
     *,
@@ -78,6 +96,7 @@ def create_app(
             if settings is None
             else settings
         )
+        _configure_logging(resolved_settings.log_level)
         http_client = httpx.AsyncClient(
             base_url=resolved_settings.gms_base_url,
             timeout=None,
@@ -175,6 +194,9 @@ def create_app(
         )
         turn_detection_config = TurnDetectionConfig(
             min_speech_ms=resolved_settings.stt_min_speech_ms,
+            barge_in_min_speech_ms=resolved_settings.stt_barge_in_min_speech_ms,
+            barge_in_max_gap_frames=resolved_settings.stt_barge_in_max_gap_frames,
+            barge_in_min_frame_rms=resolved_settings.stt_barge_in_min_frame_rms,
             trailing_silence_seconds=resolved_settings.stt_trailing_silence_seconds,
             no_speech_timeout_seconds=resolved_settings.stt_no_speech_timeout_seconds,
             preroll_ms=resolved_settings.stt_preroll_ms,
@@ -187,6 +209,8 @@ def create_app(
             on_final,
             on_no_speech,
             is_output_active=None,
+            on_barge_in=None,
+            on_turn_discarded=None,
         ):
             return SessionSttPipeline(
                 speech_recognizer,
@@ -204,6 +228,8 @@ def create_app(
                 on_final=on_final,
                 on_no_speech=on_no_speech,
                 is_output_active=is_output_active,
+                on_barge_in=on_barge_in,
+                on_turn_discarded=on_turn_discarded,
             )
 
         context_snapshot_reader = RedisContextSnapshotReader(

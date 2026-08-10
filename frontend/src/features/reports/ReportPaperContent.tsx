@@ -1,171 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
 
-import {
-  getChildReport,
-  isBackendChildId,
-  markReportReadByReportId,
-  regenerateChildReport,
-} from '@/api/parentMode'
 import type { ReportDetailResponse, ReportGameResult } from '@/api/parentMode'
-import backgroundUrl from '@/assets/images/parent-mode/background.webp'
-import backButtonUrl from '@/assets/images/report/left-btn.webp'
-import reportPaperUrl from '@/assets/images/report/report-paper.webp'
-import musicOnUrl from '@/assets/images/start/music-btn.webp'
-import musicOffUrl from '@/assets/images/start/mute-btn.webp'
 import { ConversationSummaryView } from '@/features/reports/ConversationSummaryView'
-import {
-  toConversationView,
-  type ReportConversationView,
-} from '@/features/reports/conversationSummary'
+import { toConversationView } from '@/features/reports/conversationSummary'
 import { toGameSummaries } from '@/features/reports/gameSummary'
-import { useFitScale } from '@/hooks/useFitScale'
-import { useParentBgm } from '@/hooks/useParentBgm'
-import { removeReadReportArrival } from '@/lib/reportArrivals'
 
 const jua = { fontFamily: "'Jua', sans-serif" } as const
 
-export function ReportDetailPage() {
-  const canvasRef = useFitScale<HTMLDivElement>()
-  const { isBgmPlaying, toggleBgm } = useParentBgm()
-  const { reportDate = '' } = useParams()
-  const [searchParams] = useSearchParams()
-  const childId = searchParams.get('childId') ?? ''
-  const childName = searchParams.get('childName') ?? '아이'
-  const [report, setReport] = useState<ReportDetailResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [retryMessage, setRetryMessage] = useState('')
-  const [isRetrying, setIsRetrying] = useState(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    async function loadReport() {
-      setIsLoading(true)
-      setError('')
-      if (!childId || !reportDate || !isBackendChildId(childId)) {
-        setError('리포트를 찾기 위한 정보가 부족해요.')
-        setIsLoading(false)
-        return
-      }
-      try {
-        const nextReport = await getChildReport(
-          Number(childId),
-          reportDate,
-          controller.signal,
-        )
-        setReport(nextReport)
-        removeReadReportArrival({ childId, childName, reportDate })
-        // 알림 목록을 거치지 않고 리포트로 바로 들어온 경우에도 읽음을 서버에 남긴다.
-        void markReportReadByReportId(nextReport.reportId).catch(() => {})
-      } catch (loadError) {
-        if (controller.signal.aborted) return
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : '리포트를 불러오지 못했어요.',
-        )
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false)
-      }
-    }
-    void loadReport()
-    return () => controller.abort()
-  }, [childId, childName, reportDate])
-
-  async function requestRegeneration() {
-    setIsRetrying(true)
-    setRetryMessage('')
-    try {
-      const response = await regenerateChildReport(Number(childId), reportDate)
-      setRetryMessage(response.message || '리포트 재생성을 요청했어요.')
-      setReport((current) =>
-        current
-          ? { ...current, status: response.status, failure: null }
-          : current,
-      )
-    } catch (retryError) {
-      setRetryMessage(
-        retryError instanceof Error
-          ? retryError.message
-          : '재생성을 요청하지 못했어요.',
-      )
-    } finally {
-      setIsRetrying(false)
-    }
-  }
-
-  const listHref = `/reports?childId=${encodeURIComponent(childId)}&childName=${encodeURIComponent(childName)}`
-
-  return (
-    <div className="flex h-screen w-screen items-center justify-center overflow-hidden bg-[radial-gradient(120%_120%_at_50%_20%,#12241a_0%,#0b140e_100%)]">
-      <div
-        className="relative h-[720px] w-[1280px] shrink-0 overflow-hidden"
-        ref={canvasRef}
-      >
-        <img
-          alt=""
-          className="absolute inset-0 size-full object-cover"
-          src={backgroundUrl}
-        />
-        <Link
-          aria-label="리포트 목록으로 돌아가기"
-          className="absolute top-[25px] left-[25px] z-30 size-[62px] drop-shadow-[0_4px_8px_rgba(0,0,0,.28)] transition hover:scale-108"
-          to={listHref}
-        >
-          <img
-            alt=""
-            className="size-full object-contain"
-            src={backButtonUrl}
-          />
-        </Link>
-
-        <button
-          aria-label={isBgmPlaying ? '배경 음악 끄기' : '배경 음악 켜기'}
-          className="absolute bottom-[25px] left-[25px] z-40 size-[62px] bg-transparent p-0 drop-shadow-[0_4px_8px_rgba(0,0,0,.3)] transition hover:scale-106"
-          onClick={() => void toggleBgm()}
-          type="button"
-        >
-          <img
-            alt=""
-            className="size-full object-contain"
-            src={isBgmPlaying ? musicOnUrl : musicOffUrl}
-          />
-        </button>
-
-        <main className="absolute -top-1 right-[165px] bottom-15 left-[160px] z-5 overflow-hidden">
-          <img
-            alt=""
-            className="pointer-events-none absolute inset-0 size-full object-fill"
-            src={reportPaperUrl}
-          />
-          <div className="absolute top-[8%] right-[10%] bottom-[7%] left-[10%] [scrollbar-width:thin] [scrollbar-color:#cdbb92_transparent] overflow-y-auto px-6 pb-8">
-            <header className="mb-5 text-center" style={jua}>
-              <p className="text-[18px] text-[#82945a]">{childName}</p>
-              <h1 className="text-[34px] text-[#4f6f35]">
-                {formatLongDate(reportDate)} 일일 리포트
-              </h1>
-            </header>
-
-            {isLoading ? (
-              <Message>리포트를 불러오고 있어요...</Message>
-            ) : error ? (
-              <Message>{error}</Message>
-            ) : report ? (
-              <ReportContent
-                isRetrying={isRetrying}
-                onRetry={() => void requestRegeneration()}
-                report={report}
-                retryMessage={retryMessage}
-              />
-            ) : null}
-          </div>
-        </main>
-      </div>
-    </div>
-  )
-}
-
+/**
+ * 리포트 종이 그림 위에 얹는 하루치 리포트 본문.
+ *
+ * 종이 그림(report-paper.webp)의 테두리에 맞춰 좌표가 잡혀 있어 그림을 깐 칸
+ * 안에서만 쓸 수 있다. 현재 사용처는 리포트 목록 화면 한 곳이다.
+ */
 export function ReportPaperContent({
   childName,
   isRetrying,
@@ -189,7 +36,7 @@ export function ReportPaperContent({
 
     서버는 대화가 0건이어도 그날 게임 기록으로 요약 본문을 채워 보낼 때가 있다.
     그대로 그리면 대화 요약 자리에 게임 이야기가 앉는다. 판단은
-    toConversationView 한곳에 모아 두 화면이 같게 움직이게 한다.
+    toConversationView 한곳에 모아 둔다.
   */
   const conversation = useMemo(
     () =>
@@ -318,135 +165,6 @@ export function ReportPaperContent({
           </section>
         </>
       )}
-    </div>
-  )
-}
-
-export function ReportContent({
-  isRetrying,
-  onRetry,
-  report,
-  retryMessage,
-}: {
-  isRetrying: boolean
-  onRetry: () => void
-  report: ReportDetailResponse
-  retryMessage: string
-}) {
-  if (report.status === 'FAILED') {
-    return (
-      <Message>
-        {report.failure?.message || '리포트를 생성하지 못했어요.'}
-        {report.failure?.canRegenerate ? (
-          <button
-            className="mt-5 block rounded-2xl bg-[#789c4a] px-7 py-3 text-[19px] text-white shadow-md disabled:opacity-50"
-            disabled={isRetrying}
-            onClick={onRetry}
-            type="button"
-          >
-            {isRetrying ? '요청 중...' : '리포트 다시 생성하기'}
-          </button>
-        ) : null}
-        {retryMessage ? (
-          <span className="mt-3 block text-[16px]">{retryMessage}</span>
-        ) : null}
-      </Message>
-    )
-  }
-  if (report.status === 'PENDING' || report.status === 'PROCESSING') {
-    return (
-      <Message>
-        {retryMessage ||
-          (report.status === 'PENDING'
-            ? '리포트 생성을 기다리고 있어요.'
-            : '리포트를 만들고 있어요.')}
-      </Message>
-    )
-  }
-
-  const hasGames =
-    report.dataAvailability.hasGameData && report.gameResults.length > 0
-  // 판단 근거는 종이 화면과 같다. 두 화면이 다르게 보이면 안 된다.
-  const conversation = report.dataAvailability.hasConversationData
-    ? toConversationView(report.conversationSummary)
-    : null
-
-  return (
-    <div className="space-y-8" style={jua}>
-      <GameSection games={hasGames ? report.gameResults : []} />
-      <ConversationSection view={conversation} />
-    </div>
-  )
-}
-
-function GameSection({ games }: { games: ReportGameResult[] }) {
-  return (
-    <section className="rounded-[24px] border-2 border-[#decda1] bg-[rgba(255,252,239,.82)] p-5">
-      <h2 className="mb-3 text-[25px] text-[#55783b]">게임 결과</h2>
-      {games.length ? (
-        <div className="grid grid-cols-2 gap-3">
-          {games.map((game) => {
-            const slot = GAME_SLOTS.find((candidate) => candidate.matches(game))
-            return (
-              <article
-                className="rounded-2xl bg-[#f5ecd3] p-4 text-[#675636]"
-                key={game.gameSessionId}
-              >
-                <h3 className="text-[21px] text-[#5a4a2a]">
-                  {slot?.name ?? game.gameName}
-                </h3>
-                <p className="mt-1 text-[16px]">
-                  플레이 시간 {formatDuration(game.playDurationSeconds)}
-                </p>
-                <p className="text-[16px]">점수 {game.score}점 · 완료</p>
-                {slot
-                  ? metricEntries(slot.key, game.resultMetrics).map(
-                      ([label, value]) => (
-                        <p className="text-[14px] text-[#85744f]" key={label}>
-                          {label}: {value}
-                        </p>
-                      ),
-                    )
-                  : null}
-              </article>
-            )
-          })}
-        </div>
-      ) : (
-        <p className="rounded-2xl bg-[#f5ecd3] p-5 text-[18px] text-[#675636]">
-          오늘은 게임을 하지 않았어요.
-        </p>
-      )}
-    </section>
-  )
-}
-
-function ConversationSection({
-  view,
-}: {
-  view: ReportConversationView | null
-}) {
-  return (
-    <section className="rounded-[24px] border-2 border-[#decda1] bg-[rgba(255,252,239,.82)] p-5 text-[#675636]">
-      <h2 className="mb-3 text-[25px] text-[#55783b]">대화 요약</h2>
-      {view ? (
-        <ConversationSummaryView view={view} />
-      ) : (
-        <p className="mt-3 rounded-2xl bg-[#eef3df] p-5 text-[18px] text-[#675636]">
-          오늘은 대화를 나누지 않았어요.
-        </p>
-      )}
-    </section>
-  )
-}
-
-function Message({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="flex min-h-[380px] flex-col items-center justify-center text-center text-[22px] text-[#6a5a3a]"
-      style={jua}
-    >
-      {children}
     </div>
   )
 }

@@ -14,7 +14,7 @@ export const RECYCLE_GAME_CONFIG = {
   canvasHeight: 720,
 
   /** 총 진행 시간(초). 일시정지·손 놓침 시간은 제외한 실제 플레이 시간이다. */
-  durationSec: 60,
+  durationSec: 30,
   /** 손 인식 후 시작 카운트다운(초) */
   countdownSec: 3,
   /** 남은 시간이 이 값 이하면 화면에서 강조한다(초) */

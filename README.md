@@ -110,11 +110,11 @@
 
 |                                                    | 이름  | 역할              |
 |:--------------------------------------------------:|-----|-----------------|
-| <img src="assets/profile/jiyoon.jpg" width="80" /> | 김지윤 | 팀장 · Backend |
-| <img src="assets/profile/gyuwon.jpg" width="80" /> | 박규원 | Frontend |
-| <img src="assets/profile/eunsol.jpg" width="80" /> | 이은솔 | Backend |
-| <img src="assets/profile/haejun.jpg" width="80" /> | 이해준 | Backend 리더 · AI |
-| <img src="assets/profile/chanho.jpg" width="80" /> | 정찬호 | Backend |
+| <img src="assets/profile/jiyoon.jpg" width="80" /> | [김지윤](https://github.com/zbqlxm5484) | 팀장 · Backend |
+| <img src="assets/profile/gyuwon.jpg" width="80" /> | [박규원](https://github.com/ParkGyuweon) | Frontend |
+| <img src="assets/profile/eunsol.jpg" width="80" /> | [이은솔](https://github.com/yel0732) | Backend |
+| <img src="assets/profile/haejun.jpg" width="80" /> | [이해준](https://github.com/haejun0410) | Backend 리더 · AI |
+| <img src="assets/profile/chanho.jpg" width="80" /> | [정찬호](https://github.com/kazakuteng) | Backend |
 
 
 ## Repository
